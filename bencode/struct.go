@@ -279,6 +279,12 @@ func (b *structBuilder) Key(k string) Builder {
 //
 
 func Unmarshal(r io.Reader, val interface{}) (err os.Error) {
+    // If e represents a value, the answer won't get back to the
+    // caller.  Make sure it's a pointer.
+    if _, ok := reflect.Typeof(val).(*reflect.PtrType); !ok {
+        err = os.ErrorString("Attempt to unmarshal into a non-pointer")
+        return
+    }
 	err = UnmarshalValue(r, reflect.NewValue(val))
 	return
 }
