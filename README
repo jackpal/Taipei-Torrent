@@ -28,4 +28,6 @@ Development Roadmap
 + Connect to peers and start exchanging file pieces
 + Keep tracker updated so it doesn't forget about us
 + Progress display
++ Handle creating directories in torrent file list
++ Cache torrent file rather than downloading each time.
 + UPnP support

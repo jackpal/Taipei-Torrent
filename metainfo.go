@@ -18,12 +18,12 @@ type FileDict struct {
 }
 
 type InfoDict struct {
-	PieceLength uint64 "piece length"
+	PieceLength int64 "piece length"
 	Pieces      string
 	Private     int64
 	Name        string
 	// Single File Mode
-	Length uint64
+	Length int64
 	Md5sum string
 	// Multiple File mode
 	Files []FileDict
