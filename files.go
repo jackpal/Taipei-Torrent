@@ -45,13 +45,13 @@ func (fe *fileEntry) open(name string, length int64) (err os.Error) {
     return
 }
 
-func NewFileStore(info *InfoDict) (f FileStore, totalSize int64, err os.Error) {
+func NewFileStore(info *InfoDict, fileDir string) (f FileStore, totalSize int64, err os.Error) {
     fs := new(fileStore)
     numFiles := len(info.Files)
     if numFiles == 0 {
         fs.files = make([]fileEntry, 1)
         fs.offsets = make([]int64, 1)
-        err = fs.files[0].open(info.Name, info.Length)
+        err = fs.files[0].open(fileDir + "/" + info.Name, info.Length)
         if err != nil {
             return
         }
@@ -61,7 +61,7 @@ func NewFileStore(info *InfoDict) (f FileStore, totalSize int64, err os.Error) {
         fs.offsets = make([]int64, numFiles)
         for i,_ := range(info.Files) {
             src := &info.Files[i]
-            err = fs.files[i].open(createPath(src.Path), src.Length)
+            err = fs.files[i].open(fileDir + "/" + createPath(src.Path), src.Length)
 			if err != nil {
 				return
 			}

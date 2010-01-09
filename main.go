@@ -2,12 +2,17 @@ package main
 
 import (
     "crypto/sha1"
+    "flag"
 	"fmt"
 	"log"
 	"net"
 	"os"
 	"strconv"
 )
+
+var torrent *string = flag.String("torrent", "", "URL or path to a torrent file")
+var fileDir *string = flag.String("fileDir", "", "path to directory where files are stored")
+var debugp *bool = flag.Bool("debug", false, "Turn on debugging")
 
 func peerId() string {
 	sid := "Taipei_tor_" + strconv.Itoa(os.Getpid()) + "______________"
@@ -16,19 +21,19 @@ func peerId() string {
 
 func binaryToDottedPort(port string) string {
 	return fmt.Sprintf("%d.%d.%d.%d:%d", port[0], port[1], port[2], port[3],
-		(port[4]<<8)|port[5])
+		(uint16(port[4])<<8)|uint16(port[5]))
 }
 
 func doTorrent() (err os.Error) {
 	log.Stderr("Fetching torrent.")
 	// testBencode()
-	m, err := getMetaInfo("http://releases.ubuntu.com/9.10/ubuntu-9.10-desktop-amd64.iso.torrent")
+	m, err := getMetaInfo(*torrent)
 	if err != nil {
 		return
 	}
 	log.Stderr("Tracker: ", m.Announce, " Comment: ", m.Comment, " Encoding: ", m.Encoding)
 	
-	fileStore, totalSize, err := NewFileStore(&m.Info)
+	fileStore, totalSize, err := NewFileStore(&m.Info, *fileDir)
 	if err != nil {
 	    return
 	}
@@ -46,13 +51,19 @@ func doTorrent() (err os.Error) {
 	}
 	
 	log.Stderr("Torrent has ", tr.Complete, " seeders and ", tr.Incomplete, " leachers.")
-
-	ip := tr.Peers[0:6]
-	c, err := net.Dial("tcp", "", binaryToDottedPort(ip))
+    peers := tr.Peers
+    if len(peers) < 6 {
+        err = os.NewError("No peers.")
+        return
+    }
+	peer := binaryToDottedPort(peers[0:6])
+	log.Stderr("Connecting to ", peer)
+	c, err := net.Dial("tcp", "", peer)
 	if err != nil {
 		return
 	}
-	var header [28]byte
+	log.Stderr("Reading data.")
+	var header [20]byte
 	_, err = c.Read(&header)
 	if err != nil {
 		return
@@ -111,8 +122,8 @@ func computeSums(fs FileStore, totalLength int64, pieceLength int64) (sums []byt
     return
 }
 
-
 func main() {
+    flag.Parse()
 	log.Stderr("Starting.")
 	err := doTorrent()
 	if err != nil {

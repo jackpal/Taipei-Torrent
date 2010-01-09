@@ -3,12 +3,14 @@ package main
 import (
 	"bytes"
 	"crypto/sha1"
+	"io"
 	"io/ioutil"
 	"http"
 	"jackpal/bencode"
 	"log"
 	"os"
 	"strconv"
+	"strings"
 )
 
 type FileDict struct {
@@ -48,17 +50,26 @@ type initialMetaInfo struct {
 	Encoding     string
 }
 
-func getMetaInfo(url string) (metaInfo *MetaInfo, err os.Error) {
-	r, _, err := http.Get(url)
+func getMetaInfo(torrent string) (metaInfo *MetaInfo, err os.Error) {
+    var input io.ReadCloser
+	if strings.HasPrefix(torrent, "http:") {
+	    // 6g compiler bug prevents us from writing r, _, err :=
+		var r *http.Response
+		r, _, err = http.Get(torrent)
+		input = r.Body
+	} else {
+	    input, err = os.Open(torrent, os.O_RDONLY, 0666)
+	}
 	if err != nil {
 		return
-	}
-	defer r.Body.Close()
+    }
 	var m initialMetaInfo
-	err = bencode.Unmarshal(r.Body, &m)
+	err = bencode.Unmarshal(input, &m)
+	input.Close()
 	if err != nil {
 		return
 	}
+
 	var b bytes.Buffer
 	if err = bencode.Marshal(&b, m.Info); err != nil {
 		return
