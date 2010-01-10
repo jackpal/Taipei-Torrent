@@ -26,7 +26,6 @@ func binaryToDottedPort(port string) string {
 
 func doTorrent() (err os.Error) {
 	log.Stderr("Fetching torrent.")
-	// testBencode()
 	m, err := getMetaInfo(*torrent)
 	if err != nil {
 		return
@@ -123,6 +122,8 @@ func computeSums(fs FileStore, totalLength int64, pieceLength int64) (sums []byt
 }
 
 func main() {
+	// testBencode()
+	testUPnP()
     flag.Parse()
 	log.Stderr("Starting.")
 	err := doTorrent()
