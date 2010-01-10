@@ -183,17 +183,63 @@ func combineURL(rootURL, subURL string) string {
     return rootURL[0:protoEndIndex + len(protocolEnd) + rootIndex] + subURL
 }
 
+type stringBuffer struct {
+    base string
+    current string
+}
+
+func NewStringBuffer(s string) *stringBuffer {
+    return &stringBuffer{s, s}
+}
+
+func (sb *stringBuffer) Read(p []byte) (n int, err os.Error) {
+    s := sb.current
+    lenStr := len(s)
+    if lenStr == 0 {
+        return 0, os.EOF
+    }
+    n = len(p)
+    if n > lenStr {
+        n = lenStr
+        err = os.EOF
+    }
+    for i := 0; i < n; i++ {
+        p[i] = s[i]
+    }
+    sb.current = s[n:]
+    return
+}
+
+func (sb *stringBuffer) Seek(offset int64, whence int) (ret int64, err os.Error) {
+    var newOffset int64
+    switch whence {
+    case 0: // from beginning
+        newOffset = offset
+    case 1: // relative
+        newOffset = int64(len(sb.base) - len(sb.current)) + offset
+    case 2: // from end
+        newOffset = int64(len(sb.base)) - offset
+    default:
+        err = os.NewError("bad whence")
+        return
+    }
+    if newOffset < 0 || newOffset > int64(len(sb.base)) {
+        err = os.NewError("offset out of range")
+    } else {
+        sb.current = sb.base[newOffset:]
+        ret = newOffset
+    }
+    return
+}
+
 func soapRequest(url, function, message string) (r *http.Response, err os.Error) {
     fullMessage := "<?xml version=\"1.0\"?>" +
         "<s:Envelope xmlns:s=\"http://schemas.xmlsoap.org/soap/envelope/\" s:encodingStyle=\"http://schemas.xmlsoap.org/soap/encoding/\">\r\n" +
         "<s:Body>" + message + "</s:Body></s:Envelope>"
     
-   //  body := bytes.NewBufferString(fullMessage)
-    
 	var req http.Request
 	req.Method = "POST"
-	// req.Body = body
-	req.Body2 = fullMessage
+	req.Body = NewStringBuffer(fullMessage)
 	req.UserAgent = "Darwin/10.0.0, UPnP/1.0, MiniUPnPc/1.3"
 	req.Header = map[string]string{
 		"Content-Type": "text/xml",
