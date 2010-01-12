@@ -5,7 +5,7 @@ import (
 	"crypto/sha1"
 	"io"
 	"io/ioutil"
-	"http"
+	"jackpal/http"
 	"jackpal/bencode"
 	"log"
 	"os"

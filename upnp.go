@@ -5,7 +5,7 @@ package main
 
 import (
     "bytes"
-    "http"
+    "jackpal/http"
     "log"
     "os"
     "net"

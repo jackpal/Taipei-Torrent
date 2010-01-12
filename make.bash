@@ -10,4 +10,8 @@ cd bencode
 make
 make install
 cd ..
+cd http
+make
+make install
+cd ..
 make
