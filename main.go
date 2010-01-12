@@ -13,6 +13,8 @@ import (
 var torrent *string = flag.String("torrent", "", "URL or path to a torrent file")
 var fileDir *string = flag.String("fileDir", "", "path to directory where files are stored")
 var debugp *bool = flag.Bool("debug", false, "Turn on debugging")
+var port *int = flag.Int("port", 0, "Port to listen on. Defaults to random.")
+var useUPnP *bool = flag.Bool("useUPnP", false, "Use UPnP to open port in firewall.")
 
 func peerId() string {
 	sid := "Taipei_tor_" + strconv.Itoa(os.Getpid()) + "______________"
@@ -22,6 +24,23 @@ func peerId() string {
 func binaryToDottedPort(port string) string {
 	return fmt.Sprintf("%d.%d.%d.%d:%d", port[0], port[1], port[2], port[3],
 		(uint16(port[4])<<8)|uint16(port[5]))
+}
+
+func chooseListenPort() (listenPort int, err os.Error) {
+    listenPort = *port
+    if *useUPnP {
+        // TODO: Look for ports currently in use. Handle collisions.
+        var nat NAT
+        nat, err = Discover()
+		if err != nil {
+			return
+		}
+		err = nat.ForwardPort("TCP", listenPort, listenPort, "Taipei-Torrent", 0)
+		if err != nil {
+			return
+		}
+    }
+    return
 }
 
 func doTorrent() (err os.Error) {
@@ -41,8 +60,12 @@ func doTorrent() (err os.Error) {
 	log.Stderr("Computing pieces left")
 	good, bad, err := checkPieces(fileStore, totalSize, m)
 	log.Stderr("Good pieces: ", good, " Bad pieces: ", bad)
-
-	si := &SessionInfo{PeerId: peerId(), Port: 6881, Left: bad * m.Info.PieceLength}
+	
+	listenPort, err := chooseListenPort()
+	if err != nil {
+	    return
+	}
+	si := &SessionInfo{PeerId: peerId(), Port: listenPort, Left: bad * m.Info.PieceLength}
 
 	tr, err := getTrackerInfo(m, si)
 	if err != nil {
@@ -123,7 +146,7 @@ func computeSums(fs FileStore, totalLength int64, pieceLength int64) (sums []byt
 
 func main() {
 	// testBencode()
-	testUPnP()
+	// testUPnP()
     flag.Parse()
 	log.Stderr("Starting.")
 	err := doTorrent()
