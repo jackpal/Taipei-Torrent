@@ -12,22 +12,34 @@ Q: What is the license?
 A: The code in the bencode subdirectory is controlled by the LICENSE file in that
 directory.
 
+The code in the http subdirectory is controlled by the standard Go Authors license.
+
 The code in the rest of Taipei Torrent is controlled by the LICENSE file in the
 top level.
+
+Q: Why do you have your own copy of the http package?
+
+A: The UPnP client needs additional APIs that aren't supported by the standard http
+package. I proposed the additional APIs as extensions to the standard http package,
+but they were rejected because the http package is being redesigned. So for now I'm
+using my own patched copy of the http package. When the standard http package has been
+enhanced to support the features that UPnP needs I'll get rid of this patched version.
 
 Current Status
 
 + Can encode / decode arbitrary bencode data.
 + Can download and parse a torrent file from a URL.
 + Can connect to a tracker and obtain a set of peers.
++ Can create and checksum the files listed in the info map
++ Can use UPnP to acquire a listener port
 
 Development Roadmap
 
-+ Create and checksum the files listed in the info map
 + Register a listener port to start listening for peer connections
 + Connect to peers and start exchanging file pieces
 + Keep tracker updated so it doesn't forget about us
 + Progress display
 + Handle creating directories in torrent file list
 + Cache torrent file rather than downloading each time.
-+ UPnP support
++ Full UPnP support (need to be able to search for an unused listener port,
+  release the listener port when we quit.)
