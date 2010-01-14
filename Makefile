@@ -1,8 +1,11 @@
 include $(GOROOT)/src/Make.$(GOARCH)
 
+all : taipeitorrent
+
 TARG=taipeitorrent
 
 GOFILES=\
+	bitset.go \
 	files.go \
 	main.go \
 	metainfo.go \

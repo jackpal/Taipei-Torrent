@@ -1,6 +1,7 @@
 package main
 
 import (
+    "bytes"
     "crypto/sha1"
     "flag"
 	"fmt"
@@ -43,6 +44,9 @@ func chooseListenPort() (listenPort int, err os.Error) {
     return
 }
 
+var kBitTorrentHeader = []byte{'\x13', 'B', 'i', 't', 'T', 'o', 'r', 
+	'r', 'e', 'n', 't', ' ', 'p', 'r', 'o', 't', 'o', 'c', 'o', 'l'}
+
 func doTorrent() (err os.Error) {
 	log.Stderr("Fetching torrent.")
 	m, err := getMetaInfo(*torrent)
@@ -58,7 +62,7 @@ func doTorrent() (err os.Error) {
 	defer fileStore.Close()
 	
 	log.Stderr("Computing pieces left")
-	good, bad, err := checkPieces(fileStore, totalSize, m)
+	good, bad, _, err := checkPieces(fileStore, totalSize, m)
 	log.Stderr("Good pieces: ", good, " Bad pieces: ", bad)
 	
 	listenPort, err := chooseListenPort()
@@ -84,30 +88,41 @@ func doTorrent() (err os.Error) {
 	if err != nil {
 		return
 	}
+	log.Stderr("Writing data.")
+	buf := bytes.NewBuffer(kBitTorrentHeader)
+	buf.Write([]byte{ 0, 0, 0, 0, 0, 0, 0, 0 })
+	buf.WriteString(m.InfoHash)
+	buf.WriteString(si.PeerId)
+	_, err = c.Write(buf.Bytes())
+	if err != nil {
+		return
+	}
 	log.Stderr("Reading data.")
 	var header [20]byte
 	_, err = c.Read(&header)
 	if err != nil {
 		return
 	}
-	log.Stderr(header[1:20])
+	log.Stderr(string(header[1:1+header[0]]))
 	log.Stderr(tr)
 	return
 }
 
-func checkPieces(fs FileStore, totalLength int64, m *MetaInfo) (good, bad int64, err os.Error) {
+func checkPieces(fs FileStore, totalLength int64, m *MetaInfo) (good, bad int64, goodBits *Bitset, err os.Error) {
 	currentSums, err := computeSums(fs, totalLength, m.Info.PieceLength)
 	if err != nil {
 	    return
 	}
 	pieceLength := m.Info.PieceLength
-    numPieces := (totalLength + pieceLength - 1) / pieceLength;
+    numPieces := (totalLength + pieceLength - 1) / pieceLength
+    goodBits = NewBitset(int(numPieces))
     ref := m.Info.Pieces
 	for i := int64(0); i < numPieces; i++ {
 	    base := i * sha1.Size
 	    end := base + sha1.Size
 	    if checkEqual(ref[base:end], currentSums[base:end]) {
 	        good++
+	        goodBits.Set(int(i))
 	    } else {
 	        bad++
 	    }
