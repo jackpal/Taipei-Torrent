@@ -96,9 +96,8 @@ func doTorrent() (err os.Error) {
 	}
 	
 	peerMessageChan := make(chan peerMessage)
-    writeChan := make(chan []byte)
     
-    ps := &peerState{writeChan: writeChan, conn: c}
+    ps := NewPeerState(c)
     var header [68]byte
     copy(header[0:], kBitTorrentHeader[0:])
     copy(header[28:48], string2Bytes(m.InfoHash))
@@ -106,7 +105,7 @@ func doTorrent() (err os.Error) {
     go peerWriter(ps.conn, ps.writeChan, header[0:])
     go peerReader(ps.conn, ps, peerMessageChan)
 	for pm := range(peerMessageChan) {
-	    log.Stderr("Peer message: ", pm)
+	    // log.Stderr("Peer message: ", pm)
 	    peer, message := pm.peer, pm.message
 	    if len(peer.id) == 0 {
 	    	// This is the header message from the peer.
@@ -132,7 +131,7 @@ func doTorrent() (err os.Error) {
 	                    peer.Close()
 	                    break
 	                }
-	                ps.choked = true
+	                ps.peer_choking = true
 	            case 1:
 	                log.Stderr("unchoke")
 	                if len(message) != 1 {
@@ -140,7 +139,7 @@ func doTorrent() (err os.Error) {
 	                    peer.Close()
 	                    break
 	                }
-	                ps.choked = false
+	                ps.peer_choking = false
 	            case 2:
 	                log.Stderr("interested")
 	                if len(message) != 1 {
@@ -148,7 +147,7 @@ func doTorrent() (err os.Error) {
 	                    peer.Close()
 	                    break
 	                }
-	                ps.interested = true
+	                ps.peer_interested = true
 	            case 3:
 	                log.Stderr("not interested")
 	                if len(message) != 1 {
@@ -156,7 +155,7 @@ func doTorrent() (err os.Error) {
 	                    peer.Close()
 	                    break
 	                }
-	                ps.interested = false
+	                ps.peer_interested = false
 	            case 4:
 	                log.Stderr("have")
 	                if len(message) != 5 {
@@ -214,25 +213,15 @@ func doTorrent() (err os.Error) {
 	                    peer.Close()
 	                    break
 	                }
-	                if length != 16384 {
+	                if length != STANDARD_BLOCK_LENGTH {
 	                    log.Stderr("Unexpected length.")
 	                    peer.Close()
 	                    break
 	                }
-	                buf := make([]byte, length + 9)
-	                buf[0] = 7
-	                copy(buf[1:9], message[1:9])
-	                _, err := fileStore.ReadAt(buf[9:],
-	                	int64(index) * m.Info.PieceLength + int64(begin))
-	                if err != nil {
-	                    log.Stderr("Couldn't read data.", err)
-	                    peer.Close()
-	                    break
-	                }
-	                peer.writeChan <- buf
+	                peer.AddRequest(index, begin, length)
 	            case 7:
 	                log.Stderr("piece")
-	                if len(message) != 9 + 16384 {
+	                if len(message) != 9 + STANDARD_BLOCK_LENGTH {
 	                    log.Stderr("Unexpected length")
 	                    peer.Close()
 	                    break
@@ -260,7 +249,7 @@ func doTorrent() (err os.Error) {
 	                    peer.Close()
 	                    break
 	                }
-	                if length != 16384 {
+	                if length != STANDARD_BLOCK_LENGTH {
 	                    log.Stderr("Unexpected length.")
 	                    peer.Close()
 	                    break
@@ -272,6 +261,7 @@ func doTorrent() (err os.Error) {
 	                    peer.Close()
 	                    break
 	                }
+	                // TODO: Update "have" if nescessary
 	            case 8:
 	                log.Stderr("cancel")
 	                if len(message) != 13 {
@@ -279,8 +269,35 @@ func doTorrent() (err os.Error) {
 	                    peer.Close()
 	                    break
 	                }
-	                // TODO: unify parsing and checking with request
-	                // TODO: Do something with this method.
+	                index := bytesToUint32(message[1:5])
+	                begin := bytesToUint32(message[5:9])
+	                length := bytesToUint32(message[9:13])
+	                if index >= uint32(ps.have.n) {
+	                    log.Stderr("piece out of range.")
+	                    peer.Close()
+	                    break
+	                }
+	                if ! pieceSet.IsSet(int(index)) {
+	                    log.Stderr("we don't have that piece.")
+	                    peer.Close()
+	                    break
+	                }
+	                if int64(begin) >= m.Info.PieceLength {
+	                    log.Stderr("begin out of range.")
+	                    peer.Close()
+	                    break
+	                }
+	                if int64(begin) + int64(length) > m.Info.PieceLength {
+	                    log.Stderr("begin + length out of range.")
+	                    peer.Close()
+	                    break
+	                }
+	                if length != STANDARD_BLOCK_LENGTH {
+	                    log.Stderr("Unexpected length.")
+	                    peer.Close()
+	                    break
+	                }
+	                peer.CancelRequest(index, begin, length)
 	            case 9:
 	                log.Stderr("listen-port")
 	                if len(message) != 3 {
@@ -297,18 +314,70 @@ func doTorrent() (err os.Error) {
 	return
 }
 
+func sendRequest(fileStore *FileStore, peer *peerState, pieceLength int64,
+    index, begin, length uint32) (err os.Error) {
+	buf := make([]byte, length + 9)
+	buf[0] = 7
+	uint32ToBytes(buf[1:5], index)
+	uint32ToBytes(buf[5:9], begin)
+	_, err = fileStore.ReadAt(buf[9:],
+		int64(index) * pieceLength + int64(begin))
+	if err != nil {
+		return
+	}
+	peer.writeChan <- buf
+	return
+}
+
+const MAX_REQUESTS = 10
+const STANDARD_BLOCK_LENGTH = 16*1024
+
 type peerState struct {
     id string
     writeChan chan []byte
     have *Bitset
     conn net.Conn
-    choked bool
-    interested bool
+    am_choking bool // this client is choking the peer
+	am_interested bool // this client is interested in the peer
+    peer_choking bool // peer is choking this client
+    peer_interested bool // peer is interested in this client
+    requests map[uint64] bool
 }
+
+func NewPeerState(conn net.Conn) *peerState {
+    writeChan := make(chan []byte)
+    return &peerState{writeChan: writeChan, conn: conn,
+    	am_choking: true, peer_choking: true,
+    	requests: make(map[uint64] bool, MAX_REQUESTS)}
+ }
 
 func (p *peerState) Close() {
     p.conn.Close()
     close(p.writeChan)
+}
+
+func (p *peerState) AddRequest(index, begin, length uint32) {
+	if len(p.requests) < MAX_REQUESTS {
+		offset := (uint64(index) << 32) | uint64(begin)
+		p.requests[offset] = true
+	}
+}
+
+func (p *peerState) CancelRequest(index, begin, length uint32) {
+    offset := (uint64(index) << 32) | uint64(begin)
+    if _, ok := p.requests[offset]; ok {
+        p.requests[offset] = false, false
+    }
+}
+
+func (p *peerState) RemoveRequest() (index, begin, length uint32, ok bool) {
+    for k,_ := range(p.requests) {
+        index, begin = uint32(k >> 32), uint32(k)
+        length = STANDARD_BLOCK_LENGTH
+        ok = true
+        return
+    }
+    return
 }
 
 type torrentState struct {
@@ -318,12 +387,16 @@ type torrentState struct {
 // There's two goroutines per peer, one to read data from the peer, the other to
 // send data to the peer.
 
-func writeNBOUint32(conn net.Conn, n uint32) (err os.Error) {
-    var buf [4]byte
+func uint32ToBytes(buf []byte, n uint32) {
     buf[0] = byte(n >> 24)
     buf[1] = byte(n >> 16)
     buf[2] = byte(n >> 8)
     buf[3] = byte(n)
+}
+
+func writeNBOUint32(conn net.Conn, n uint32) (err os.Error) {
+    var buf [4]byte
+	uint32ToBytes(&buf, n)
     _, err = conn.Write(buf[0:])
     return
 }
@@ -360,6 +433,7 @@ func peerWriter(conn net.Conn, msgChan chan []byte, header []byte) {
         }
         _, err = conn.Write(msg)
         if err != nil {
+            log.Stderr("Failed to write a message: ", err)
             return
         }
 	}
