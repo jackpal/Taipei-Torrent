@@ -52,6 +52,11 @@ func string2Bytes(s string) []byte {
     return bytes.NewBufferString(s).Bytes()
 }
 
+type ActivePiece struct {
+    claimed *Bitset // either pending or already downloaded
+    pending *Bitset // someone is actively downloading this
+}
+
 type TorrentSession struct {
     m *MetaInfo
     si *SessionInfo
@@ -59,13 +64,15 @@ type TorrentSession struct {
     fileStore FileStore
     peers map[string] *peerState
     peerMessageChan chan peerMessage
-    pieceSet *Bitset
+    pieceSet *Bitset // The pieces we have
     totalPieces int
+    activePieces map[int] *ActivePiece
 }
 
 func NewTorrentSession(torrent string) (ts *TorrentSession, err os.Error) {
     t := &TorrentSession{peers: make(map[string] *peerState),
-        peerMessageChan: make(chan peerMessage)}
+        peerMessageChan: make(chan peerMessage),
+        activePieces: make(map[int] *ActivePiece)}
 	t.m, err = getMetaInfo(torrent)
 	if err != nil {
 		return
@@ -158,6 +165,69 @@ func doTorrent() (err os.Error) {
 	return
 }
 
+func (t *TorrentSession) RequestBlock(p *peerState) (err os.Error) {
+    for k,_ := range(t.activePieces) {
+        if p.have.IsSet(k) {
+            return t.RequestBlock2(p, k)
+        }
+    }
+    // No active pieces. Pick one
+    piece := p.have.FindNextSet(0)
+    if piece >= 0 {
+		pieceCount := int(t.m.Info.PieceLength / STANDARD_BLOCK_LENGTH)
+		t.activePieces[piece] = &ActivePiece{NewBitset(pieceCount), NewBitset(pieceCount)}
+		return t.RequestBlock2(p, piece)
+	} else {
+	    // TODO: no longer interesting
+	}
+	return
+}
+
+func (t *TorrentSession) RequestBlock2(p *peerState, piece int) (err os.Error) {
+    v := t.activePieces[piece]
+	block := v.claimed.FindNextClear(0)
+	if block >= 0 {
+	    log.Stderr("Requesting block ", strconv.Itoa(piece), ".", strconv.Itoa(block))
+		v.claimed.Set(block)
+		v.pending.Set(block)
+		begin := block * STANDARD_BLOCK_LENGTH
+		req := make([]byte, 13)
+		req[0] = 6
+		uint32ToBytes(req[1:5], uint32(piece))
+		uint32ToBytes(req[5:9], uint32(begin))
+		uint32ToBytes(req[9:13], STANDARD_BLOCK_LENGTH)
+		p.our_requests[(uint64(piece) << 32) | uint64(begin)] = true
+		p.writeChan <- req
+	} else {
+	    // Need to pick a new piece
+	}
+	return
+}
+
+func (t *TorrentSession) RecordBlock(p *peerState, piece, begin uint32) (err os.Error) {
+    block := begin / STANDARD_BLOCK_LENGTH
+	log.Stderr("Received block ", strconv.Itoa(int(piece)), ".", strconv.Itoa(int(block)))
+    p.our_requests[(uint64(piece) << 32) | uint64(begin)] = false, false
+    v := t.activePieces[int(piece)]
+    v.pending.Clear(int(block))
+    // TODO: check whether the block was actually pending or not.
+    // TODO: Did we just get a full piece?
+    return
+}
+
+func (t *TorrentSession) doChoke(p *peerState)(err os.Error) {
+	p.peer_choking = true
+	for k,_ := range(p.our_requests) {
+	    piece := int(k >> 32)
+	    begin := int(k)
+	    block := begin / STANDARD_BLOCK_LENGTH
+	    v := t.activePieces[piece]
+	    v.pending.Clear(int(block))
+	}
+	p.our_requests = make(map[uint64] bool, MAX_REQUESTS)
+	return
+}
+
 func (t *TorrentSession) DoMessage(p *peerState, message []byte) (err os.Error) {
 	if len(p.id) == 0 {
 		// This is the header message from the peer.
@@ -185,15 +255,14 @@ func (t *TorrentSession) DoMessage(p *peerState, message []byte) (err os.Error) 
 				if len(message) != 1 {
 					return os.NewError("Unexpected length")
 				}
-				p.peer_choking = true
+				err = t.doChoke(p)
 			case 1:
 				log.Stderr("unchoke")
 				if len(message) != 1 {
 					return os.NewError("Unexpected length")
 				}
 				p.peer_choking = false
-				// TODO: Request something!
-				
+				return t.RequestBlock(p)
 			case 2:
 				log.Stderr("interested")
 				if len(message) != 1 {
@@ -275,12 +344,13 @@ func (t *TorrentSession) DoMessage(p *peerState, message []byte) (err os.Error) 
 				if length != STANDARD_BLOCK_LENGTH {
 					return os.NewError("Unexpected length.")
 				}
-				_, err := t.fileStore.WriteAt(message[9:],
+				_, err = t.fileStore.WriteAt(message[9:],
 					int64(index) * t.m.Info.PieceLength + int64(begin))
 				if err != nil {
 					return err
 				}
-				// TODO: Update "have" if nescessary
+				t.RecordBlock(p, index, begin)
+				err = t.RequestBlock(p)
 			case 8:
 				log.Stderr("cancel")
 				if len(message) != 13 {
