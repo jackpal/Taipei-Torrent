@@ -5,6 +5,7 @@ import (
     "crypto/sha1"
     "flag"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"os"
@@ -46,6 +47,10 @@ func chooseListenPort() (listenPort int, err os.Error) {
 
 var kBitTorrentHeader = []byte{'\x13', 'B', 'i', 't', 'T', 'o', 'r', 
 	'r', 'e', 'n', 't', ' ', 'p', 'r', 'o', 't', 'o', 'c', 'o', 'l'}
+	
+func string2Bytes(s string) []byte {
+    return bytes.NewBufferString(s).Bytes()
+}
 
 func doTorrent() (err os.Error) {
 	log.Stderr("Fetching torrent.")
@@ -88,25 +93,134 @@ func doTorrent() (err os.Error) {
 	if err != nil {
 		return
 	}
-	log.Stderr("Writing data.")
-	buf := bytes.NewBuffer(kBitTorrentHeader)
-	buf.Write([]byte{ 0, 0, 0, 0, 0, 0, 0, 0 })
-	buf.WriteString(m.InfoHash)
-	buf.WriteString(si.PeerId)
-	_, err = c.Write(buf.Bytes())
-	if err != nil {
-		return
+	
+	peerMessageChan := make(chan peerMessage)
+    writeChan := make(chan []byte)
+    
+    ps := &peerState{writeChan: writeChan, conn: c}
+    var header [68]byte
+    copy(header[0:], kBitTorrentHeader[0:])
+    copy(header[28:48], string2Bytes(m.InfoHash))
+    copy(header[48:68], string2Bytes(si.PeerId))
+    go peerWriter(ps.conn, ps.writeChan, header[0:])
+    go peerReader(ps.conn, ps, peerMessageChan)
+	for pm := range(peerMessageChan) {
+	    log.Stderr("Peer message: ", pm)
 	}
-	log.Stderr("Reading data.")
-	var header [20]byte
-	_, err = c.Read(&header)
-	if err != nil {
-		return
-	}
-	log.Stderr(string(header[1:1+header[0]]))
-	log.Stderr(tr)
 	return
 }
+
+type peerState struct {
+    id []byte
+    writeChan chan []byte
+    have *Bitset
+    conn net.Conn
+}
+
+type torrentState struct {
+    peers map[string] *peerState
+}
+
+// There's two goroutines per peer, one to read data from the peer, the other to
+// send data to the peer.
+
+func writeNBOUint32(conn net.Conn, n uint32) (err os.Error) {
+    var buf [4]byte
+    buf[0] = byte(n >> 24)
+    buf[1] = byte(n >> 16)
+    buf[2] = byte(n >> 8)
+    buf[3] = byte(n)
+    _, err = conn.Write(buf[0:])
+    return
+}
+
+func readNBOUint32(conn net.Conn) (n uint32, err os.Error) {
+    var buf [4]byte
+    _, err = conn.Read(buf[0:])
+    if err != nil {
+        return
+    }
+    n = (uint32(buf[0]) << 24) |
+        (uint32(buf[1]) << 16) |
+        (uint32(buf[2]) << 8) | uint32(buf[3])
+    return
+}
+
+func peerWriter(conn net.Conn, msgChan chan []byte, header []byte) {
+	log.Stderr("Writing header.")
+	_, err := conn.Write(header)
+	if err != nil {
+	    return
+	}
+	log.Stderr("Writing messages")
+	for msg := range(msgChan) {
+        log.Stderr("Writing a message")
+        err = writeNBOUint32(conn, uint32(len(msg)))
+        if err != nil {
+            return
+        }
+        _, err = conn.Write(msg)
+        if err != nil {
+            return
+        }
+	}
+	log.Stderr("peerWriter exiting")
+}
+
+type peerMessage struct {
+    peer *peerState
+    paylode []byte // nil when peer is closed
+}
+
+func peerReader(conn net.Conn, peer *peerState, msgChan chan peerMessage) {
+	log.Stderr("Reading header.")
+	var header [68]byte
+	_, err := conn.Read(header[0:1])
+	if err != nil {
+	    goto exit
+	}
+	if header[0] != 19 {
+	    goto exit
+	}
+	_, err = conn.Read(header[1:20])
+	if err != nil {
+	    goto exit
+	}
+	if string(header[1:20]) != "BitTorrent protocol" {
+	    goto exit
+	}
+	// Read rest of header
+	_, err = conn.Read(header[20:])
+	if err != nil {
+	    goto exit
+	}
+	msgChan <- peerMessage{peer, header[20:]}
+	log.Stderr("Reading messages")
+	for {
+        log.Stderr("Reading a message")
+        var n uint32
+        n, err = readNBOUint32(conn)
+        if err != nil {
+            goto exit
+        }
+        if n > 64*1024 {
+            log.Stderr("Message size too large: ", n)
+            goto exit
+        }
+        buf := make([]byte, n)
+        _, err :=  io.ReadFull(conn, buf)
+        if err != nil {
+            goto exit
+        }
+        msgChan <- peerMessage{peer, buf}
+	}
+	
+exit:
+	conn.Close()
+    msgChan <- peerMessage {peer, nil}
+	log.Stderr("peerWriter exiting")
+}
+
 
 func checkPieces(fs FileStore, totalLength int64, m *MetaInfo) (good, bad int64, goodBits *Bitset, err os.Error) {
 	currentSums, err := computeSums(fs, totalLength, m.Info.PieceLength)
