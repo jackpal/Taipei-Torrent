@@ -34,6 +34,7 @@ func createPath(parts []string) (path string) {
 
 func (fe *fileEntry) open(name string, length int64) (err os.Error) {
     // TODO: sanitize name
+    fe.length = length
     fe.fd, err = os.Open(name, os.O_RDWR | os.O_CREAT, 0666)
     if err != nil {
         return

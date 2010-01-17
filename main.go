@@ -160,6 +160,10 @@ func doTorrent() (err os.Error) {
 	    if err2 != nil {
 	        log.Stderr("Error: ", err2)
 			ts.ClosePeer(peer)
+			if len(ts.peers) == 0 {
+			    log.Stderr("No more peers.")
+			    break
+			}
 	    }
 	}
 	return
@@ -262,7 +266,12 @@ func (t *TorrentSession) DoMessage(p *peerState, message []byte) (err os.Error) 
 					return os.NewError("Unexpected length")
 				}
 				p.peer_choking = false
-				return t.RequestBlock(p)
+				for i := 0; i <  MAX_REQUESTS; i++ {
+				    err = t.RequestBlock(p)
+				    if err != nil {
+				        return
+				    }
+				}
 			case 2:
 				log.Stderr("interested")
 				if len(message) != 1 {
@@ -328,6 +337,9 @@ func (t *TorrentSession) DoMessage(p *peerState, message []byte) (err os.Error) 
 				index := bytesToUint32(message[1:5])
 				begin := bytesToUint32(message[5:9])
 				length := len(message) - 9
+				
+				log.Stderr("index ", strconv.Itoa(int(index)), " begin ", strconv.Itoa(int(begin)),
+					" length ", strconv.Itoa(int(length)))
 				if index >= uint32(p.have.n) {
 					return os.NewError("piece out of range.")
 				}
@@ -344,8 +356,9 @@ func (t *TorrentSession) DoMessage(p *peerState, message []byte) (err os.Error) 
 				if length != STANDARD_BLOCK_LENGTH {
 					return os.NewError("Unexpected length.")
 				}
-				_, err = t.fileStore.WriteAt(message[9:],
-					int64(index) * t.m.Info.PieceLength + int64(begin))
+				globalOffset := int64(index) * t.m.Info.PieceLength + int64(begin)
+				log.Stderr("global offset", strconv.Itoa64(globalOffset))
+				_, err = t.fileStore.WriteAt(message[9:], globalOffset)
 				if err != nil {
 					return err
 				}
@@ -497,8 +510,8 @@ func peerWriter(conn net.Conn, msgChan chan []byte, header []byte) {
 	    return
 	}
 	log.Stderr("Writing messages")
+	// TODO: keep-alive
 	for msg := range(msgChan) {
-        log.Stderr("Writing a message")
         err = writeNBOUint32(conn, uint32(len(msg)))
         if err != nil {
             return
@@ -550,6 +563,7 @@ func peerReader(conn net.Conn, peer *peerState, msgChan chan peerMessage) {
         }
         if n == 0 {
             // it's a keep-alive message. swallow it.
+            log.Stderr("Received keep-alive message.")
             continue
         } else if n > 64*1024 {
             log.Stderr("Message size too large: ", n)
