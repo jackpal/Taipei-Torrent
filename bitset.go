@@ -19,6 +19,20 @@ func NewBitset(n int) *Bitset {
     return &Bitset{make([]byte, (n + 7) >> 3), n, endIndex, endMask}
 }
 
+// Creates a new bitset from a given byte stream. Returns nil if the
+// data is invalid in some way.
+func NewBitsetFromBytes(n int, data []byte) *Bitset {
+    bitset := NewBitset(n)
+    if len(bitset.b) != len(data) {
+        return nil
+    }
+    copy(bitset.b, data)
+    if bitset.endIndex >= 0 && bitset.b[bitset.endIndex] & (^bitset.endMask) != 0 {
+        return nil
+    }
+    return bitset
+}
+
 func (b *Bitset) Set(index int) {
     if index < 0 || index >= b.n {
         panic("Index out of range.")

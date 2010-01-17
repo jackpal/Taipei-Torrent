@@ -67,7 +67,8 @@ func doTorrent() (err os.Error) {
 	defer fileStore.Close()
 	
 	log.Stderr("Computing pieces left")
-	good, bad, _, err := checkPieces(fileStore, totalSize, m)
+	good, bad, pieceSet, err := checkPieces(fileStore, totalSize, m)
+	totalPieces := good + bad
 	log.Stderr("Good pieces: ", good, " Bad pieces: ", bad)
 	
 	listenPort, err := chooseListenPort()
@@ -106,15 +107,208 @@ func doTorrent() (err os.Error) {
     go peerReader(ps.conn, ps, peerMessageChan)
 	for pm := range(peerMessageChan) {
 	    log.Stderr("Peer message: ", pm)
+	    peer, message := pm.peer, pm.message
+	    if len(peer.id) == 0 {
+	    	// This is the header message from the peer.
+	    	peersInfoHash := string(message[8:28])
+	    	if peersInfoHash != m.InfoHash {
+	    	    log.Stderr("this peer doesn't have the right info hash")
+	    	    peer.Close()
+	    	    continue
+	    	}
+	    	peer.id = string(message[28:48])
+	    } else {
+	        messageId := message[0]
+	        // Message 5 is optional, but must be sent as the first message.
+	        if ps.have == nil && messageId != 5 {
+	        	// Fill out the have bitfield
+	        	ps.have = NewBitset(int(totalPieces))
+	        }
+	        switch id := message[0]; id {
+	            case 0:
+	                log.Stderr("choke")
+	                if len(message) != 1 {
+	                    log.Stderr("Unexpected length")
+	                    peer.Close()
+	                    break
+	                }
+	                ps.choked = true
+	            case 1:
+	                log.Stderr("unchoke")
+	                if len(message) != 1 {
+	                    log.Stderr("Unexpected length")
+	                    peer.Close()
+	                    break
+	                }
+	                ps.choked = false
+	            case 2:
+	                log.Stderr("interested")
+	                if len(message) != 1 {
+	                    log.Stderr("Unexpected length")
+	                    peer.Close()
+	                    break
+	                }
+	                ps.interested = true
+	            case 3:
+	                log.Stderr("not interested")
+	                if len(message) != 1 {
+	                    log.Stderr("Unexpected length")
+	                    peer.Close()
+	                    break
+	                }
+	                ps.interested = false
+	            case 4:
+	                log.Stderr("have")
+	                if len(message) != 5 {
+	                    log.Stderr("Unexpected length")
+	                    peer.Close()
+	                    break
+	                }
+	                n := bytesToUint32(message[1:])
+	                if n < uint32(ps.have.n) {
+	                    ps.have.Set(int(n))
+	                } else {
+	                    log.Stderr("have index is out of range.")
+	                    peer.Close()
+	                }
+	            case 5:
+	                log.Stderr("bitfield")
+	                if ps.have != nil {
+	                    log.Stderr("Late bitfield operation")
+	                    peer.Close()
+	                    break
+	                }
+	                ps.have = NewBitsetFromBytes(int(totalPieces), message[1:])
+	                if ps.have == nil {
+	                    log.Stderr("Invalid bitfield data.")
+	                    peer.Close()
+	                    break
+	                }
+	            case 6:
+	                log.Stderr("request")
+	                if len(message) != 13 {
+	                    log.Stderr("Unexpected length")
+	                    peer.Close()
+	                    break
+	                }
+	                index := bytesToUint32(message[1:5])
+	                begin := bytesToUint32(message[5:9])
+	                length := bytesToUint32(message[9:13])
+	                if index >= uint32(ps.have.n) {
+	                    log.Stderr("piece out of range.")
+	                    peer.Close()
+	                    break
+	                }
+	                if ! pieceSet.IsSet(int(index)) {
+	                    log.Stderr("we don't have that piece.")
+	                    peer.Close()
+	                    break
+	                }
+	                if int64(begin) >= m.Info.PieceLength {
+	                    log.Stderr("begin out of range.")
+	                    peer.Close()
+	                    break
+	                }
+	                if int64(begin) + int64(length) > m.Info.PieceLength {
+	                    log.Stderr("begin + length out of range.")
+	                    peer.Close()
+	                    break
+	                }
+	                if length != 16384 {
+	                    log.Stderr("Unexpected length.")
+	                    peer.Close()
+	                    break
+	                }
+	                buf := make([]byte, length + 9)
+	                buf[0] = 7
+	                copy(buf[1:9], message[1:9])
+	                _, err := fileStore.ReadAt(buf[9:],
+	                	int64(index) * m.Info.PieceLength + int64(begin))
+	                if err != nil {
+	                    log.Stderr("Couldn't read data.", err)
+	                    peer.Close()
+	                    break
+	                }
+	                peer.writeChan <- buf
+	            case 7:
+	                log.Stderr("piece")
+	                if len(message) != 9 + 16384 {
+	                    log.Stderr("Unexpected length")
+	                    peer.Close()
+	                    break
+	                }
+	                index := bytesToUint32(message[1:5])
+	                begin := bytesToUint32(message[5:9])
+	                length := len(message) - 9
+	                if index >= uint32(ps.have.n) {
+	                    log.Stderr("piece out of range.")
+	                    peer.Close()
+	                    break
+	                }
+	                if pieceSet.IsSet(int(index)) {
+	                    log.Stderr("we already have that piece.")
+	                    // Not a hanging offense, keep going
+	                    break
+	                }
+	                if int64(begin) >= m.Info.PieceLength {
+	                    log.Stderr("begin out of range.")
+	                    peer.Close()
+	                    break
+	                }
+	                if int64(begin) + int64(length) > m.Info.PieceLength {
+	                    log.Stderr("begin + length out of range.")
+	                    peer.Close()
+	                    break
+	                }
+	                if length != 16384 {
+	                    log.Stderr("Unexpected length.")
+	                    peer.Close()
+	                    break
+	                }
+	                _, err := fileStore.WriteAt(message[9:],
+	                	int64(index) * m.Info.PieceLength + int64(begin))
+	                if err != nil {
+	                    log.Stderr("Couldn't write data.", err)
+	                    peer.Close()
+	                    break
+	                }
+	            case 8:
+	                log.Stderr("cancel")
+	                if len(message) != 13 {
+	                    log.Stderr("Unexpected length")
+	                    peer.Close()
+	                    break
+	                }
+	                // TODO: unify parsing and checking with request
+	                // TODO: Do something with this method.
+	            case 9:
+	                log.Stderr("listen-port")
+	                if len(message) != 3 {
+	                    log.Stderr("Unexpected length")
+	                    peer.Close()
+	                    break
+	                }
+	            default:
+	            	log.Stderr("Uknown message id ", id)
+	            	peer.Close()
+	        }
+	    }
 	}
 	return
 }
 
 type peerState struct {
-    id []byte
+    id string
     writeChan chan []byte
     have *Bitset
     conn net.Conn
+    choked bool
+    interested bool
+}
+
+func (p *peerState) Close() {
+    p.conn.Close()
+    close(p.writeChan)
 }
 
 type torrentState struct {
@@ -134,19 +328,24 @@ func writeNBOUint32(conn net.Conn, n uint32) (err os.Error) {
     return
 }
 
+func bytesToUint32(buf []byte) uint32 {
+    return (uint32(buf[0]) << 24) |
+        (uint32(buf[1]) << 16) |
+        (uint32(buf[2]) << 8) | uint32(buf[3])
+}
+
 func readNBOUint32(conn net.Conn) (n uint32, err os.Error) {
     var buf [4]byte
     _, err = conn.Read(buf[0:])
     if err != nil {
         return
     }
-    n = (uint32(buf[0]) << 24) |
-        (uint32(buf[1]) << 16) |
-        (uint32(buf[2]) << 8) | uint32(buf[3])
+    n = bytesToUint32(buf[0:])
     return
 }
 
 func peerWriter(conn net.Conn, msgChan chan []byte, header []byte) {
+    // TODO: Add one-minute keep-alive messages.
 	log.Stderr("Writing header.")
 	_, err := conn.Write(header)
 	if err != nil {
@@ -169,10 +368,11 @@ func peerWriter(conn net.Conn, msgChan chan []byte, header []byte) {
 
 type peerMessage struct {
     peer *peerState
-    paylode []byte // nil when peer is closed
+    message []byte // nil when peer is closed
 }
 
 func peerReader(conn net.Conn, peer *peerState, msgChan chan peerMessage) {
+    // TODO: Add two-minute timeout.
 	log.Stderr("Reading header.")
 	var header [68]byte
 	_, err := conn.Read(header[0:1])
@@ -203,7 +403,10 @@ func peerReader(conn net.Conn, peer *peerState, msgChan chan peerMessage) {
         if err != nil {
             goto exit
         }
-        if n > 64*1024 {
+        if n == 0 {
+            // it's a keep-alive message. swallow it.
+            continue
+        } else if n > 64*1024 {
             log.Stderr("Message size too large: ", n)
             goto exit
         }
