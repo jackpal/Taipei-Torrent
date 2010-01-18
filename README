@@ -32,11 +32,19 @@ Current Status
 + Can connect to a tracker and obtain a set of peers.
 + Can create and checksum the files listed in the info map
 + Can use UPnP to acquire a listener port
++ Can asynchronously connect to the initial batch of peers obtained from the tracker
++ Can asynchronously send and receive messages from connected peers
++ Can request and receive blocks from connected peers.
++ Can schedule which pieces and blocks to request.
++ Can handle remote choke/unchoke messages.
++ Should be able to send blocks to connected peers, but not tested yet.
 
 Development Roadmap
 
++ Implement interested/uninterested logic
++ Implement choke/unchoke logic
++ Add Endgame support for obtaining last few blocks.
 + Register a listener port to start listening for peer connections
-+ Connect to peers and start exchanging file pieces
 + Keep tracker updated so it doesn't forget about us
 + Progress display
 + Handle creating directories in torrent file list
