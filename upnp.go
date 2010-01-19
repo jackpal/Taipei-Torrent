@@ -57,8 +57,9 @@ func Discover() (nat NAT, err os.Error) {
         var n int
     	n, _, err = socket.ReadFromUDP(answerBytes)
 		if err != nil {
-            socket.Close()
-			return
+		    continue
+            // socket.Close()
+			// return
 		}
 		answer := string(answerBytes[0:n])
         if strings.Index(answer, "\r\nST: upnp:rootdevice\r\n") < 0 {
