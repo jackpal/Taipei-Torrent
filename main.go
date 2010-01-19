@@ -267,6 +267,7 @@ func doTorrent() (err os.Error) {
 		    ts.AddPeer(conn)
 		case _ = <-rechokeChan:
 		    // TODO: recalculate who to choke / unchoke
+		    log.Stderr("Peers:", len(ts.peers), "downloaded:", ts.si.Downloaded)
 		}
 	}
 	return
@@ -288,7 +289,7 @@ func (t *TorrentSession) RequestBlock(p *peerState) (err os.Error) {
 		t.activePieces[piece] = &ActivePiece{make([]int, pieceCount)}
 		return t.RequestBlock2(p, piece)
 	} else {
-	    // TODO: no longer interesting
+	    p.SetInterested(false)
 	}
 	return
 }
@@ -347,8 +348,8 @@ func (t *TorrentSession) RecordBlock(p *peerState, piece, begin uint32) (err os.
 		    for _,p := range(t.peers) {
 		        if p.have != nil {
 		            if p.have.IsSet(int(piece)) {
-		                // Check if this peer is still interesting
-		                t.checkInteresting(p)
+		                // We don't do anything special. We rely on the caller
+		                // to decide if this peer is still interesting.
 		            } else {
 						// log.Stderr("...telling ", p)
 						haveMsg := make([]byte, 5)
@@ -541,9 +542,9 @@ func (t *TorrentSession) DoMessage(p *peerState, message []byte) (err os.Error) 
 				// We see peers sending us 16K byte messages here, so
 				// it seems that we don't understand what this is.
 				log.Stderr("port len=", len(message))
-				if len(message) != 3 {
-					return os.NewError("Unexpected length")
-				}
+				//if len(message) != 3 {
+				//	return os.NewError("Unexpected length")
+				//}
 			default:
 				return os.NewError("Uknown message id")
 		}
@@ -698,25 +699,34 @@ func readNBOUint32(conn net.Conn) (n uint32, err os.Error) {
 }
 
 func peerWriter(conn net.Conn, msgChan chan []byte, header []byte) {
-    // TODO: Add one-minute keep-alive messages.
 	// log.Stderr("Writing header.")
 	_, err := conn.Write(header)
 	if err != nil {
 	    return
 	}
 	// log.Stderr("Writing messages")
-	// TODO: keep-alive
-	for msg := range(msgChan) {
-	    // log.Stderr("Writing", len(msg), conn.RemoteAddr())
-        err = writeNBOUint32(conn, uint32(len(msg)))
-        if err != nil {
-            return
-        }
-        _, err = conn.Write(msg)
-        if err != nil {
-            log.Stderr("Failed to write a message", msg, err)
-            return
-        }
+	keepAlive := time.Tick(120 * NS_PER_S)
+	for {
+	    select {
+	        case _ = <- keepAlive:
+	            // log.Stderr("Writing keep-alive", conn.RemoteAddr())
+	            err = writeNBOUint32(conn, uint32(0))
+				if err != nil {
+					return
+				}
+			case msg := <- msgChan:
+				// log.Stderr("Writing", len(msg), conn.RemoteAddr())
+				err = writeNBOUint32(conn, uint32(len(msg)))
+				if err != nil {
+					return
+				}
+				_, err = conn.Write(msg)
+				if err != nil {
+					log.Stderr("Failed to write a message", msg, err)
+					return
+				}
+	    		keepAlive = time.Tick(120 * NS_PER_S)
+		}
 	}
 	// log.Stderr("peerWriter exiting")
 }

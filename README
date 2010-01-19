@@ -40,10 +40,11 @@ Current Status
 + Register a listener port to listen for peer connections
 + Send blocks to connected unchoked peers.
 + Report our status to the tracker periodicly.
++ Implement interested/uninterested logic
 
 Development Roadmap
 
-+ Implement interested/uninterested logic
++ Detect hung peers
 + Implement choke/unchoke logic
 + Add Endgame support for obtaining last few blocks.
 + Progress display
@@ -52,3 +53,7 @@ Development Roadmap
 + Full UPnP support (need to be able to search for an unused listener port,
   detect we have already acquired the port,
   release the listener port when we quit.)
+
+BUGS
+- We seem to deadlock or go to sleep sometimes.
+- Need to deal with peers who send 16K "port" messages.
