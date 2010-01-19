@@ -11,6 +11,7 @@ import (
 	"os"
 	"rand"
 	"strconv"
+	"time"
 )
 
 var torrent *string = flag.String("torrent", "", "URL or path to a torrent file")
@@ -18,6 +19,8 @@ var fileDir *string = flag.String("fileDir", "", "path to directory where files 
 var debugp *bool = flag.Bool("debug", false, "Turn on debugging")
 var port *int = flag.Int("port", 0, "Port to listen on. Defaults to random.")
 var useUPnP *bool = flag.Bool("useUPnP", false, "Use UPnP to open port in firewall.")
+
+const NS_PER_S = 1000000000
 
 func peerId() string {
 	sid := "Taipei_tor_" + strconv.Itoa(os.Getpid()) + "______________"
@@ -161,10 +164,10 @@ func NewTorrentSession(torrent string) (ts *TorrentSession, err os.Error) {
     
 func connectToPeer(peerAddress string, ch chan net.Conn) {
 	peer := binaryToDottedPort(peerAddress)
-	log.Stderr("Connecting to", peer)
+	// log.Stderr("Connecting to", peer)
 	conn, err := net.Dial("tcp", "", peer)
 	if err != nil {
-	    log.Stderr("Failed to connect to", peer, err)
+	    // log.Stderr("Failed to connect to", peer, err)
 	} else {
         ch <- conn
     }
@@ -172,7 +175,7 @@ func connectToPeer(peerAddress string, ch chan net.Conn) {
 
 func (t *TorrentSession) AddPeer(conn net.Conn) {
     peer := conn.RemoteAddr().String()
-	log.Stderr("Connected to", peer)
+	// log.Stderr("Connected to", peer)
     ps := NewPeerState(conn)
     ps.address = peer
     var header [68]byte
@@ -183,11 +186,8 @@ func (t *TorrentSession) AddPeer(conn net.Conn) {
     t.peers[peer] = ps
     go peerWriter(ps.conn, ps.writeChan, header[0:])
     go peerReader(ps.conn, ps, t.peerMessageChan)
-
-    ps.writeChan <- []byte{1}
-    ps.am_choking = false
-    ps.writeChan <- []byte{2}
-    ps.am_interested = true
+    ps.SetChoke(false)
+    ps.SetInterested(true)
 }
 
 func (t *TorrentSession) ClosePeer(peer *peerState) {
@@ -205,6 +205,8 @@ func doTorrent() (err os.Error) {
     if len(peers) < 6 {
         return os.NewError("No peers.")
     }
+    
+    rechokeChan := time.Tick(10 * NS_PER_S)
     
     conChan := make(chan net.Conn)
     
@@ -231,6 +233,8 @@ func doTorrent() (err os.Error) {
 		    }
 		case conn := <- conChan:
 		    ts.AddPeer(conn)
+		case _ = <-rechokeChan:
+		    // TODO: recalculate who to choke / unchoke.
 		}
 	}
 	return
@@ -307,7 +311,7 @@ func (t *TorrentSession) RecordBlock(p *peerState, piece, begin uint32) (err os.
 		    log.Stderr("Have", t.goodPieces, "of", t.totalPieces, "blocks.")
 		    for _,p := range(t.peers) {
 		        if p.have != nil && ! p.have.IsSet(int(piece)) {
-		            log.Stderr("...telling ", p)
+		            // log.Stderr("...telling ", p)
 		            haveMsg := make([]byte, 5)
 		            haveMsg[0] = 4
 		            uint32ToBytes(haveMsg[1:5], uint32(piece))
@@ -568,6 +572,33 @@ func (p *peerState) RemoveRequest() (index, begin, length uint32, ok bool) {
         return
     }
     return
+}
+
+func (p *peerState) SetChoke(choke bool) {
+    if choke != p.am_choking {
+		p.am_choking = choke
+		b := byte(1)
+		if choke {
+		    b = 0
+		    p.peer_requests = make(map[uint64] bool, MAX_REQUESTS)
+		}
+		p.sendOneCharMessage(b)
+	}
+}
+
+func (p *peerState) SetInterested(interested bool) {
+    if interested != p.am_interested {
+        p.am_interested = interested
+        b := byte(3)
+        if interested {
+            b = 2
+        }
+        p.sendOneCharMessage(b)
+    }
+}
+
+func (p *peerState) sendOneCharMessage(b byte) {
+    p.writeChan <- []byte{b}
 }
 
 // There's two goroutines per peer, one to read data from the peer, the other to
