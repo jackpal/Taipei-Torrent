@@ -46,6 +46,24 @@ func chooseListenPort() (listenPort int, err os.Error) {
     return
 }
 
+func listenForPeerConnections(listenPort int, conChan chan net.Conn) {
+    listenString := ":" + strconv.Itoa(listenPort)
+    log.Stderr("Listening for peers on port:", listenString)
+    listener, err := net.Listen("tcp", listenString)
+	if err != nil {
+		log.Stderr("Listen failed:", err)
+		return
+	}
+	for {
+        conn, err := listener.Accept()
+        if err != nil {
+            log.Stderr("Listener failed:", err)
+        } else {
+            conChan <- conn
+        }
+    }
+}
+
 var kBitTorrentHeader = []byte{'\x13', 'B', 'i', 't', 'T', 'o', 'r', 
 	'r', 'e', 'n', 't', ' ', 'p', 'r', 'o', 't', 'o', 'c', 'o', 'l'}
 	
@@ -75,7 +93,6 @@ func (a *ActivePiece) chooseBlockToDownloadEndgame() (index int) {
     }
     return
 }
-
 
 func (a *ActivePiece) recordBlock(index int) {
     a.downloaderCount[index] = -1
@@ -141,31 +158,29 @@ func NewTorrentSession(torrent string) (ts *TorrentSession, err os.Error) {
 	log.Stderr("Torrent has", t.ti.Complete, "seeders and", t.ti.Incomplete, "leachers.")
     return t, err
 }
-
-type connResult struct {
-    peerAddress string
-    peer string
-    conn net.Conn
-    err os.Error
-}
     
-func connectToPeer(peerAddress string, ch chan *connResult) {
+func connectToPeer(peerAddress string, ch chan net.Conn) {
 	peer := binaryToDottedPort(peerAddress)
 	log.Stderr("Connecting to", peer)
-	c, err := net.Dial("tcp", "", peer)
-    ch <- &connResult{peerAddress, peer, c, err}
+	conn, err := net.Dial("tcp", "", peer)
+	if err != nil {
+	    log.Stderr("Failed to connect to", peer, err)
+	} else {
+        ch <- conn
+    }
 }
 
-func (t *TorrentSession) AddPeer(cr *connResult) {
-	log.Stderr("Connected to", cr.peer)
-    ps := NewPeerState(cr.conn)
-    ps.address = cr.peer
+func (t *TorrentSession) AddPeer(conn net.Conn) {
+    peer := conn.RemoteAddr().String()
+	log.Stderr("Connected to", peer)
+    ps := NewPeerState(conn)
+    ps.address = peer
     var header [68]byte
     copy(header[0:], kBitTorrentHeader[0:])
     copy(header[28:48], string2Bytes(t.m.InfoHash))
     copy(header[48:68], string2Bytes(t.si.PeerId))
     
-    t.peers[cr.peer] = ps
+    t.peers[peer] = ps
     go peerWriter(ps.conn, ps.writeChan, header[0:])
     go peerReader(ps.conn, ps, t.peerMessageChan)
 
@@ -191,7 +206,9 @@ func doTorrent() (err os.Error) {
         return os.NewError("No peers.")
     }
     
-    conChan := make(chan *connResult)
+    conChan := make(chan net.Conn)
+    
+    go listenForPeerConnections(ts.si.Port, conChan)
     
     // TODO: poll tracker for new peers
     for i := 0; i < len(peers); i += 6 {
@@ -212,12 +229,8 @@ func doTorrent() (err os.Error) {
 					break
 				}
 		    }
-		case cm := <- conChan:
-		    if err2 := cm.err; err2 != nil {
-		        log.Stderr("Error connecting to", cm.peer, cm.err)
-		    } else {
-		        ts.AddPeer(cm)
-		    }
+		case conn := <- conChan:
+		    ts.AddPeer(conn)
 		}
 	}
 	return
@@ -292,6 +305,15 @@ func (t *TorrentSession) RecordBlock(p *peerState, piece, begin uint32) (err os.
 		    t.pieceSet.Set(int(piece))
 		    t.goodPieces++
 		    log.Stderr("Have", t.goodPieces, "of", t.totalPieces, "blocks.")
+		    for _,p := range(t.peers) {
+		        if p.have != nil && ! p.have.IsSet(int(piece)) {
+		            log.Stderr("...telling ", p)
+		            haveMsg := make([]byte, 5)
+		            haveMsg[0] = 4
+		            uint32ToBytes(haveMsg[1:5], uint32(piece))
+		            p.writeChan <- haveMsg
+		        }
+		    }
 		}
 	}
     return
@@ -410,6 +432,7 @@ func (t *TorrentSession) DoMessage(p *peerState, message []byte) (err os.Error) 
 				}
 				p.AddRequest(index, begin, length)
 			case 7:
+			    // piece
 				if len(message) != 9 + STANDARD_BLOCK_LENGTH {
 					return os.NewError("unexpected message length")
 				}
@@ -467,7 +490,7 @@ func (t *TorrentSession) DoMessage(p *peerState, message []byte) (err os.Error) 
 				// TODO: Implement this message.
 				// We see peers sending us 16K byte messages here, so
 				// it seems that we don't understand what this is.
-				log.Stderr("listen-port len=", len(message))
+				log.Stderr("port len=", len(message))
 				if len(message) != 3 {
 					return os.NewError("Unexpected length")
 				}
@@ -590,6 +613,7 @@ func peerWriter(conn net.Conn, msgChan chan []byte, header []byte) {
 	// log.Stderr("Writing messages")
 	// TODO: keep-alive
 	for msg := range(msgChan) {
+	    // log.Stderr("Writing", len(msg), conn.RemoteAddr())
         err = writeNBOUint32(conn, uint32(len(msg)))
         if err != nil {
             return

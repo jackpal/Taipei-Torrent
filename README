@@ -37,6 +37,7 @@ Current Status
 + Can request and receive blocks from connected peers.
 + Can schedule which pieces and blocks to request.
 + Can handle remote choke/unchoke messages.
++ Register a listener port to listen for peer connections
 + Should be able to send blocks to connected peers, but not tested yet.
 
 Development Roadmap
@@ -44,7 +45,6 @@ Development Roadmap
 + Implement interested/uninterested logic
 + Implement choke/unchoke logic
 + Add Endgame support for obtaining last few blocks.
-+ Register a listener port to start listening for peer connections
 + Keep tracker updated so it doesn't forget about us
 + Progress display
 + Handle creating directories in torrent file list
