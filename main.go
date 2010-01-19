@@ -160,6 +160,7 @@ func NewTorrentSession(torrent string) (ts *TorrentSession, err os.Error) {
 
 func (t *TorrentSession) fetchTrackerInfo(ch chan *TrackerResponse) {
     m, si := t.m, t.si
+    log.Stderr("Stats: Uploaded", si.Uploaded, "Downloaded", si.Downloaded, "Left", si.Left)
 	url := m.Announce + "?" +
 		"info_hash=" + http.URLEscape(m.InfoHash) +
 		"&peer_id=" + si.PeerId +
@@ -204,8 +205,7 @@ func (t *TorrentSession) AddPeer(conn net.Conn) {
     t.peers[peer] = ps
     go peerWriter(ps.conn, ps.writeChan, header[0:])
     go peerReader(ps.conn, ps, t.peerMessageChan)
-    ps.SetChoke(false)
-    ps.SetInterested(true)
+    ps.SetChoke(false) // TODO: better choke policy
 }
 
 func (t *TorrentSession) ClosePeer(peer *peerState) {
@@ -221,13 +221,15 @@ func doTorrent() (err os.Error) {
 	}
     rechokeChan := time.Tick(10 * NS_PER_S)
     // Start out polling tracker every 20 seconds untill we get a response.
-    // Maybe be exponential here?
+    // Maybe be exponential backoff here?
     retrackerChan := time.Tick(20 * NS_PER_S)
     trackerInfoChan := make(chan *TrackerResponse)
     
     conChan := make(chan net.Conn)
     
     go listenForPeerConnections(ts.si.Port, conChan)
+    
+    ts.fetchTrackerInfo(trackerInfoChan)
     
     for {
         select {
@@ -244,9 +246,12 @@ func doTorrent() (err os.Error) {
 				}
 			}
 			interval := ts.ti.Interval
-			if interval < 10 || interval > 600 {
+			if interval < 120 {
 			    interval = 120
+			} else if interval > 24 * 3600 {
+			    interval = 24 * 3600
 			}
+			log.Stderr("..checking again in", interval, "seconds.")
 			retrackerChan = time.Tick(int64(interval) * NS_PER_S)
 
         case pm := <- ts.peerMessageChan:
@@ -254,13 +259,9 @@ func doTorrent() (err os.Error) {
 			err2 := ts.DoMessage(peer, message)
 			if err2 != nil {
 				if err2 != os.EOF {
-				    log.Stderr("Closing peer because:", err2)
+				    log.Stderr("Closing peer", peer, "because", err2)
 				}
 				ts.ClosePeer(peer)
-				if len(ts.peers) == 0 {
-					log.Stderr("No more peers.")
-					break
-				}
 		    }
 		case conn := <- conChan:
 		    ts.AddPeer(conn)
@@ -344,13 +345,18 @@ func (t *TorrentSession) RecordBlock(p *peerState, piece, begin uint32) (err os.
 		    t.goodPieces++
 		    log.Stderr("Have", t.goodPieces, "of", t.totalPieces, "blocks.")
 		    for _,p := range(t.peers) {
-		        if p.have != nil && ! p.have.IsSet(int(piece)) {
-		            // log.Stderr("...telling ", p)
-		            haveMsg := make([]byte, 5)
-		            haveMsg[0] = 4
-		            uint32ToBytes(haveMsg[1:5], uint32(piece))
-		            p.writeChan <- haveMsg
-		        }
+		        if p.have != nil {
+		            if p.have.IsSet(int(piece)) {
+		                // Check if this peer is still interesting
+		                t.checkInteresting(p)
+		            } else {
+						// log.Stderr("...telling ", p)
+						haveMsg := make([]byte, 5)
+						haveMsg[0] = 4
+						uint32ToBytes(haveMsg[1:5], uint32(piece))
+						p.writeChan <- haveMsg
+					}
+			    }
 		    }
 		}
 	}
@@ -414,14 +420,14 @@ func (t *TorrentSession) DoMessage(p *peerState, message []byte) (err os.Error) 
 				    }
 				}
 			case 2:
-				log.Stderr("interested")
+				// log.Stderr("interested")
 				if len(message) != 1 {
 					return os.NewError("Unexpected length")
 				}
 				p.peer_interested = true
 				// TODO: Consider unchoking
 			case 3:
-				log.Stderr("not interested")
+				// log.Stderr("not interested")
 				if len(message) != 1 {
 					return os.NewError("Unexpected length")
 				}
@@ -433,6 +439,9 @@ func (t *TorrentSession) DoMessage(p *peerState, message []byte) (err os.Error) 
 				n := bytesToUint32(message[1:])
 				if n < uint32(p.have.n) {
 					p.have.Set(int(n))
+					if ! p.am_interested && ! t.pieceSet.IsSet(int(n)) {
+					    p.SetInterested(true)
+					}
 				} else {
 					return os.NewError("have index is out of range.")
 				}
@@ -445,8 +454,9 @@ func (t *TorrentSession) DoMessage(p *peerState, message []byte) (err os.Error) 
 				if p.have == nil {
 					return os.NewError("Invalid bitfield data.")
 				}
+				t.checkInteresting(p)
 			case 6:
-				log.Stderr("request")
+				// log.Stderr("request")
 				if len(message) != 13 {
 					return os.NewError("Unexpected message length")
 				}
@@ -468,8 +478,9 @@ func (t *TorrentSession) DoMessage(p *peerState, message []byte) (err os.Error) 
 				if length != STANDARD_BLOCK_LENGTH {
 					return os.NewError("Unexpected block length.")
 				}
-				p.AddRequest(index, begin, length)
-		 		t.si.Uploaded += STANDARD_BLOCK_LENGTH
+				// TODO: Asynchronous
+				// p.AddRequest(index, begin, length)
+				return t.sendRequest(p, index, begin, length)
 			case 7:
 			    // piece
 				if len(message) != 9 + STANDARD_BLOCK_LENGTH {
@@ -542,17 +553,34 @@ func (t *TorrentSession) DoMessage(p *peerState, message []byte) (err os.Error) 
 
 func (t *TorrentSession) sendRequest(peer *peerState,
     index, begin, length uint32) (err os.Error) {
-	buf := make([]byte, length + 9)
-	buf[0] = 7
-	uint32ToBytes(buf[1:5], index)
-	uint32ToBytes(buf[5:9], begin)
-	_, err = t.fileStore.ReadAt(buf[9:],
-		int64(index) * t.m.Info.PieceLength + int64(begin))
-	if err != nil {
-		return
+    if ! peer.am_choking {
+        // log.Stderr("Sending block", index, begin)
+		buf := make([]byte, length + 9)
+		buf[0] = 7
+		uint32ToBytes(buf[1:5], index)
+		uint32ToBytes(buf[5:9], begin)
+		_, err = t.fileStore.ReadAt(buf[9:],
+			int64(index) * t.m.Info.PieceLength + int64(begin))
+		if err != nil {
+			return
+		}
+		peer.writeChan <- buf
+		t.si.Uploaded += STANDARD_BLOCK_LENGTH
 	}
-	peer.writeChan <- buf
 	return
+}
+
+func (t *TorrentSession) checkInteresting(p *peerState) {
+    p.SetInterested(t.isInteresting(p))
+}
+
+func (t *TorrentSession) isInteresting(p *peerState) bool {
+    for i := 0; i < t.totalPieces; i++ {
+		if ! t.pieceSet.IsSet(i) && p.have.IsSet(i) {
+			return true
+		}
+	}
+	return false
 }
 
 const MAX_REQUESTS = 10
@@ -686,7 +714,7 @@ func peerWriter(conn net.Conn, msgChan chan []byte, header []byte) {
         }
         _, err = conn.Write(msg)
         if err != nil {
-            log.Stderr("Failed to write a message: ", err)
+            log.Stderr("Failed to write a message", msg, err)
             return
         }
 	}

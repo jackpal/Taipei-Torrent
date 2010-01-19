@@ -38,16 +38,17 @@ Current Status
 + Can schedule which pieces and blocks to request.
 + Can handle remote choke/unchoke messages.
 + Register a listener port to listen for peer connections
-+ Should be able to send blocks to connected peers, but not tested yet.
++ Send blocks to connected unchoked peers.
++ Report our status to the tracker periodicly.
 
 Development Roadmap
 
 + Implement interested/uninterested logic
 + Implement choke/unchoke logic
 + Add Endgame support for obtaining last few blocks.
-+ Keep tracker updated so it doesn't forget about us
 + Progress display
 + Handle creating directories in torrent file list
 + Cache torrent file rather than downloading each time.
 + Full UPnP support (need to be able to search for an unused listener port,
+  detect we have already acquired the port,
   release the listener port when we quit.)
