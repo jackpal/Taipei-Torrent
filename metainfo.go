@@ -9,7 +9,6 @@ import (
 	"jackpal/bencode"
 	"log"
 	"os"
-	"strconv"
 	"strings"
 )
 
@@ -113,16 +112,7 @@ type SessionInfo struct {
 	Left       int64
 }
 
-func getTrackerInfo(m *MetaInfo, si *SessionInfo) (tr *TrackerResponse, err os.Error) {
-	url := m.Announce + "?" +
-		"info_hash=" + http.URLEscape(m.InfoHash) +
-		"&peer_id=" + si.PeerId +
-		"&port=" + strconv.Itoa(si.Port) +
-		"&uploaded=" + strconv.Itoa64(si.Uploaded) +
-		"&downloaded=" + strconv.Itoa64(si.Downloaded) +
-		"&left=12" + strconv.Itoa64(si.Left) +
-		"&compact=1" +
-		"&event=started"
+func getTrackerInfo(url string) (tr *TrackerResponse, err os.Error) {
 	r, _, err := http.Get(url)
 	if err != nil {
 		return

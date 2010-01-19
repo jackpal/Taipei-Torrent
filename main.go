@@ -5,6 +5,7 @@ import (
     "crypto/sha1"
     "flag"
 	"fmt"
+	"jackpal/http"
 	"io"
 	"log"
 	"net"
@@ -39,10 +40,12 @@ func chooseListenPort() (listenPort int, err os.Error) {
         var nat NAT
         nat, err = Discover()
 		if err != nil {
+		    log.Stderr("Unable to discover NAT")
 			return
 		}
 		err = nat.ForwardPort("TCP", listenPort, listenPort, "Taipei-Torrent", 0)
 		if err != nil {
+		    log.Stderr("Unable to forward listen port")
 			return
 		}
     }
@@ -152,18 +155,33 @@ func NewTorrentSession(torrent string) (ts *TorrentSession, err os.Error) {
 	    return
 	}
 	t.si = &SessionInfo{PeerId: peerId(), Port: listenPort, Left: bad * t.m.Info.PieceLength}
-	t.ti, err = getTrackerInfo(t.m, t.si)
-	if err != nil {
-	    log.Stderr("Could not get tracker info.")
-		return
-	}
-	
-	log.Stderr("Torrent has", t.ti.Complete, "seeders and", t.ti.Incomplete, "leachers.")
     return t, err
 }
+
+func (t *TorrentSession) fetchTrackerInfo(ch chan *TrackerResponse) {
+    m, si := t.m, t.si
+	url := m.Announce + "?" +
+		"info_hash=" + http.URLEscape(m.InfoHash) +
+		"&peer_id=" + si.PeerId +
+		"&port=" + strconv.Itoa(si.Port) +
+		"&uploaded=" + strconv.Itoa64(si.Uploaded) +
+		"&downloaded=" + strconv.Itoa64(si.Downloaded) +
+		"&left=" + strconv.Itoa64(si.Left) +
+		"&compact=1"
+    if t.ti == nil {
+		url += "&event=started"
+    }
+    go func () {
+        ti, err := getTrackerInfo(url)
+        if err != nil {
+            log.Stderr("Could not fetch tracker info:", err)
+        } else {
+            ch <- ti
+        }
+    } ()
+}
     
-func connectToPeer(peerAddress string, ch chan net.Conn) {
-	peer := binaryToDottedPort(peerAddress)
+func connectToPeer(peer string, ch chan net.Conn) {
 	// log.Stderr("Connecting to", peer)
 	conn, err := net.Dial("tcp", "", peer)
 	if err != nil {
@@ -201,23 +219,36 @@ func doTorrent() (err os.Error) {
 	if err != nil {
 		return
 	}
-    peers := ts.ti.Peers
-    if len(peers) < 6 {
-        return os.NewError("No peers.")
-    }
-    
     rechokeChan := time.Tick(10 * NS_PER_S)
+    // Start out polling tracker every 20 seconds untill we get a response.
+    // Maybe be exponential here?
+    retrackerChan := time.Tick(20 * NS_PER_S)
+    trackerInfoChan := make(chan *TrackerResponse)
     
     conChan := make(chan net.Conn)
     
     go listenForPeerConnections(ts.si.Port, conChan)
     
-    // TODO: poll tracker for new peers
-    for i := 0; i < len(peers); i += 6 {
-        go connectToPeer(peers[i:i+6], conChan)
-    }
     for {
         select {
+        case _ = <- retrackerChan:
+            ts.fetchTrackerInfo(trackerInfoChan)
+        case ti := <- trackerInfoChan:
+            ts.ti = ti
+            log.Stderr("Torrent has", ts.ti.Complete, "seeders and", ts.ti.Incomplete, "leachers.")
+            peers := ts.ti.Peers
+			for i := 0; i < len(peers); i += 6 {
+	            peer := binaryToDottedPort(peers[i:i+6])
+	            if _, ok := ts.peers[peer]; !ok {
+				    go connectToPeer(peer, conChan)
+				}
+			}
+			interval := ts.ti.Interval
+			if interval < 10 || interval > 600 {
+			    interval = 120
+			}
+			retrackerChan = time.Tick(int64(interval) * NS_PER_S)
+
         case pm := <- ts.peerMessageChan:
 			peer, message := pm.peer, pm.message
 			err2 := ts.DoMessage(peer, message)
@@ -234,7 +265,7 @@ func doTorrent() (err os.Error) {
 		case conn := <- conChan:
 		    ts.AddPeer(conn)
 		case _ = <-rechokeChan:
-		    // TODO: recalculate who to choke / unchoke.
+		    // TODO: recalculate who to choke / unchoke
 		}
 	}
 	return
@@ -304,8 +335,11 @@ func (t *TorrentSession) RecordBlock(p *peerState, piece, begin uint32) (err os.
     v, ok := t.activePieces[int(piece)]
     if ok {
 		v.recordBlock(int(block))
+		t.si.Downloaded += STANDARD_BLOCK_LENGTH
 		if v.isComplete() {
 		    t.activePieces[int(piece)] = v, false
+		    // TODO: Check if the hash for this piece is good or not.
+		    t.si.Left -= t.m.Info.PieceLength
 		    t.pieceSet.Set(int(piece))
 		    t.goodPieces++
 		    log.Stderr("Have", t.goodPieces, "of", t.totalPieces, "blocks.")
@@ -435,6 +469,7 @@ func (t *TorrentSession) DoMessage(p *peerState, message []byte) (err os.Error) 
 					return os.NewError("Unexpected block length.")
 				}
 				p.AddRequest(index, begin, length)
+		 		t.si.Uploaded += STANDARD_BLOCK_LENGTH
 			case 7:
 			    // piece
 				if len(message) != 9 + STANDARD_BLOCK_LENGTH {
