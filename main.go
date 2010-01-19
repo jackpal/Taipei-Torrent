@@ -84,6 +84,7 @@ type ActivePiece struct {
 func (a *ActivePiece) chooseBlockToDownload() (index int) {
     for i,v := range(a.downloaderCount) {
         if v == 0 {
+		    a.downloaderCount[i]++
             return i
         }
     }
@@ -223,6 +224,7 @@ func doTorrent() (err os.Error) {
     // Start out polling tracker every 20 seconds untill we get a response.
     // Maybe be exponential backoff here?
     retrackerChan := time.Tick(20 * NS_PER_S)
+    keepAliveChan := time.Tick(60 * NS_PER_S)
     trackerInfoChan := make(chan *TrackerResponse)
     
     conChan := make(chan net.Conn)
@@ -268,6 +270,11 @@ func doTorrent() (err os.Error) {
 		case _ = <-rechokeChan:
 		    // TODO: recalculate who to choke / unchoke
 		    log.Stderr("Peers:", len(ts.peers), "downloaded:", ts.si.Downloaded)
+		case _ = <-keepAliveChan:
+		    now := time.Seconds()
+		    for _, pi := range(ts.peers) {
+		        pi.keepAlive(now)
+		    }
 		}
 	}
 	return
@@ -297,14 +304,19 @@ func (t *TorrentSession) RequestBlock(p *peerState) (err os.Error) {
 func (t *TorrentSession) ChoosePiece(p *peerState) (piece int) {
     n := t.totalPieces
     start := rand.Intn(n)
-    for i := start; i < n; i++ {
-        if (! t.pieceSet.IsSet(i)) && p.have.IsSet(i) {
-            return i
-        }
+    piece = t.checkRange(p, start, n)
+    if piece == -1 {
+        piece = t.checkRange(p, 0, start)
     }
-    for i := 0; i < start; i++ {
+    return
+}
+
+func (t *TorrentSession) checkRange(p *peerState, start, end int) (piece int) {
+    for i := start; i < end; i++ {
         if (! t.pieceSet.IsSet(i)) && p.have.IsSet(i) {
-            return i
+            if _, ok := t.activePieces[i]; !ok {
+                return i
+            }
         }
     }
     return -1
@@ -314,8 +326,7 @@ func (t *TorrentSession) RequestBlock2(p *peerState, piece int) (err os.Error) {
     v := t.activePieces[piece]
 	block := v.chooseBlockToDownload()
 	if block >= 0 {
-	    // log.Stderr("Requesting block ", strconv.Itoa(piece), ".", strconv.Itoa(block))
-		v.downloaderCount[block]++
+	    log.Stderr("Requesting block", piece, ".", block)
 		begin := block * STANDARD_BLOCK_LENGTH
 		req := make([]byte, 13)
 		req[0] = 6
@@ -323,7 +334,7 @@ func (t *TorrentSession) RequestBlock2(p *peerState, piece int) (err os.Error) {
 		uint32ToBytes(req[5:9], uint32(begin))
 		uint32ToBytes(req[9:13], STANDARD_BLOCK_LENGTH)
 		p.our_requests[(uint64(piece) << 32) | uint64(begin)] = true
-		p.writeChan <- req
+		p.sendMessage(req)
 	} else {
 	    return os.EOF
 	}
@@ -332,7 +343,7 @@ func (t *TorrentSession) RequestBlock2(p *peerState, piece int) (err os.Error) {
 
 func (t *TorrentSession) RecordBlock(p *peerState, piece, begin uint32) (err os.Error) {
     block := begin / STANDARD_BLOCK_LENGTH
-	// log.Stderr("Received block ", strconv.Itoa(int(piece)), ".", strconv.Itoa(int(block)))
+	log.Stderr("Received block", piece, ".", block)
     p.our_requests[(uint64(piece) << 32) | uint64(begin)] = false, false
     v, ok := t.activePieces[int(piece)]
     if ok {
@@ -355,11 +366,13 @@ func (t *TorrentSession) RecordBlock(p *peerState, piece, begin uint32) (err os.
 						haveMsg := make([]byte, 5)
 						haveMsg[0] = 4
 						uint32ToBytes(haveMsg[1:5], uint32(piece))
-						p.writeChan <- haveMsg
+						p.sendMessage(haveMsg)
 					}
 			    }
 		    }
 		}
+	} else {
+	    log.Stderr("Duplicate.")
 	}
     return
 }
@@ -370,7 +383,7 @@ func (t *TorrentSession) doChoke(p *peerState)(err os.Error) {
 	    piece := int(k >> 32)
 	    begin := int(k)
 	    block := begin / STANDARD_BLOCK_LENGTH
-	    // log.Stderr("Forgetting we requested block ", piece, ".", block)
+	    log.Stderr("Forgetting we requested block ", piece, ".", block)
 	    v, ok := t.activePieces[piece]
 	    if ok && v.downloaderCount[int(block)] > 0 {
 	        v.downloaderCount[int(block)]--
@@ -565,7 +578,7 @@ func (t *TorrentSession) sendRequest(peer *peerState,
 		if err != nil {
 			return
 		}
-		peer.writeChan <- buf
+		peer.sendMessage(buf)
 		t.si.Uploaded += STANDARD_BLOCK_LENGTH
 	}
 	return
@@ -591,6 +604,7 @@ type peerState struct {
     address string
     id string
     writeChan chan []byte
+    lastWriteTime int64 // In seconds
     have *Bitset // What the peer has told us it has
     conn net.Conn
     am_choking bool // this client is choking the peer
@@ -662,7 +676,19 @@ func (p *peerState) SetInterested(interested bool) {
 }
 
 func (p *peerState) sendOneCharMessage(b byte) {
-    p.writeChan <- []byte{b}
+    p.sendMessage([]byte{b})
+}
+
+func (p *peerState) sendMessage(b []byte) {
+    p.writeChan <- b
+    p.lastWriteTime = time.Seconds()
+}
+
+func (p *peerState) keepAlive(now int64) {
+    if now - p.lastWriteTime >= 120 {
+        // log.Stderr("Sending keep alive", p)
+        p.sendMessage([]byte{})
+    }
 }
 
 // There's two goroutines per peer, one to read data from the peer, the other to
@@ -705,15 +731,8 @@ func peerWriter(conn net.Conn, msgChan chan []byte, header []byte) {
 	    return
 	}
 	// log.Stderr("Writing messages")
-	keepAlive := time.Tick(120 * NS_PER_S)
 	for {
 	    select {
-	        case _ = <- keepAlive:
-	            // log.Stderr("Writing keep-alive", conn.RemoteAddr())
-	            err = writeNBOUint32(conn, uint32(0))
-				if err != nil {
-					return
-				}
 			case msg := <- msgChan:
 				// log.Stderr("Writing", len(msg), conn.RemoteAddr())
 				err = writeNBOUint32(conn, uint32(len(msg)))
@@ -725,7 +744,6 @@ func peerWriter(conn net.Conn, msgChan chan []byte, header []byte) {
 					log.Stderr("Failed to write a message", msg, err)
 					return
 				}
-	    		keepAlive = time.Tick(120 * NS_PER_S)
 		}
 	}
 	// log.Stderr("peerWriter exiting")

@@ -44,6 +44,7 @@ Current Status
 
 Development Roadmap
 
++ Detect blocks that were requested but never sent.
 + Detect hung peers
 + Implement choke/unchoke logic
 + Add Endgame support for obtaining last few blocks.
