@@ -383,7 +383,7 @@ func (t *TorrentSession) RequestBlock2(p *peerState, piece int, endGame bool) (e
 
 // Used to request or cancel a block
 func (p *peerState) requestBlockImp(piece int, block int, request bool) {
-	log.Stderr("Requesting block", piece, ".", block, request)
+	// log.Stderr("Requesting block", piece, ".", block, request)
 	begin := block * STANDARD_BLOCK_LENGTH
 	req := make([]byte, 13)
 	opcode := byte(6)
@@ -402,7 +402,7 @@ func (p *peerState) requestBlockImp(piece int, block int, request bool) {
 
 func (t *TorrentSession) RecordBlock(p *peerState, piece, begin uint32) (err os.Error) {
 	block := begin / STANDARD_BLOCK_LENGTH
-	log.Stderr("Received block", piece, ".", block)
+	// log.Stderr("Received block", piece, ".", block)
 	requestIndex := (uint64(piece)<<32)|uint64(begin)
 	p.our_requests[requestIndex] = 0, false
 	v, ok := t.activePieces[int(piece)]
@@ -459,7 +459,7 @@ func (t *TorrentSession) removeRequests(p *peerState) (err os.Error) {
 		piece := int(k >> 32)
 		begin := int(k)
 		block := begin / STANDARD_BLOCK_LENGTH
-		log.Stderr("Forgetting we requested block ", piece, ".", block)
+		// log.Stderr("Forgetting we requested block ", piece, ".", block)
 		t.removeRequest(piece, block)
 	}
 	p.our_requests = make(map[uint64]int64, MAX_OUR_REQUESTS)

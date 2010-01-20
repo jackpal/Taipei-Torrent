@@ -41,20 +41,23 @@ Current Status
 + Send blocks to connected unchoked peers.
 + Report our status to the tracker periodicly.
 + Implement interested/uninterested logic
++ Detect blocks that were requested but never sent.
++ Detect hung peers
++ Have Endgame support for obtaining last few blocks.
++ Progress display
 
 Development Roadmap
 
-+ Detect blocks that were requested but never sent.
-+ Detect hung peers
 + Implement choke/unchoke logic
-+ Add Endgame support for obtaining last few blocks.
-+ Progress display
++ Handle multiple files
++ Handle torrents that are not a multiple of block size in length.
 + Handle creating directories in torrent file list
 + Cache torrent file rather than downloading each time.
 + Full UPnP support (need to be able to search for an unused listener port,
   detect we have already acquired the port,
   release the listener port when we quit.)
++ Cean up source code
++ Deal with TODOS
 
 BUGS
-- We seem to deadlock or go to sleep sometimes.
 - Need to deal with peers who send 16K "port" messages.
