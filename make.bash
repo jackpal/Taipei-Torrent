@@ -1,5 +1,7 @@
 #!/bin/bash
 #
+set -e
+
 # Pass 1: clean everything
 
 bash clean.bash
