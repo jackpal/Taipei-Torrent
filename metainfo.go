@@ -50,18 +50,18 @@ type initialMetaInfo struct {
 }
 
 func getMetaInfo(torrent string) (metaInfo *MetaInfo, err os.Error) {
-    var input io.ReadCloser
+	var input io.ReadCloser
 	if strings.HasPrefix(torrent, "http:") {
-	    // 6g compiler bug prevents us from writing r, _, err :=
+		// 6g compiler bug prevents us from writing r, _, err :=
 		var r *http.Response
 		r, _, err = http.Get(torrent)
 		input = r.Body
 	} else {
-	    input, err = os.Open(torrent, os.O_RDONLY, 0666)
+		input, err = os.Open(torrent, os.O_RDONLY, 0666)
 	}
 	if err != nil {
 		return
-    }
+	}
 	var m initialMetaInfo
 	err = bencode.Unmarshal(input, &m)
 	input.Close()

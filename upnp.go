@@ -4,234 +4,232 @@ package main
 //
 
 import (
-    "bytes"
-    "jackpal/http"
-    "log"
-    "os"
-    "net"
-    "strings"
-    "strconv"
-    "xml"
+	"bytes"
+	"jackpal/http"
+	"log"
+	"os"
+	"net"
+	"strings"
+	"strconv"
+	"xml"
 )
 
 type upnpNAT struct {
-    serviceURL string
+	serviceURL string
 }
 
 type NAT interface {
-    ForwardPort(protocol string, externalPort, internalPort int, description string, timeout int) (err os.Error)
-    DeleteForwardingRule(protocol string, externalPort int) (err os.Error)
+	ForwardPort(protocol string, externalPort, internalPort int, description string, timeout int) (err os.Error)
+	DeleteForwardingRule(protocol string, externalPort int) (err os.Error)
 }
 
 func Discover() (nat NAT, err os.Error) {
-    ssdp, err := net.ResolveUDPAddr("239.255.255.250:1900")
-    if err != nil {
-        return
-    }
-    conn, err := net.ListenPacket("udp4", ":0")
-    if err != nil {
-        return
-    }
-    socket := conn.(*net.UDPConn)
-    
-    err = socket.SetReadTimeout(3 * 1000 * 1000 * 1000)
-    if err != nil {
-        return
-    }
-    
-    buf := bytes.NewBufferString(
+	ssdp, err := net.ResolveUDPAddr("239.255.255.250:1900")
+	if err != nil {
+		return
+	}
+	conn, err := net.ListenPacket("udp4", ":0")
+	if err != nil {
+		return
+	}
+	socket := conn.(*net.UDPConn)
+
+	err = socket.SetReadTimeout(3 * 1000 * 1000 * 1000)
+	if err != nil {
+		return
+	}
+
+	buf := bytes.NewBufferString(
 		"M-SEARCH * HTTP/1.1\r\n" +
-		"HOST: 239.255.255.250:1900\r\n" +
-		"ST:upnp:rootdevice\r\n" +
-		"MAN:\"ssdp:discover\"\r\n" +
-		"MX:3\r\n\r\n")
-    message := buf.Bytes()
-    for i := 0; i < 3; i++ {
-        _, err = socket.WriteToUDP(message, ssdp)
+			"HOST: 239.255.255.250:1900\r\n" +
+			"ST:upnp:rootdevice\r\n" +
+			"MAN:\"ssdp:discover\"\r\n" +
+			"MX:3\r\n\r\n")
+	message := buf.Bytes()
+	for i := 0; i < 3; i++ {
+		_, err = socket.WriteToUDP(message, ssdp)
 		if err != nil {
 			return
 		}
-    }
-    answerBytes := make([]byte, 1024)
-    for i := 0; i < 10; i++ {
-        var n int
-    	n, _, err = socket.ReadFromUDP(answerBytes)
+	}
+	answerBytes := make([]byte, 1024)
+	for i := 0; i < 10; i++ {
+		var n int
+		n, _, err = socket.ReadFromUDP(answerBytes)
 		if err != nil {
-		    continue
-            // socket.Close()
+			continue
+			// socket.Close()
 			// return
 		}
 		answer := string(answerBytes[0:n])
-        if strings.Index(answer, "\r\nST: upnp:rootdevice\r\n") < 0 {
-            continue
-        }
-        locString := "\r\nLocation: "
-        locIndex := strings.Index(answer, locString)
-        if locIndex < 0 {
-            continue
-        }
-        loc := answer[locIndex + len(locString):]
-        endIndex := strings.Index(loc, "\r\n")
-        if endIndex < 0 {
-            continue
-        }
-        locURL := loc[0:endIndex]
-        var serviceURL string
-        serviceURL, err = getServiceURL(locURL)
-        if err != nil {
-            return
-        }
-        nat = &upnpNAT{serviceURL: serviceURL}
-        break
-    }
-    socket.Close()
-    return
+		if strings.Index(answer, "\r\nST: upnp:rootdevice\r\n") < 0 {
+			continue
+		}
+		locString := "\r\nLocation: "
+		locIndex := strings.Index(answer, locString)
+		if locIndex < 0 {
+			continue
+		}
+		loc := answer[locIndex+len(locString):]
+		endIndex := strings.Index(loc, "\r\n")
+		if endIndex < 0 {
+			continue
+		}
+		locURL := loc[0:endIndex]
+		var serviceURL string
+		serviceURL, err = getServiceURL(locURL)
+		if err != nil {
+			return
+		}
+		nat = &upnpNAT{serviceURL: serviceURL}
+		break
+	}
+	socket.Close()
+	return
 }
 
 type Service struct {
-    ServiceType string
-    ControlURL string
+	ServiceType string
+	ControlURL  string
 }
 
 type DeviceList struct {
-    Device []Device
+	Device []Device
 }
 
 type ServiceList struct {
-    Service []Service
+	Service []Service
 }
 
 type Device struct {
-    DeviceType string
-    DeviceList DeviceList
-    ServiceList ServiceList
+	DeviceType  string
+	DeviceList  DeviceList
+	ServiceList ServiceList
 }
 
 type Root struct {
-    Device Device
+	Device Device
 }
 
 func getChildDevice(d *Device, deviceType string) *Device {
-    dl := d.DeviceList.Device
-    for i := 0; i < len(dl); i++ {
-        if dl[i].DeviceType == deviceType {
-            return &dl[i]
-        }
-    }
-    return nil
+	dl := d.DeviceList.Device
+	for i := 0; i < len(dl); i++ {
+		if dl[i].DeviceType == deviceType {
+			return &dl[i]
+		}
+	}
+	return nil
 }
 
 func getChildService(d *Device, serviceType string) *Service {
-    sl := d.ServiceList.Service
-    for i := 0; i < len(sl); i++ {
-        if sl[i].ServiceType == serviceType {
-            return &sl[i]
-        }
-    }
-    return nil
+	sl := d.ServiceList.Service
+	for i := 0; i < len(sl); i++ {
+		if sl[i].ServiceType == serviceType {
+			return &sl[i]
+		}
+	}
+	return nil
 }
 
 func getServiceURL(rootURL string) (url string, err os.Error) {
-    r, _, err := http.Get(rootURL)
+	r, _, err := http.Get(rootURL)
 	if err != nil {
 		return
 	}
 	defer r.Body.Close()
 	if r.StatusCode >= 400 {
-        err = os.NewError(string(r.StatusCode))
-        return
-    }
-    var root Root
-    err = xml.Unmarshal(r.Body, &root)
+		err = os.NewError(string(r.StatusCode))
+		return
+	}
+	var root Root
+	err = xml.Unmarshal(r.Body, &root)
 	if err != nil {
 		return
 	}
 	a := &root.Device
 	if a.DeviceType != "urn:schemas-upnp-org:device:InternetGatewayDevice:1" {
-	    err = os.NewError("No InternetGatewayDevice")
-	    return
+		err = os.NewError("No InternetGatewayDevice")
+		return
 	}
 	b := getChildDevice(a, "urn:schemas-upnp-org:device:WANDevice:1")
 	if b == nil {
-	    err = os.NewError("No WANDevice")
-	    return
+		err = os.NewError("No WANDevice")
+		return
 	}
 	c := getChildDevice(b, "urn:schemas-upnp-org:device:WANConnectionDevice:1")
 	if c == nil {
-	    err = os.NewError("No WANConnectionDevice")
-	    return
+		err = os.NewError("No WANConnectionDevice")
+		return
 	}
 	d := getChildService(c, "urn:schemas-upnp-org:service:WANIPConnection:1")
 	if d == nil {
-	    err = os.NewError("No WANIPConnection")
-	    return
+		err = os.NewError("No WANIPConnection")
+		return
 	}
 	url = combineURL(rootURL, d.ControlURL)
 	return
 }
 
 func combineURL(rootURL, subURL string) string {
-    protocolEnd := "://"
-    protoEndIndex := strings.Index(rootURL, protocolEnd)
-    a := rootURL[protoEndIndex + len(protocolEnd):]
-    rootIndex := strings.Index(a, "/")
-    return rootURL[0:protoEndIndex + len(protocolEnd) + rootIndex] + subURL
+	protocolEnd := "://"
+	protoEndIndex := strings.Index(rootURL, protocolEnd)
+	a := rootURL[protoEndIndex+len(protocolEnd):]
+	rootIndex := strings.Index(a, "/")
+	return rootURL[0:protoEndIndex+len(protocolEnd)+rootIndex] + subURL
 }
 
 type stringBuffer struct {
-    base string
-    current string
+	base    string
+	current string
 }
 
-func NewStringBuffer(s string) *stringBuffer {
-    return &stringBuffer{s, s}
-}
+func NewStringBuffer(s string) *stringBuffer { return &stringBuffer{s, s} }
 
 func (sb *stringBuffer) Read(p []byte) (n int, err os.Error) {
-    s := sb.current
-    lenStr := len(s)
-    if lenStr == 0 {
-        return 0, os.EOF
-    }
-    n = len(p)
-    if n > lenStr {
-        n = lenStr
-        err = os.EOF
-    }
-    for i := 0; i < n; i++ {
-        p[i] = s[i]
-    }
-    sb.current = s[n:]
-    return
+	s := sb.current
+	lenStr := len(s)
+	if lenStr == 0 {
+		return 0, os.EOF
+	}
+	n = len(p)
+	if n > lenStr {
+		n = lenStr
+		err = os.EOF
+	}
+	for i := 0; i < n; i++ {
+		p[i] = s[i]
+	}
+	sb.current = s[n:]
+	return
 }
 
 func (sb *stringBuffer) Seek(offset int64, whence int) (ret int64, err os.Error) {
-    var newOffset int64
-    switch whence {
-    case 0: // from beginning
-        newOffset = offset
-    case 1: // relative
-        newOffset = int64(len(sb.base) - len(sb.current)) + offset
-    case 2: // from end
-        newOffset = int64(len(sb.base)) - offset
-    default:
-        err = os.NewError("bad whence")
-        return
-    }
-    if newOffset < 0 || newOffset > int64(len(sb.base)) {
-        err = os.NewError("offset out of range")
-    } else {
-        sb.current = sb.base[newOffset:]
-        ret = newOffset
-    }
-    return
+	var newOffset int64
+	switch whence {
+	case 0: // from beginning
+		newOffset = offset
+	case 1: // relative
+		newOffset = int64(len(sb.base)-len(sb.current)) + offset
+	case 2: // from end
+		newOffset = int64(len(sb.base)) - offset
+	default:
+		err = os.NewError("bad whence")
+		return
+	}
+	if newOffset < 0 || newOffset > int64(len(sb.base)) {
+		err = os.NewError("offset out of range")
+	} else {
+		sb.current = sb.base[newOffset:]
+		ret = newOffset
+	}
+	return
 }
 
 func soapRequest(url, function, message string) (r *http.Response, err os.Error) {
-    fullMessage := "<?xml version=\"1.0\"?>" +
-        "<s:Envelope xmlns:s=\"http://schemas.xmlsoap.org/soap/envelope/\" s:encodingStyle=\"http://schemas.xmlsoap.org/soap/encoding/\">\r\n" +
-        "<s:Body>" + message + "</s:Body></s:Envelope>"
-    
+	fullMessage := "<?xml version=\"1.0\"?>" +
+		"<s:Envelope xmlns:s=\"http://schemas.xmlsoap.org/soap/envelope/\" s:encodingStyle=\"http://schemas.xmlsoap.org/soap/encoding/\">\r\n" +
+		"<s:Body>" + message + "</s:Body></s:Envelope>"
+
 	var req http.Request
 	req.Method = "POST"
 	req.Body = NewStringBuffer(fullMessage)
@@ -249,53 +247,52 @@ func soapRequest(url, function, message string) (r *http.Response, err os.Error)
 	if err != nil {
 		return
 	}
-	
+
 	// log.Stderr("soapRequest ", req)
 
 	r, err = http.Send(&req)
-	
+
 	if r.StatusCode >= 4000 {
-        err = os.NewError("Error " + strconv.Itoa(r.StatusCode) + " for " + function)
-        r.Body.Close()
-        r = nil
-        return
-    }
+		err = os.NewError("Error " + strconv.Itoa(r.StatusCode) + " for " + function)
+		r.Body.Close()
+		r = nil
+		return
+	}
 	return
 }
 
-func (n *upnpNAT) ForwardPort(protocol string, externalPort, internalPort int,
-    description string, timeout int) (err os.Error) {
-    message := "<u:AddPortMapping xmlns:u=\"urn:schemas-upnp-org:service:WANIPConnection:1\">\r\n" +
-        "<NewRemoteHost></NewRemoteHost><NewExternalPort>" + strconv.Itoa(externalPort) +
-        "</NewExternalPort><NewProtocol>" + protocol + "</NewProtocol>" +
-        "<NewInternalPort>" + strconv.Itoa(internalPort) + "</NewInternalPort><NewInternalClient>" +
-        "192.168.0.124" + // TODO: Put our IP address here.
-        "</NewInternalClient><NewEnabled>1</NewEnabled><NewPortMappingDescription>" +
-        description +
-        "</NewPortMappingDescription><NewLeaseDuration>" + strconv.Itoa(timeout) + "</NewLeaseDuration></u:AddPortMapping>"
-    
-    var response *http.Response
-    response, err = soapRequest(n.serviceURL, "AddPortMapping", message)
+func (n *upnpNAT) ForwardPort(protocol string, externalPort, internalPort int, description string, timeout int) (err os.Error) {
+	message := "<u:AddPortMapping xmlns:u=\"urn:schemas-upnp-org:service:WANIPConnection:1\">\r\n" +
+		"<NewRemoteHost></NewRemoteHost><NewExternalPort>" + strconv.Itoa(externalPort) +
+		"</NewExternalPort><NewProtocol>" + protocol + "</NewProtocol>" +
+		"<NewInternalPort>" + strconv.Itoa(internalPort) + "</NewInternalPort><NewInternalClient>" +
+		"192.168.0.124" + // TODO: Put our IP address here.
+		"</NewInternalClient><NewEnabled>1</NewEnabled><NewPortMappingDescription>" +
+		description +
+		"</NewPortMappingDescription><NewLeaseDuration>" + strconv.Itoa(timeout) + "</NewLeaseDuration></u:AddPortMapping>"
 
-    // TODO: check response to see if the port was forwarded
-    _ = response
-    return
+	var response *http.Response
+	response, err = soapRequest(n.serviceURL, "AddPortMapping", message)
+
+	// TODO: check response to see if the port was forwarded
+	_ = response
+	return
 }
 
 func (n *upnpNAT) DeleteForwardingRule(protocol string, externalPort int) (err os.Error) {
-    return
+	return
 }
 
 func testUPnP() {
-    log.Stderr("Starting UPnP test")
-    nat, err := Discover()
-    log.Stderr("nat ", nat, "err ", err)
-    if err != nil {
-        return
-    }
-    port := 60001
-    err = nat.ForwardPort("TCP", port, port, "Taipei-Torrent", 0)
-    log.Stderr("err ", err)
-    err = nat.DeleteForwardingRule("TCP", port)
-    log.Stderr("err ", err)
+	log.Stderr("Starting UPnP test")
+	nat, err := Discover()
+	log.Stderr("nat ", nat, "err ", err)
+	if err != nil {
+		return
+	}
+	port := 60001
+	err = nat.ForwardPort("TCP", port, port, "Taipei-Torrent", 0)
+	log.Stderr("err ", err)
+	err = nat.DeleteForwardingRule("TCP", port)
+	log.Stderr("err ", err)
 }
