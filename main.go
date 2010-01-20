@@ -939,6 +939,9 @@ func computeSums(fs FileStore, totalLength int64, pieceLength int64) (sums []byt
 	hasher := sha1.New()
 	piece := make([]byte, pieceLength)
 	for i := int64(0); i < numPieces; i++ {
+	    if i == numPieces - 1 {
+	        piece = piece[0:totalLength - i * pieceLength]
+	    }
 		_, err := fs.ReadAt(piece, i*pieceLength)
 		if err != nil {
 			return
