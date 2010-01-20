@@ -355,6 +355,9 @@ func writeSVList(w io.Writer, svList StringValueArray) (err os.Error) {
 	sort.Sort(svList)
 
 	for _, sv := range (svList) {
+	    if isValueNil(sv.value) {
+	        continue // Skip null values
+	    }
 		s := sv.key
 		_, err = fmt.Fprintf(w, "%d:%s", len(s), s)
 		if err != nil {
@@ -466,6 +469,19 @@ func writeValue(w io.Writer, val reflect.Value) (err os.Error) {
 		err = &MarshalError{val.Type()}
 	}
 	return
+}
+
+func isValueNil(val reflect.Value) bool {
+    if val == nil {
+        return true
+    }
+	switch v := val.(type) {
+	case *reflect.InterfaceValue:
+		return isValueNil(v.Elem())
+	default:
+	    return false
+	}
+	return false
 }
 
 func Marshal(w io.Writer, val interface{}) os.Error {
