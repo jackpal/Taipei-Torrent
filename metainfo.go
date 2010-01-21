@@ -40,22 +40,13 @@ type MetaInfo struct {
 	Encoding     string
 }
 
-type initialMetaInfo struct {
-	Info         map[string]interface{} // allows us to compute the sha1
-	Announce     string
-	CreationDate string "creation date"
-	Comment      string
-	CreatedBy    string "created by"
-	Encoding     string
-}
-
 func getString(m map[string]interface{}, k string) string {
 	if v, ok := m[k]; ok {
 		if s, ok := v.(string); ok {
 			return s
 		}
-    }
-    return ""
+	}
+	return ""
 }
 
 func getMetaInfo(torrent string) (metaInfo *MetaInfo, err os.Error) {
@@ -71,7 +62,7 @@ func getMetaInfo(torrent string) (metaInfo *MetaInfo, err os.Error) {
 	if err != nil {
 		return
 	}
-	
+
 	// We need to calcuate the sha1 of the Info map, including every value in the
 	// map. The easiest way to do this is to read the data using the Decode
 	// API, and then pick through it manually.
@@ -81,17 +72,17 @@ func getMetaInfo(torrent string) (metaInfo *MetaInfo, err os.Error) {
 	if err != nil {
 		return
 	}
-	
+
 	topMap, ok := m.(map[string]interface{})
 	if !ok {
-	    err = os.NewError("Couldn't parse torrent file.")
-	    return
+		err = os.NewError("Couldn't parse torrent file.")
+		return
 	}
-	
+
 	infoMap, ok := topMap["info"]
 	if !ok {
-	    err = os.NewError("Couldn't parse torrent file. info")
-	    return
+		err = os.NewError("Couldn't parse torrent file. info")
+		return
 	}
 	var b bytes.Buffer
 	if err = bencode.Marshal(&b, infoMap); err != nil {

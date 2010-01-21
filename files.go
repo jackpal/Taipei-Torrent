@@ -26,15 +26,15 @@ type fileStore struct {
 func createPath(parts []string) (path string, err os.Error) {
 	// TODO: better, OS-specific sanitization.
 	for _, part := range (parts) {
-	    // Sanitize file names.
-	    if strings.Index(part,"/") >= 0 ||
-	        strings.Index(part,"\\") >= 0 ||
-	        part == ".." {
-	        err = os.NewError("Bad path part " + part)
-	        return
-	    }
+		// Sanitize file names.
+		if strings.Index(part, "/") >= 0 ||
+			strings.Index(part, "\\") >= 0 ||
+			part == ".." {
+			err = os.NewError("Bad path part " + part)
+			return
+		}
 	}
-	
+
 	path = strings.Join(parts, "/")
 	return
 }
@@ -53,14 +53,14 @@ func (fe *fileEntry) open(name string, length int64) (err os.Error) {
 }
 
 func ensureDirectory(fullPath string) (err os.Error) {
-    pathParts := strings.Split(fullPath, "/", 0)
-    if len(pathParts) < 2 {
-        return
-    }
-    dirParts := pathParts[0:len(pathParts)-1]
-    path := strings.Join(dirParts, "/")
-    err = os.MkdirAll(path, 0755)
-    return
+	pathParts := strings.Split(fullPath, "/", 0)
+	if len(pathParts) < 2 {
+		return
+	}
+	dirParts := pathParts[0 : len(pathParts)-1]
+	path := strings.Join(dirParts, "/")
+	err = os.MkdirAll(path, 0755)
+	return
 }
 
 func NewFileStore(info *InfoDict, fileDir string) (f FileStore, totalSize int64, err os.Error) {
@@ -81,12 +81,12 @@ func NewFileStore(info *InfoDict, fileDir string) (f FileStore, totalSize int64,
 			src := &info.Files[i]
 			torrentPath, err := createPath(src.Path)
 			if err != nil {
-			    return
+				return
 			}
-			fullPath := fileDir+"/"+ torrentPath
+			fullPath := fileDir + "/" + torrentPath
 			err = ensureDirectory(fullPath)
 			if err != nil {
-			    return
+				return
 			}
 			err = fs.files[i].open(fullPath, src.Length)
 			if err != nil {

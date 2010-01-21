@@ -77,12 +77,12 @@ func string2Bytes(s string) []byte { return bytes.NewBufferString(s).Bytes() }
 
 type ActivePiece struct {
 	downloaderCount []int // -1 means piece is already downloaded
-	pieceLength int
+	pieceLength     int
 }
 
 func (a *ActivePiece) chooseBlockToDownload(endgame bool) (index int) {
 	if endgame {
-	    return a.chooseBlockToDownloadEndgame()
+		return a.chooseBlockToDownloadEndgame()
 	}
 	return a.chooseBlockToDownloadNormal()
 }
@@ -100,20 +100,20 @@ func (a *ActivePiece) chooseBlockToDownloadNormal() (index int) {
 func (a *ActivePiece) chooseBlockToDownloadEndgame() (index int) {
 	index, minCount := -1, -1
 	for i, v := range (a.downloaderCount) {
-		if v >= 0 && (minCount == -1 || minCount > v)  {
+		if v >= 0 && (minCount == -1 || minCount > v) {
 			index, minCount = i, v
 		}
 	}
 	if index > -1 {
-	    a.downloaderCount[index]++
+		a.downloaderCount[index]++
 	}
 	return
 }
 
 func (a *ActivePiece) recordBlock(index int) (requestCount int) {
-    requestCount = a.downloaderCount[index]
-    a.downloaderCount[index] = -1
-    return
+	requestCount = a.downloaderCount[index]
+	a.downloaderCount[index] = -1
+	return
 }
 
 func (a *ActivePiece) isComplete() bool {
@@ -172,8 +172,8 @@ func NewTorrentSession(torrent string) (ts *TorrentSession, err os.Error) {
 		return
 	}
 	left := bad * t.m.Info.PieceLength
-	if ! t.pieceSet.IsSet(t.totalPieces-1) {
-	    left = left - t.m.Info.PieceLength + int64(t.lastPieceLength)
+	if !t.pieceSet.IsSet(t.totalPieces - 1) {
+		left = left - t.m.Info.PieceLength + int64(t.lastPieceLength)
 	}
 	t.si = &SessionInfo{PeerId: peerId(), Port: listenPort, Left: left}
 	return t, err
@@ -210,7 +210,7 @@ func connectToPeer(peer string, ch chan net.Conn) {
 	if err != nil {
 		// log.Stderr("Failed to connect to", peer, err)
 	} else {
-	    // log.Stderr("Connected to", peer)
+		// log.Stderr("Connected to", peer)
 		ch <- conn
 	}
 }
@@ -232,8 +232,8 @@ func (t *TorrentSession) AddPeer(conn net.Conn) {
 }
 
 func (t *TorrentSession) ClosePeer(peer *peerState) {
-    // log.Stderr("Closing peer", peer.address)
-    _ = t.removeRequests(peer)
+	// log.Stderr("Closing peer", peer.address)
+	_ = t.removeRequests(peer)
 	peer.Close()
 	t.peers[peer.address] = peer, false
 }
@@ -297,11 +297,11 @@ func doTorrent() (err os.Error) {
 		case _ = <-keepAliveChan:
 			now := time.Seconds()
 			for _, peer := range (ts.peers) {
-			    if peer.lastReadTime != 0 && now - peer.lastReadTime > 3 * 60 {
-			        // log.Stderr("Closing peer", peer.address, "because timed out.")
-			        ts.ClosePeer(peer)
-			        continue
-			    }
+				if peer.lastReadTime != 0 && now-peer.lastReadTime > 3*60 {
+					// log.Stderr("Closing peer", peer.address, "because timed out.")
+					ts.ClosePeer(peer)
+					continue
+				}
 				err2 := ts.doCheckRequests(peer)
 				if err2 != nil {
 					if err2 != os.EOF {
@@ -329,21 +329,21 @@ func (t *TorrentSession) RequestBlock(p *peerState) (err os.Error) {
 	// No active pieces. (Or no suitable active pieces.) Pick one
 	piece := t.ChoosePiece(p)
 	if piece < 0 {
-	    // No unclaimed pieces. See if we can double-up on an active piece
-	    for k, _ := range (t.activePieces) {
+		// No unclaimed pieces. See if we can double-up on an active piece
+		for k, _ := range (t.activePieces) {
 			if p.have.IsSet(k) {
 				err = t.RequestBlock2(p, k, true)
 				if err != os.EOF {
 					return
 				}
 			}
-	    }
+		}
 	}
 	if piece >= 0 {
-	    pieceLength := int(t.m.Info.PieceLength)
-	    if piece == t.totalPieces - 1 {
-	        pieceLength = t.lastPieceLength
-	    }
+		pieceLength := int(t.m.Info.PieceLength)
+		if piece == t.totalPieces-1 {
+			pieceLength = t.lastPieceLength
+		}
 		pieceCount := (pieceLength + STANDARD_BLOCK_LENGTH - 1) / STANDARD_BLOCK_LENGTH
 		t.activePieces[piece] = &ActivePiece{make([]int, pieceCount), pieceLength}
 		return t.RequestBlock2(p, piece, false)
@@ -391,21 +391,21 @@ func (t *TorrentSession) requestBlockImp(p *peerState, piece int, block int, req
 	req := make([]byte, 13)
 	opcode := byte(6)
 	if !request {
-	    opcode = byte(8) // Cancel
+		opcode = byte(8) // Cancel
 	}
 	length := STANDARD_BLOCK_LENGTH
 	if piece == t.totalPieces-1 {
-	    left := t.lastPieceLength - begin
-	    if left < length {
-	        length = left
-	    }
+		left := t.lastPieceLength - begin
+		if left < length {
+			length = left
+		}
 	}
 	// log.Stderr("Requesting block", piece, ".", block, length, request)
 	req[0] = opcode
 	uint32ToBytes(req[1:5], uint32(piece))
 	uint32ToBytes(req[5:9], uint32(begin))
 	uint32ToBytes(req[9:13], uint32(length))
-	requestIndex :=  (uint64(piece)<<32)|uint64(begin)
+	requestIndex := (uint64(piece) << 32) | uint64(begin)
 	p.our_requests[requestIndex] = time.Seconds(), request
 	p.sendMessage(req)
 	return
@@ -414,21 +414,21 @@ func (t *TorrentSession) requestBlockImp(p *peerState, piece int, block int, req
 func (t *TorrentSession) RecordBlock(p *peerState, piece, begin, length uint32) (err os.Error) {
 	block := begin / STANDARD_BLOCK_LENGTH
 	// log.Stderr("Received block", piece, ".", block)
-	requestIndex := (uint64(piece)<<32)|uint64(begin)
+	requestIndex := (uint64(piece) << 32) | uint64(begin)
 	p.our_requests[requestIndex] = 0, false
 	v, ok := t.activePieces[int(piece)]
 	if ok {
 		requestCount := v.recordBlock(int(block))
 		if requestCount > 1 {
-		    // Someone else has also requested this, so send cancel notices
-		    for _, peer := range(t.peers) {
-		        if p != peer {
-		            if _, ok := peer.our_requests[requestIndex]; ok {
-		                t.requestBlockImp(peer, int(piece), int(block), false)
-		                requestCount--
-		            }
-		        }
-		    }
+			// Someone else has also requested this, so send cancel notices
+			for _, peer := range (t.peers) {
+				if p != peer {
+					if _, ok := peer.our_requests[requestIndex]; ok {
+						t.requestBlockImp(peer, int(piece), int(block), false)
+						requestCount--
+					}
+				}
+			}
 		}
 		t.si.Downloaded += int64(length)
 		if v.isComplete() {
@@ -439,7 +439,7 @@ func (t *TorrentSession) RecordBlock(p *peerState, piece, begin, length uint32) 
 			t.goodPieces++
 			log.Stderr("Have", t.goodPieces, "of", t.totalPieces, "blocks.")
 			if t.goodPieces == t.totalPieces {
-			    t.fetchTrackerInfo("completed")
+				t.fetchTrackerInfo("completed")
 			}
 			for _, p := range (t.peers) {
 				if p.have != nil {
@@ -481,7 +481,7 @@ func (t *TorrentSession) removeRequests(p *peerState) (err os.Error) {
 }
 
 func (t *TorrentSession) removeRequest(piece, block int) {
-    v, ok := t.activePieces[piece]
+	v, ok := t.activePieces[piece]
 	if ok && v.downloaderCount[block] > 0 {
 		v.downloaderCount[block]--
 	}
@@ -490,9 +490,9 @@ func (t *TorrentSession) removeRequest(piece, block int) {
 func (t *TorrentSession) doCheckRequests(p *peerState) (err os.Error) {
 	now := time.Seconds()
 	for k, v := range (p.our_requests) {
-	    if now - v > 30 {
+		if now-v > 30 {
 			piece := int(k >> 32)
-			block := int(k)/ STANDARD_BLOCK_LENGTH
+			block := int(k) / STANDARD_BLOCK_LENGTH
 			log.Stderr("timing out request of", piece, ".", block)
 			t.removeRequest(piece, block)
 		}
@@ -712,7 +712,7 @@ type peerState struct {
 	id              string
 	writeChan       chan []byte
 	lastWriteTime   int64   // In seconds
-	lastReadTime   int64   // In seconds
+	lastReadTime    int64   // In seconds
 	have            *Bitset // What the peer has told us it has
 	conn            net.Conn
 	am_choking      bool // this client is choking the peer
@@ -774,7 +774,7 @@ func (p *peerState) SetChoke(choke bool) {
 
 func (p *peerState) SetInterested(interested bool) {
 	if interested != p.am_interested {
-	    // log.Stderr("SetInterested", interested, p.address)
+		// log.Stderr("SetInterested", interested, p.address)
 		p.am_interested = interested
 		b := byte(3)
 		if interested {
@@ -785,7 +785,7 @@ func (p *peerState) SetInterested(interested bool) {
 }
 
 func (p *peerState) sendOneCharMessage(b byte) {
-    // log.Stderr("ocm", b, p.address)
+	// log.Stderr("ocm", b, p.address)
 	p.sendMessage([]byte{b})
 }
 
@@ -951,9 +951,9 @@ func computeSums(fs FileStore, totalLength int64, pieceLength int64) (sums []byt
 	hasher := sha1.New()
 	piece := make([]byte, pieceLength)
 	for i := int64(0); i < numPieces; i++ {
-	    if i == numPieces - 1 {
-	        piece = piece[0:totalLength - i * pieceLength]
-	    }
+		if i == numPieces-1 {
+			piece = piece[0 : totalLength-i*pieceLength]
+		}
 		_, err := fs.ReadAt(piece, i*pieceLength)
 		if err != nil {
 			return
