@@ -208,13 +208,14 @@ func connectToPeer(peer string, ch chan net.Conn) {
 	if err != nil {
 		// log.Stderr("Failed to connect to", peer, err)
 	} else {
+	    // log.Stderr("Connected to", peer)
 		ch <- conn
 	}
 }
 
 func (t *TorrentSession) AddPeer(conn net.Conn) {
 	peer := conn.RemoteAddr().String()
-	// log.Stderr("Connected to", peer)
+	// log.Stderr("Adding peer", peer)
 	ps := NewPeerState(conn)
 	ps.address = peer
 	var header [68]byte
@@ -229,6 +230,7 @@ func (t *TorrentSession) AddPeer(conn net.Conn) {
 }
 
 func (t *TorrentSession) ClosePeer(peer *peerState) {
+    // log.Stderr("Closing peer", peer.address)
     _ = t.removeRequests(peer)
 	peer.Close()
 	t.peers[peer.address] = peer, false
@@ -281,7 +283,7 @@ func doTorrent() (err os.Error) {
 			peer.lastReadTime = time.Seconds()
 			err2 := ts.DoMessage(peer, message)
 			if err2 != nil {
-				// log.Stderr("Closing peer", peer, "because", err2)
+				// log.Stderr("Closing peer", peer.address, "because", err2)
 				ts.ClosePeer(peer)
 				// TODO consider looking for more peers
 			}
@@ -294,14 +296,14 @@ func doTorrent() (err os.Error) {
 			now := time.Seconds()
 			for _, peer := range (ts.peers) {
 			    if peer.lastReadTime != 0 && now - peer.lastReadTime > 3 * 60 {
-			        log.Stderr("Closing peer", peer, "because timed out.")
+			        // log.Stderr("Closing peer", peer.address, "because timed out.")
 			        ts.ClosePeer(peer)
 			        continue
 			    }
 				err2 := ts.doCheckRequests(peer)
 				if err2 != nil {
 					if err2 != os.EOF {
-						log.Stderr("Closing peer", peer, "because", err2)
+						// log.Stderr("Closing peer", peer.address, "because", err2)
 					}
 					ts.ClosePeer(peer)
 					continue
@@ -374,7 +376,7 @@ func (t *TorrentSession) RequestBlock2(p *peerState, piece int, endGame bool) (e
 	v := t.activePieces[piece]
 	block := v.chooseBlockToDownload(endGame)
 	if block >= 0 {
-		p.requestBlockImp(piece, block, true)
+		t.requestBlockImp(p, piece, block, true)
 	} else {
 		return os.EOF
 	}
@@ -382,25 +384,32 @@ func (t *TorrentSession) RequestBlock2(p *peerState, piece int, endGame bool) (e
 }
 
 // Used to request or cancel a block
-func (p *peerState) requestBlockImp(piece int, block int, request bool) {
-	// log.Stderr("Requesting block", piece, ".", block, request)
+func (t *TorrentSession) requestBlockImp(p *peerState, piece int, block int, request bool) {
 	begin := block * STANDARD_BLOCK_LENGTH
 	req := make([]byte, 13)
 	opcode := byte(6)
 	if !request {
 	    opcode = byte(8) // Cancel
 	}
+	length := STANDARD_BLOCK_LENGTH
+	if piece == t.totalPieces-1 {
+	    left := t.lastPieceLength - begin
+	    if left < length {
+	        length = left
+	    }
+	}
+	// log.Stderr("Requesting block", piece, ".", block, length, request)
 	req[0] = opcode
 	uint32ToBytes(req[1:5], uint32(piece))
 	uint32ToBytes(req[5:9], uint32(begin))
-	uint32ToBytes(req[9:13], STANDARD_BLOCK_LENGTH)
+	uint32ToBytes(req[9:13], uint32(length))
 	requestIndex :=  (uint64(piece)<<32)|uint64(begin)
 	p.our_requests[requestIndex] = time.Seconds(), request
 	p.sendMessage(req)
 	return
 }
 
-func (t *TorrentSession) RecordBlock(p *peerState, piece, begin uint32) (err os.Error) {
+func (t *TorrentSession) RecordBlock(p *peerState, piece, begin, length uint32) (err os.Error) {
 	block := begin / STANDARD_BLOCK_LENGTH
 	// log.Stderr("Received block", piece, ".", block)
 	requestIndex := (uint64(piece)<<32)|uint64(begin)
@@ -413,13 +422,13 @@ func (t *TorrentSession) RecordBlock(p *peerState, piece, begin uint32) (err os.
 		    for _, peer := range(t.peers) {
 		        if p != peer {
 		            if _, ok := peer.our_requests[requestIndex]; ok {
-		                peer.requestBlockImp(int(piece), int(block), false)
+		                t.requestBlockImp(peer, int(piece), int(block), false)
 		                requestCount--
 		            }
 		        }
 		    }
 		}
-		t.si.Downloaded += STANDARD_BLOCK_LENGTH
+		t.si.Downloaded += int64(length)
 		if v.isComplete() {
 			t.activePieces[int(piece)] = v, false
 			// TODO: Check if the hash for this piece is good or not.
@@ -490,7 +499,7 @@ func (t *TorrentSession) DoMessage(p *peerState, message []byte) (err os.Error) 
 	if len(p.id) == 0 {
 		// This is the header message from the peer.
 		if message == nil {
-			return os.EOF
+			return os.NewError("missing header")
 		}
 		peersInfoHash := string(message[8:28])
 		if peersInfoHash != t.m.InfoHash {
@@ -498,8 +507,8 @@ func (t *TorrentSession) DoMessage(p *peerState, message []byte) (err os.Error) 
 		}
 		p.id = string(message[28:48])
 	} else {
-		if len(message) == 0 {
-			return os.EOF
+		if len(message) == 0 { // keep alive
+			return
 		}
 		messageId := message[0]
 		// Message 5 is optional, but must be sent as the first message.
@@ -509,13 +518,13 @@ func (t *TorrentSession) DoMessage(p *peerState, message []byte) (err os.Error) 
 		}
 		switch id := message[0]; id {
 		case 0:
-			// log.Stderr("choke", p)
+			// log.Stderr("choke", p.address)
 			if len(message) != 1 {
 				return os.NewError("Unexpected length")
 			}
 			err = t.doChoke(p)
 		case 1:
-			// log.Stderr("unchoke", p)
+			// log.Stderr("unchoke", p.address)
 			if len(message) != 1 {
 				return os.NewError("Unexpected length")
 			}
@@ -553,7 +562,7 @@ func (t *TorrentSession) DoMessage(p *peerState, message []byte) (err os.Error) 
 				return os.NewError("have index is out of range.")
 			}
 		case 5:
-			// log.Stderr("bitfield")
+			// log.Stderr("bitfield", p.address)
 			if p.have != nil {
 				return os.NewError("Late bitfield operation")
 			}
@@ -590,7 +599,7 @@ func (t *TorrentSession) DoMessage(p *peerState, message []byte) (err os.Error) 
 			return t.sendRequest(p, index, begin, length)
 		case 7:
 			// piece
-			if len(message) != 9+STANDARD_BLOCK_LENGTH {
+			if len(message) < 9 {
 				return os.NewError("unexpected message length")
 			}
 			index := bytesToUint32(message[1:5])
@@ -609,15 +618,15 @@ func (t *TorrentSession) DoMessage(p *peerState, message []byte) (err os.Error) 
 			if int64(begin)+int64(length) > t.m.Info.PieceLength {
 				return os.NewError("begin + length out of range.")
 			}
-			if length != STANDARD_BLOCK_LENGTH {
-				return os.NewError("Unexpected block length.")
+			if length > 128*1024 {
+				return os.NewError("Block length too large.")
 			}
 			globalOffset := int64(index)*t.m.Info.PieceLength + int64(begin)
 			_, err = t.fileStore.WriteAt(message[9:], globalOffset)
 			if err != nil {
 				return err
 			}
-			t.RecordBlock(p, index, begin)
+			t.RecordBlock(p, index, begin, uint32(length))
 			err = t.RequestBlock(p)
 		case 8:
 			log.Stderr("cancel")
@@ -760,6 +769,7 @@ func (p *peerState) SetChoke(choke bool) {
 
 func (p *peerState) SetInterested(interested bool) {
 	if interested != p.am_interested {
+	    // log.Stderr("SetInterested", interested, p.address)
 		p.am_interested = interested
 		b := byte(3)
 		if interested {
@@ -770,6 +780,7 @@ func (p *peerState) SetInterested(interested bool) {
 }
 
 func (p *peerState) sendOneCharMessage(b byte) {
+    // log.Stderr("ocm", b, p.address)
 	p.sendMessage([]byte{b})
 }
 
@@ -879,11 +890,7 @@ func peerReader(conn net.Conn, peer *peerState, msgChan chan peerMessage) {
 		if err != nil {
 			goto exit
 		}
-		if n == 0 {
-			// it's a keep-alive message. swallow it.
-			// log.Stderr("Received keep-alive message.")
-			continue
-		} else if n > 64*1024 {
+		if n > 130*1024 {
 			// log.Stderr("Message size too large: ", n)
 			goto exit
 		}

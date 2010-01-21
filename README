@@ -45,19 +45,19 @@ Current Status
 + Detect hung peers
 + Have Endgame support for obtaining last few blocks.
 + Progress display
++ Handle multiple files
++ Handle torrents that are not a multiple of block size in length.
 
 Development Roadmap
 
 + Implement choke/unchoke logic
-+ Handle multiple files
-+ Handle torrents that are not a multiple of block size in length.
 + Handle creating directories in torrent file list
 + Cache torrent file rather than downloading each time.
 + Full UPnP support (need to be able to search for an unused listener port,
   detect we have already acquired the port,
   release the listener port when we quit.)
 + Cean up source code
-+ Deal with TODOS
++ Deal with TODOs
 
 BUGS
 - Need to deal with peers who send 16K "port" messages.
