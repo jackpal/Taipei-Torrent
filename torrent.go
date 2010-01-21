@@ -425,11 +425,15 @@ func (t *TorrentSession) RecordBlock(p *peerState, piece, begin, length uint32) 
 		t.si.Downloaded += int64(length)
 		if v.isComplete() {
 			t.activePieces[int(piece)] = v, false
-			// TODO: Check if the hash for this piece is good or not.
+			ok, err := checkPiece(t.fileStore, t.totalSize, t.m, int(piece))
+			if !ok || err != nil {
+			    log.Stderr("Ignoring bad piece", piece, err)
+			    return
+			}
 			t.si.Left -= int64(v.pieceLength)
 			t.pieceSet.Set(int(piece))
 			t.goodPieces++
-			log.Stderr("Have", t.goodPieces, "of", t.totalPieces, "blocks.")
+			log.Stderr("Have", t.goodPieces, "of", t.totalPieces, "pieces.")
 			if t.goodPieces == t.totalPieces {
 				t.fetchTrackerInfo("completed")
 			}
@@ -695,6 +699,8 @@ func (t *TorrentSession) isInteresting(p *peerState) bool {
 	return false
 }
 
+// TODO: See if we can overlap IO with computation
+
 func checkPieces(fs FileStore, totalLength int64, m *MetaInfo) (good, bad int64, goodBits *Bitset, err os.Error) {
 	currentSums, err := computeSums(fs, totalLength, m.Info.PieceLength)
 	if err != nil {
@@ -749,3 +755,33 @@ func computeSums(fs FileStore, totalLength int64, pieceLength int64) (sums []byt
 	return
 }
 
+func checkPiece(fs FileStore, totalLength int64, m *MetaInfo, pieceIndex int) (good bool, err os.Error) {
+	ref := m.Info.Pieces
+	currentSum, err := computePieceSum(fs, totalLength, m.Info.PieceLength, pieceIndex)
+	if err != nil {
+		return
+	}
+    base := pieceIndex * sha1.Size
+	end := base + sha1.Size
+	good = checkEqual(ref[base:end], currentSum)
+	return
+}
+
+func computePieceSum(fs FileStore, totalLength int64, pieceLength int64, pieceIndex int) (sum []byte, err os.Error) {
+	numPieces := (totalLength + pieceLength - 1) / pieceLength
+	hasher := sha1.New()
+	piece := make([]byte, pieceLength)
+	if int64(pieceIndex) == numPieces-1 {
+		piece = piece[0 : totalLength-int64(pieceIndex)*pieceLength]
+	}
+	_, err = fs.ReadAt(piece, int64(pieceIndex)*pieceLength)
+	if err != nil {
+		return
+	}
+	_, err = hasher.Write(piece)
+	if err != nil {
+		return
+	}
+	sum = hasher.Sum()
+	return
+}
