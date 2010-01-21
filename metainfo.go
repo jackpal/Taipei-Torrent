@@ -49,6 +49,15 @@ type initialMetaInfo struct {
 	Encoding     string
 }
 
+func getString(m map[string]interface{}, k string) string {
+	if v, ok := m[k]; ok {
+		if s, ok := v.(string); ok {
+			return s
+		}
+    }
+    return ""
+}
+
 func getMetaInfo(torrent string) (metaInfo *MetaInfo, err os.Error) {
 	var input io.ReadCloser
 	if strings.HasPrefix(torrent, "http:") {
@@ -62,15 +71,30 @@ func getMetaInfo(torrent string) (metaInfo *MetaInfo, err os.Error) {
 	if err != nil {
 		return
 	}
-	var m initialMetaInfo
-	err = bencode.Unmarshal(input, &m)
+	
+	// We need to calcuate the sha1 of the Info map, including every value in the
+	// map. The easiest way to do this is to read the data using the Decode
+	// API, and then pick through it manually.
+	var m interface{}
+	m, err = bencode.Decode(input)
 	input.Close()
 	if err != nil {
 		return
 	}
-
+	
+	topMap, ok := m.(map[string]interface{})
+	if !ok {
+	    err = os.NewError("Couldn't parse torrent file.")
+	    return
+	}
+	
+	infoMap, ok := topMap["info"]
+	if !ok {
+	    err = os.NewError("Couldn't parse torrent file. info")
+	    return
+	}
 	var b bytes.Buffer
-	if err = bencode.Marshal(&b, m.Info); err != nil {
+	if err = bencode.Marshal(&b, infoMap); err != nil {
 		return
 	}
 	hash := sha1.New()
@@ -83,11 +107,11 @@ func getMetaInfo(torrent string) (metaInfo *MetaInfo, err os.Error) {
 	}
 
 	m2.InfoHash = string(hash.Sum())
-	m2.Announce = m.Announce
-	m2.CreationDate = m.CreationDate
-	m2.Comment = m.Comment
-	m2.CreatedBy = m.CreatedBy
-	m2.Encoding = m.Encoding
+	m2.Announce = getString(topMap, "announce")
+	m2.CreationDate = getString(topMap, "creation date")
+	m2.Comment = getString(topMap, "comment")
+	m2.CreatedBy = getString(topMap, "created by")
+	m2.Encoding = getString(topMap, "encoding")
 
 	metaInfo = &m2
 	return
