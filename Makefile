@@ -9,7 +9,9 @@ GOFILES=\
 	files.go \
 	main.go \
 	metainfo.go \
+	peer.go \
 	testBencode.go \
+	torrent.go \
 	upnp.go
 
 include $(GOROOT)/src/Make.cmd
