@@ -427,8 +427,8 @@ func (t *TorrentSession) RecordBlock(p *peerState, piece, begin, length uint32) 
 			t.activePieces[int(piece)] = v, false
 			ok, err := checkPiece(t.fileStore, t.totalSize, t.m, int(piece))
 			if !ok || err != nil {
-			    log.Stderr("Ignoring bad piece", piece, err)
-			    return
+				log.Stderr("Ignoring bad piece", piece, err)
+				return
 			}
 			t.si.Left -= int64(v.pieceLength)
 			t.pieceSet.Set(int(piece))
@@ -761,7 +761,7 @@ func checkPiece(fs FileStore, totalLength int64, m *MetaInfo, pieceIndex int) (g
 	if err != nil {
 		return
 	}
-    base := pieceIndex * sha1.Size
+	base := pieceIndex * sha1.Size
 	end := base + sha1.Size
 	good = checkEqual(ref[base:end], currentSum)
 	return
