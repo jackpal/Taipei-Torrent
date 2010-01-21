@@ -1,6 +1,6 @@
 Taipei Torrent
 
-This is a simple Bittorrent client coded in the go programming language.
+This is a simple command-line-interface BitTorrent client coded in the go programming language.
 
 FAQ:
 
@@ -27,37 +27,18 @@ enhanced to support the features that UPnP needs I'll get rid of this patched ve
 
 Current Status
 
-+ Can encode / decode arbitrary bencode data.
-+ Can download and parse a torrent file from a URL.
-+ Can connect to a tracker and obtain a set of peers.
-+ Can create and checksum the files listed in the info map
-+ Can use UPnP to acquire a listener port
-+ Can asynchronously connect to the initial batch of peers obtained from the tracker
-+ Can asynchronously send and receive messages from connected peers
-+ Can request and receive blocks from connected peers.
-+ Can schedule which pieces and blocks to request.
-+ Can handle remote choke/unchoke messages.
-+ Register a listener port to listen for peer connections
-+ Send blocks to connected unchoked peers.
-+ Report our status to the tracker periodicly.
-+ Implement interested/uninterested logic
-+ Detect blocks that were requested but never sent.
-+ Detect hung peers
-+ Have Endgame support for obtaining last few blocks.
-+ Progress display
-+ Handle multiple files
-+ Handle torrents that are not a multiple of block size in length.
-+ Handle creating directories in torrent file list
+Works, at least for some torrents.
 
 Development Roadmap
 
 + Implement choke/unchoke logic
-+ Cache torrent file rather than downloading each time.
 + Full UPnP support (need to be able to search for an unused listener port,
   detect we have already acquired the port,
   release the listener port when we quit.)
-+ Cean up source code
++ Clean up source code
 + Deal with TODOs
++ UTF-8 / Unicode / multibyte filename support.
++ Add a way of quitting other than typing control-C
 
 BUGS
-- Need to deal with peers who send 16K "port" messages.
+- Need to understand why some peers are sending 16K "port" messages.
