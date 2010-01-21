@@ -130,6 +130,7 @@ type TorrentSession struct {
 	si              *SessionInfo
 	ti              *TrackerResponse
 	fileStore       FileStore
+	trackerInfoChan chan *TrackerResponse
 	peers           map[string]*peerState
 	peerMessageChan chan peerMessage
 	pieceSet        *Bitset // The pieces we have
@@ -178,7 +179,7 @@ func NewTorrentSession(torrent string) (ts *TorrentSession, err os.Error) {
 	return t, err
 }
 
-func (t *TorrentSession) fetchTrackerInfo(ch chan *TrackerResponse) {
+func (t *TorrentSession) fetchTrackerInfo(event string) {
 	m, si := t.m, t.si
 	log.Stderr("Stats: Uploaded", si.Uploaded, "Downloaded", si.Downloaded, "Left", si.Left)
 	url := m.Announce + "?" +
@@ -189,9 +190,10 @@ func (t *TorrentSession) fetchTrackerInfo(ch chan *TrackerResponse) {
 		"&downloaded=" + strconv.Itoa64(si.Downloaded) +
 		"&left=" + strconv.Itoa64(si.Left) +
 		"&compact=1"
-	if t.ti == nil {
-		url += "&event=started"
+	if event != "" {
+		url += "&event=" + event
 	}
+	ch := t.trackerInfoChan
 	go func() {
 		ti, err := getTrackerInfo(url)
 		if err != nil {
@@ -247,19 +249,19 @@ func doTorrent() (err os.Error) {
 	// Maybe be exponential backoff here?
 	retrackerChan := time.Tick(20 * NS_PER_S)
 	keepAliveChan := time.Tick(60 * NS_PER_S)
-	trackerInfoChan := make(chan *TrackerResponse)
+	ts.trackerInfoChan = make(chan *TrackerResponse)
 
 	conChan := make(chan net.Conn)
 
 	go listenForPeerConnections(ts.si.Port, conChan)
 
-	ts.fetchTrackerInfo(trackerInfoChan)
+	ts.fetchTrackerInfo("started")
 
 	for {
 		select {
 		case _ = <-retrackerChan:
-			ts.fetchTrackerInfo(trackerInfoChan)
-		case ti := <-trackerInfoChan:
+			ts.fetchTrackerInfo("")
+		case ti := <-ts.trackerInfoChan:
 			ts.ti = ti
 			log.Stderr("Torrent has", ts.ti.Complete, "seeders and", ts.ti.Incomplete, "leachers.")
 			peers := ts.ti.Peers
@@ -436,6 +438,9 @@ func (t *TorrentSession) RecordBlock(p *peerState, piece, begin, length uint32) 
 			t.pieceSet.Set(int(piece))
 			t.goodPieces++
 			log.Stderr("Have", t.goodPieces, "of", t.totalPieces, "blocks.")
+			if t.goodPieces == t.totalPieces {
+			    t.fetchTrackerInfo("completed")
+			}
 			for _, p := range (t.peers) {
 				if p.have != nil {
 					if p.have.IsSet(int(piece)) {

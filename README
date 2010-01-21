@@ -47,11 +47,11 @@ Current Status
 + Progress display
 + Handle multiple files
 + Handle torrents that are not a multiple of block size in length.
++ Handle creating directories in torrent file list
 
 Development Roadmap
 
 + Implement choke/unchoke logic
-+ Handle creating directories in torrent file list
 + Cache torrent file rather than downloading each time.
 + Full UPnP support (need to be able to search for an unused listener port,
   detect we have already acquired the port,

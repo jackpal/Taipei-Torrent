@@ -3,6 +3,7 @@ package main
 import (
 	"io"
 	"os"
+	"strings"
 	"syscall"
 )
 
@@ -22,18 +23,23 @@ type fileStore struct {
 	files   []fileEntry // Stored in increasing globalOffset order
 }
 
-func createPath(parts []string) (path string) {
-	for i, part := range (parts) {
-		if i > 0 {
-			path = path + "/"
-		}
-		path = path + part
+func createPath(parts []string) (path string, err os.Error) {
+	// TODO: better, OS-specific sanitization.
+	for _, part := range (parts) {
+	    // Sanitize file names.
+	    if strings.Index(part,"/") >= 0 ||
+	        strings.Index(part,"\\") >= 0 ||
+	        part == ".." {
+	        err = os.NewError("Bad path part " + part)
+	        return
+	    }
 	}
+	
+	path = strings.Join(parts, "/")
 	return
 }
 
 func (fe *fileEntry) open(name string, length int64) (err os.Error) {
-	// TODO: sanitize name
 	fe.length = length
 	fe.fd, err = os.Open(name, os.O_RDWR|os.O_CREAT, 0666)
 	if err != nil {
@@ -44,6 +50,17 @@ func (fe *fileEntry) open(name string, length int64) (err os.Error) {
 		err = os.NewError("Could not truncate file.")
 	}
 	return
+}
+
+func ensureDirectory(fullPath string) (err os.Error) {
+    pathParts := strings.Split(fullPath, "/", 0)
+    if len(pathParts) < 2 {
+        return
+    }
+    dirParts := pathParts[0:len(pathParts)-1]
+    path := strings.Join(dirParts, "/")
+    err = os.MkdirAll(path, 0755)
+    return
 }
 
 func NewFileStore(info *InfoDict, fileDir string) (f FileStore, totalSize int64, err os.Error) {
@@ -62,7 +79,16 @@ func NewFileStore(info *InfoDict, fileDir string) (f FileStore, totalSize int64,
 		fs.offsets = make([]int64, numFiles)
 		for i, _ := range (info.Files) {
 			src := &info.Files[i]
-			err = fs.files[i].open(fileDir+"/"+createPath(src.Path), src.Length)
+			torrentPath, err := createPath(src.Path)
+			if err != nil {
+			    return
+			}
+			fullPath := fileDir+"/"+ torrentPath
+			err = ensureDirectory(fullPath)
+			if err != nil {
+			    return
+			}
+			err = fs.files[i].open(fullPath, src.Length)
 			if err != nil {
 				return
 			}
