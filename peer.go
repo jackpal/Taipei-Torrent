@@ -2,7 +2,6 @@ package main
 
 import (
 	"io"
-	"log"
 	"net"
 	"os"
 	"time"
@@ -152,23 +151,24 @@ func (p *peerState) peerWriter(errorChan chan peerMessage, header []byte) {
 	// log.Stderr("Writing header.")
 	_, err := p.conn.Write(header)
 	if err != nil {
-		return
+		goto exit
 	}
 	// log.Stderr("Writing messages")
 	for msg := range p.writeChan {
 		// log.Stderr("Writing", len(msg), conn.RemoteAddr())
 		err = writeNBOUint32(p.conn, uint32(len(msg)))
 		if err != nil {
-			return
+			goto exit
 		}
 		_, err = p.conn.Write(msg)
 		if err != nil {
-			log.Stderr("Failed to write a message", p.address, len(msg), msg, err)
-			return
+			// log.Stderr("Failed to write a message", p.address, len(msg), msg, err)
+			goto exit
 		}
 	}
-	errorChan <- peerMessage{p, nil}
+exit:
 	// log.Stderr("peerWriter exiting")
+	errorChan <- peerMessage{p, nil}
 }
 
 // This func is designed to be run as a goroutine. It
