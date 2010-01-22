@@ -218,8 +218,8 @@ func (t *TorrentSession) AddPeer(conn net.Conn) {
 	copy(header[48:68], string2Bytes(t.si.PeerId))
 
 	t.peers[peer] = ps
-	go peerWriter(ps.conn, ps.writeChan, header[0:])
-	go peerReader(ps.conn, ps, t.peerMessageChan)
+	go ps.peerWriter(t.peerMessageChan, header[0:])
+	go ps.peerReader(t.peerMessageChan)
 	ps.SetChoke(false) // TODO: better choke policy
 }
 
@@ -497,11 +497,11 @@ func (t *TorrentSession) doCheckRequests(p *peerState) (err os.Error) {
 }
 
 func (t *TorrentSession) DoMessage(p *peerState, message []byte) (err os.Error) {
+	if message == nil {
+		return os.EOF // The reader or writer goroutine has exited
+	}
 	if len(p.id) == 0 {
 		// This is the header message from the peer.
-		if message == nil {
-			return os.NewError("missing header")
-		}
 		peersInfoHash := string(message[8:28])
 		if peersInfoHash != t.m.InfoHash {
 			return os.NewError("this peer doesn't have the right info hash")

@@ -13,6 +13,11 @@ const MAX_OUR_REQUESTS = 2
 const MAX_PEER_REQUESTS = 10
 const STANDARD_BLOCK_LENGTH = 16 * 1024
 
+type peerMessage struct {
+	peer    *peerState
+	message []byte // nil means an error occurred
+}
+
 type peerState struct {
 	address         string
 	id              string
@@ -140,48 +145,46 @@ func readNBOUint32(conn net.Conn) (n uint32, err os.Error) {
 	return
 }
 
-func peerWriter(conn net.Conn, msgChan chan []byte, header []byte) {
+// This func is designed to be run as a goroutine. It
+// listens for messages on a channel and sends them to a peer.
+
+func (p *peerState) peerWriter(errorChan chan peerMessage, header []byte) {
 	// log.Stderr("Writing header.")
-	_, err := conn.Write(header)
+	_, err := p.conn.Write(header)
 	if err != nil {
 		return
 	}
 	// log.Stderr("Writing messages")
-	for {
-		select {
-		case msg := <-msgChan:
-			// log.Stderr("Writing", len(msg), conn.RemoteAddr())
-			err = writeNBOUint32(conn, uint32(len(msg)))
-			if err != nil {
-				return
-			}
-			_, err = conn.Write(msg)
-			if err != nil {
-				log.Stderr("Failed to write a message", conn, len(msg), msg, err)
-				return
-			}
+	for msg := range p.writeChan {
+		// log.Stderr("Writing", len(msg), conn.RemoteAddr())
+		err = writeNBOUint32(p.conn, uint32(len(msg)))
+		if err != nil {
+			return
+		}
+		_, err = p.conn.Write(msg)
+		if err != nil {
+			log.Stderr("Failed to write a message", p.address, len(msg), msg, err)
+			return
 		}
 	}
+	errorChan <- peerMessage{p, nil}
 	// log.Stderr("peerWriter exiting")
 }
 
-type peerMessage struct {
-	peer    *peerState
-	message []byte // nil when peer is closed
-}
+// This func is designed to be run as a goroutine. It
+// listens for messages from the peer and forwards them to a channel.
 
-func peerReader(conn net.Conn, peer *peerState, msgChan chan peerMessage) {
-	// TODO: Add two-minute timeout.
+func (p *peerState) peerReader(msgChan chan peerMessage) {
 	// log.Stderr("Reading header.")
 	var header [68]byte
-	_, err := conn.Read(header[0:1])
+	_, err := p.conn.Read(header[0:1])
 	if err != nil {
 		goto exit
 	}
 	if header[0] != 19 {
 		goto exit
 	}
-	_, err = conn.Read(header[1:20])
+	_, err = p.conn.Read(header[1:20])
 	if err != nil {
 		goto exit
 	}
@@ -189,15 +192,15 @@ func peerReader(conn net.Conn, peer *peerState, msgChan chan peerMessage) {
 		goto exit
 	}
 	// Read rest of header
-	_, err = conn.Read(header[20:])
+	_, err = p.conn.Read(header[20:])
 	if err != nil {
 		goto exit
 	}
-	msgChan <- peerMessage{peer, header[20:]}
+	msgChan <- peerMessage{p, header[20:]}
 	// log.Stderr("Reading messages")
 	for {
 		var n uint32
-		n, err = readNBOUint32(conn)
+		n, err = readNBOUint32(p.conn)
 		if err != nil {
 			goto exit
 		}
@@ -206,15 +209,14 @@ func peerReader(conn net.Conn, peer *peerState, msgChan chan peerMessage) {
 			goto exit
 		}
 		buf := make([]byte, n)
-		_, err := io.ReadFull(conn, buf)
+		_, err := io.ReadFull(p.conn, buf)
 		if err != nil {
 			goto exit
 		}
-		msgChan <- peerMessage{peer, buf}
+		msgChan <- peerMessage{p, buf}
 	}
 
 exit:
-	conn.Close()
-	msgChan <- peerMessage{peer, nil}
-	// log.Stderr("peerWriter exiting")
+	msgChan <- peerMessage{p, nil}
+	// log.Stderr("peerReader exiting")
 }
