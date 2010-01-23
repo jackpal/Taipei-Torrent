@@ -67,34 +67,29 @@ func NewFileStore(info *InfoDict, fileDir string) (f FileStore, totalSize int64,
 	fs := new(fileStore)
 	numFiles := len(info.Files)
 	if numFiles == 0 {
-		fs.files = make([]fileEntry, 1)
-		fs.offsets = make([]int64, 1)
-		err = fs.files[0].open(fileDir+"/"+info.Name, info.Length)
+		// Create dummy Files structure.
+		info = &InfoDict{Files: []FileDict{FileDict{info.Length, []string{info.Name}, info.Md5sum}}}
+		numFiles = 1
+	}
+	fs.files = make([]fileEntry, numFiles)
+	fs.offsets = make([]int64, numFiles)
+	for i, _ := range (info.Files) {
+		src := &info.Files[i]
+		torrentPath, err := createPath(src.Path)
 		if err != nil {
 			return
 		}
-		totalSize = info.Length
-	} else {
-		fs.files = make([]fileEntry, numFiles)
-		fs.offsets = make([]int64, numFiles)
-		for i, _ := range (info.Files) {
-			src := &info.Files[i]
-			torrentPath, err := createPath(src.Path)
-			if err != nil {
-				return
-			}
-			fullPath := fileDir + "/" + torrentPath
-			err = ensureDirectory(fullPath)
-			if err != nil {
-				return
-			}
-			err = fs.files[i].open(fullPath, src.Length)
-			if err != nil {
-				return
-			}
-			fs.offsets[i] = totalSize
-			totalSize += src.Length
+		fullPath := fileDir + "/" + torrentPath
+		err = ensureDirectory(fullPath)
+		if err != nil {
+			return
 		}
+		err = fs.files[i].open(fullPath, src.Length)
+		if err != nil {
+			return
+		}
+		fs.offsets[i] = totalSize
+		totalSize += src.Length
 	}
 	f = fs
 	return
