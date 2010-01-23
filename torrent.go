@@ -142,6 +142,11 @@ func NewTorrentSession(torrent string) (ts *TorrentSession, err os.Error) {
 		return
 	}
 	log.Stderr("Tracker:", t.m.Announce, "Comment:", t.m.Comment, "Encoding:", t.m.Encoding)
+	if e := t.m.Encoding; e != "" && e != "UTF-8" {
+		log.Stderr("Unknown encoding", e)
+		err = os.NewError("Unknown encoding")
+		return
+	}
 
 	fileStore, totalSize, err := NewFileStore(&t.m.Info, *fileDir)
 	if err != nil {

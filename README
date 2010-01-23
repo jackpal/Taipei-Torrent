@@ -37,7 +37,6 @@ Development Roadmap
   release the listener port when we quit.)
 + Clean up source code
 + Deal with TODOs
-+ UTF-8 / Unicode / multibyte filename support.
 + Add a way of quitting other than typing control-C
 
 BUGS
