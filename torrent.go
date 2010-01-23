@@ -705,16 +705,16 @@ func (t *TorrentSession) isInteresting(p *peerState) bool {
 // TODO: See if we can overlap IO with computation
 
 func checkPieces(fs FileStore, totalLength int64, m *MetaInfo) (good, bad int64, goodBits *Bitset, err os.Error) {
-	currentSums, err := computeSums(fs, totalLength, m.Info.PieceLength)
-	if err != nil {
-		return
-	}
 	pieceLength := m.Info.PieceLength
 	numPieces := (totalLength + pieceLength - 1) / pieceLength
 	goodBits = NewBitset(int(numPieces))
 	ref := m.Info.Pieces
-	if len(ref) != int(numPieces*6) {
-		err = os.NewError("Incorrect pieces length")
+	if len(ref) != int(numPieces*sha1.Size) {
+		err = os.NewError("Incorrect Info.Pieces length")
+		return
+	}
+	currentSums, err := computeSums(fs, totalLength, m.Info.PieceLength)
+	if err != nil {
 		return
 	}
 	for i := int64(0); i < numPieces; i++ {
