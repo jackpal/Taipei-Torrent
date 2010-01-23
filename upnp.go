@@ -39,12 +39,13 @@ func Discover() (nat NAT, err os.Error) {
 		return
 	}
 
+    st := "ST: urn:schemas-upnp-org:device:InternetGatewayDevice:1\r\n"
 	buf := bytes.NewBufferString(
 		"M-SEARCH * HTTP/1.1\r\n" +
 			"HOST: 239.255.255.250:1900\r\n" +
-			"ST:upnp:rootdevice\r\n" +
-			"MAN:\"ssdp:discover\"\r\n" +
-			"MX:3\r\n\r\n")
+			 st +
+			"MAN: \"ssdp:discover\"\r\n" +
+			"MX: 2\r\n\r\n")
 	message := buf.Bytes()
 	for i := 0; i < 3; i++ {
 		_, err = socket.WriteToUDP(message, ssdp)
@@ -53,7 +54,7 @@ func Discover() (nat NAT, err os.Error) {
 		}
 	}
 	answerBytes := make([]byte, 1024)
-	for i := 0; i < 10; i++ {
+	for i := 0; i < 3; i++ {
 		var n int
 		n, _, err = socket.ReadFromUDP(answerBytes)
 		if err != nil {
@@ -62,7 +63,7 @@ func Discover() (nat NAT, err os.Error) {
 			// return
 		}
 		answer := string(answerBytes[0:n])
-		if strings.Index(answer, "\r\nST: upnp:rootdevice\r\n") < 0 {
+		if strings.Index(answer, "\r\n" + st) < 0 {
 			continue
 		}
 		locString := "\r\nLocation: "

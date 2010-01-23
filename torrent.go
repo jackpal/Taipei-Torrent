@@ -28,6 +28,7 @@ func binaryToDottedPort(port string) string {
 func chooseListenPort() (listenPort int, err os.Error) {
 	listenPort = *port
 	if *useUPnP {
+	    log.Stderr("Using UPnP to open port.")
 		// TODO: Look for ports currently in use. Handle collisions.
 		var nat NAT
 		nat, err = Discover()
@@ -133,7 +134,8 @@ type TorrentSession struct {
 	activePieces    map[int]*ActivePiece
 }
 
-func NewTorrentSession(torrent string) (ts *TorrentSession, err os.Error) {
+func NewTorrentSession(torrent string, listenPort int) (ts *TorrentSession, err os.Error) {
+	
 	t := &TorrentSession{peers: make(map[string]*peerState),
 		peerMessageChan: make(chan peerMessage),
 		activePieces: make(map[int]*ActivePiece)}
@@ -166,11 +168,6 @@ func NewTorrentSession(torrent string) (ts *TorrentSession, err os.Error) {
 	t.goodPieces = int(good)
 	log.Stderr("Good pieces:", good, "Bad pieces:", bad)
 
-	listenPort, err := chooseListenPort()
-	if err != nil {
-		log.Stderr("Could not choose listen port.")
-		return
-	}
 	left := bad * t.m.Info.PieceLength
 	if !t.pieceSet.IsSet(t.totalPieces - 1) {
 		left = left - t.m.Info.PieceLength + int64(t.lastPieceLength)
@@ -238,9 +235,9 @@ func (t *TorrentSession) ClosePeer(peer *peerState) {
 	t.peers[peer.address] = peer, false
 }
 
-func doTorrent() (err os.Error) {
+func doTorrent(listenPort int) (err os.Error) {
 	log.Stderr("Fetching torrent.")
-	ts, err := NewTorrentSession(*torrent)
+	ts, err := NewTorrentSession(*torrent, listenPort)
 	if err != nil {
 		return
 	}

@@ -16,7 +16,12 @@ func main() {
 	// testUPnP()
 	flag.Parse()
 	log.Stderr("Starting.")
-	err := doTorrent()
+	listenPort, err := chooseListenPort()
+	if err != nil {
+		log.Stderr("Could not choose listen port.")
+		return
+	}
+	err = doTorrent(listenPort)
 	if err != nil {
 		log.Stderr("Failed: ", err)
 	} else {
