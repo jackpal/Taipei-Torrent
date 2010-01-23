@@ -47,14 +47,12 @@ func Discover() (nat NAT, err os.Error) {
 			"MAN: \"ssdp:discover\"\r\n" +
 			"MX: 2\r\n\r\n")
 	message := buf.Bytes()
+	answerBytes := make([]byte, 1024)
 	for i := 0; i < 3; i++ {
 		_, err = socket.WriteToUDP(message, ssdp)
 		if err != nil {
 			return
 		}
-	}
-	answerBytes := make([]byte, 1024)
-	for i := 0; i < 3; i++ {
 		var n int
 		n, _, err = socket.ReadFromUDP(answerBytes)
 		if err != nil {
