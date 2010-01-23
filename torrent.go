@@ -153,6 +153,9 @@ func NewTorrentSession(torrent string) (ts *TorrentSession, err os.Error) {
 
 	log.Stderr("Computing pieces left")
 	good, bad, pieceSet, err := checkPieces(t.fileStore, totalSize, t.m)
+	if err != nil {
+		return
+	}
 	t.pieceSet = pieceSet
 	t.totalPieces = int(good + bad)
 	t.goodPieces = int(good)
@@ -710,6 +713,10 @@ func checkPieces(fs FileStore, totalLength int64, m *MetaInfo) (good, bad int64,
 	numPieces := (totalLength + pieceLength - 1) / pieceLength
 	goodBits = NewBitset(int(numPieces))
 	ref := m.Info.Pieces
+	if len(ref) != int(numPieces*6) {
+		err = os.NewError("Incorrect pieces length")
+		return
+	}
 	for i := int64(0); i < numPieces; i++ {
 		base := i * sha1.Size
 		end := base + sha1.Size

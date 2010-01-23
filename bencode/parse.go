@@ -107,18 +107,19 @@ func parse(r Reader, build Builder) (err os.Error) {
 Switch:
 	c, err := r.ReadByte()
 	if err != nil {
-		return
+		goto exit
 	}
 	switch {
 	case c >= '1' && c <= '9':
 		// String
 		err = r.UnreadByte()
 		if err != nil {
-			return
+			goto exit
 		}
-		str, err := decodeString(r)
+		var str string
+		str, err = decodeString(r)
 		if err != nil {
-			return
+			goto exit
 		}
 		build.String(str)
 
@@ -127,39 +128,44 @@ Switch:
 
 		build.Map()
 		for {
-			c, err := r.ReadByte()
+			c, err = r.ReadByte()
 			if err != nil {
-				return
+				goto exit
 			}
 			if c == 'e' {
 				break
 			}
 			err = r.UnreadByte()
 			if err != nil {
-				return
+				goto exit
 			}
-			key, err := decodeString(r)
+			var key string
+			key, err = decodeString(r)
 			if err != nil {
-				return
+				goto exit
 			}
 			// TODO: in pendantic mode, check for keys in ascending order.
 			err = parse(r, build.Key(key))
 			if err != nil {
-				return
+				goto exit
 			}
 		}
 
 	case c == 'i':
-		buf, err := collectInt(r, 'e')
+		var buf []byte
+		buf, err = collectInt(r, 'e')
 		if err != nil {
-			return
+			goto exit
 		}
-		str := string(buf)
+		var str string
+		var i int64
+		var i2 uint64
+		str = string(buf)
 		// If the number is exactly an integer, use that.
-		if i, err := strconv.Atoi64(str); err == nil {
+		if i, err = strconv.Atoi64(str); err == nil {
 			build.Int64(i)
-		} else if i, err := strconv.Atoui64(str); err == nil {
-			build.Uint64(i)
+		} else if i2, err = strconv.Atoui64(str); err == nil {
+			build.Uint64(i2)
 		} else {
 			err = os.NewError("Bad integer")
 		}
@@ -169,27 +175,27 @@ Switch:
 		build.Array()
 		n := 0
 		for {
-			c, err := r.ReadByte()
+			c, err = r.ReadByte()
 			if err != nil {
-				return
+				goto exit
 			}
 			if c == 'e' {
 				break
 			}
 			err = r.UnreadByte()
 			if err != nil {
-				return
+				goto exit
 			}
 			err = parse(r, build.Elem(n))
 			if err != nil {
-				return
+				goto exit
 			}
 			n++
 		}
 	default:
 		err = os.NewError("Unexpected character")
 	}
-
+exit:
 	build.Flush()
 	return
 }

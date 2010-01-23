@@ -70,6 +70,7 @@ func getMetaInfo(torrent string) (metaInfo *MetaInfo, err os.Error) {
 	m, err = bencode.Decode(input)
 	input.Close()
 	if err != nil {
+		err = os.NewError("Couldn't parse torrent file.")
 		return
 	}
 
