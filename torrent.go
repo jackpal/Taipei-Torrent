@@ -36,7 +36,13 @@ func chooseListenPort() (listenPort int, err os.Error) {
 			log.Stderr("Unable to discover NAT")
 			return
 		}
-		err = nat.ForwardPort("TCP", listenPort, listenPort, "Taipei-Torrent", 0)
+		// TODO: Check if the port is already mapped by someone else.
+		err = nat.DeletePortMapping("TCP", listenPort)
+		if err != nil {
+			log.Stderr("Unable to delete port mapping")
+			return
+		}
+		err = nat.AddPortMapping("TCP", listenPort, listenPort, "Taipei-Torrent", 0)
 		if err != nil {
 			log.Stderr("Unable to forward listen port")
 			return
@@ -58,6 +64,7 @@ func listenForPeerConnections(listenPort int, conChan chan net.Conn) {
 		if err != nil {
 			log.Stderr("Listener failed:", err)
 		} else {
+			// log.Stderr("A peer contacted us", conn.RemoteAddr().String())
 			conChan <- conn
 		}
 	}
@@ -289,7 +296,6 @@ func (t *TorrentSession) DoTorrent(listenPort int) (err os.Error) {
 					log.Stderr("Closing peer", peer.address, "because", err2)
 				}
 				t.ClosePeer(peer)
-				// TODO consider looking for more peers
 			}
 		case conn := <-conChan:
 			t.AddPeer(conn)
@@ -303,7 +309,7 @@ func (t *TorrentSession) DoTorrent(listenPort int) (err os.Error) {
 				"uploaded:", t.si.Uploaded, "ratio", ratio)
 			// TODO: Remove this hack when we support DHT and/or PEX
 			// In a large well-seeded swarm, try to maintain a reasonable number of peers.
-			if len(t.peers) < 15 && t.ti.Complete > 100 {
+			if len(t.peers) < 15 && t.goodPieces < t.totalPieces && t.ti.Complete > 100 {
 				t.fetchTrackerInfo("")
 			}
 		case _ = <-keepAliveChan:
