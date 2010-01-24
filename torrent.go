@@ -15,6 +15,8 @@ import (
 
 const NS_PER_S = 1000000000
 
+const MAX_PEERS = 60
+
 func peerId() string {
 	sid := "-tt" + strconv.Itoa(os.Getpid()) + "_" + strconv.Itoa64(rand.Int63())
 	return sid[0:20]
@@ -139,6 +141,7 @@ type TorrentSession struct {
 	lastPieceLength int
 	goodPieces      int
 	activePieces    map[int]*ActivePiece
+	lastHeartBeat	int64
 }
 
 func NewTorrentSession(torrent string, listenPort int) (ts *TorrentSession, err os.Error) {
@@ -225,6 +228,10 @@ func connectToPeer(peer string, ch chan net.Conn) {
 func (t *TorrentSession) AddPeer(conn net.Conn) {
 	peer := conn.RemoteAddr().String()
 	// log.Stderr("Adding peer", peer)
+	if len(t.peers) >= MAX_PEERS {
+	    log.Stderr("We have enough peers. Rejecting additional peer", peer)
+	    conn.Close()
+	}
 	ps := NewPeerState(conn)
 	ps.address = peer
 	var header [68]byte
@@ -245,7 +252,19 @@ func (t *TorrentSession) ClosePeer(peer *peerState) {
 	t.peers[peer.address] = peer, false
 }
 
+func (t *TorrentSession) deadlockDetector() {
+    for {
+        time.Sleep(60 * NS_PER_S)
+        if time.Seconds() > t.lastHeartBeat + 60 {
+    		log.Stderr("Starvation or deadlock of main thread detected")
+    		panic("Killed by deadlock detector")
+    	}
+    }
+}
+
 func (t *TorrentSession) DoTorrent(listenPort int) (err os.Error) {
+    t.lastHeartBeat = time.Seconds()
+    go t.deadlockDetector()
 	log.Stderr("Fetching torrent.")
 	rechokeChan := time.Tick(10 * NS_PER_S)
 	// Start out polling tracker every 20 seconds untill we get a response.
@@ -301,6 +320,7 @@ func (t *TorrentSession) DoTorrent(listenPort int) (err os.Error) {
 			t.AddPeer(conn)
 		case _ = <-rechokeChan:
 			// TODO: recalculate who to choke / unchoke
+			t.lastHeartBeat = time.Seconds()
 			ratio := float64(0.0)
 			if t.si.Downloaded > 0 {
 				ratio = float64(t.si.Uploaded) / float64(t.si.Downloaded)
@@ -479,7 +499,7 @@ func (t *TorrentSession) RecordBlock(p *peerState, piece, begin, length uint32) 
 			}
 		}
 	} else {
-		log.Stderr("Duplicate.")
+		log.Stderr("Received a block we already have.", piece, block, p.address)
 	}
 	return
 }
