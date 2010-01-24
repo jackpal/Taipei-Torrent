@@ -28,7 +28,7 @@ func binaryToDottedPort(port string) string {
 func chooseListenPort() (listenPort int, err os.Error) {
 	listenPort = *port
 	if *useUPnP {
-	    log.Stderr("Using UPnP to open port.")
+		log.Stderr("Using UPnP to open port.")
 		// TODO: Look for ports currently in use. Handle collisions.
 		var nat NAT
 		nat, err = Discover()
@@ -135,7 +135,7 @@ type TorrentSession struct {
 }
 
 func NewTorrentSession(torrent string, listenPort int) (ts *TorrentSession, err os.Error) {
-	
+
 	t := &TorrentSession{peers: make(map[string]*peerState),
 		peerMessageChan: make(chan peerMessage),
 		activePieces: make(map[int]*ActivePiece)}
@@ -159,7 +159,10 @@ func NewTorrentSession(torrent string, listenPort int) (ts *TorrentSession, err 
 	t.lastPieceLength = int(t.totalSize % t.m.Info.PieceLength)
 
 	log.Stderr("Computing pieces left")
+	start := time.Nanoseconds()
 	good, bad, pieceSet, err := checkPieces(t.fileStore, totalSize, t.m)
+	end := time.Nanoseconds()
+	log.Stderr("Took", float64(end-start)/float64(NS_PER_S), "seconds")
 	if err != nil {
 		return
 	}
@@ -235,40 +238,40 @@ func (t *TorrentSession) ClosePeer(peer *peerState) {
 	t.peers[peer.address] = peer, false
 }
 
-func doTorrent(listenPort int) (err os.Error) {
+func (t *TorrentSession) DoTorrent(listenPort int) (err os.Error) {
 	log.Stderr("Fetching torrent.")
-	ts, err := NewTorrentSession(*torrent, listenPort)
-	if err != nil {
-		return
-	}
 	rechokeChan := time.Tick(10 * NS_PER_S)
 	// Start out polling tracker every 20 seconds untill we get a response.
 	// Maybe be exponential backoff here?
 	retrackerChan := time.Tick(20 * NS_PER_S)
 	keepAliveChan := time.Tick(60 * NS_PER_S)
-	ts.trackerInfoChan = make(chan *TrackerResponse)
+	t.trackerInfoChan = make(chan *TrackerResponse)
 
 	conChan := make(chan net.Conn)
 
-	go listenForPeerConnections(ts.si.Port, conChan)
+	go listenForPeerConnections(t.si.Port, conChan)
 
-	ts.fetchTrackerInfo("started")
+	t.fetchTrackerInfo("started")
 
 	for {
 		select {
 		case _ = <-retrackerChan:
-			ts.fetchTrackerInfo("")
-		case ti := <-ts.trackerInfoChan:
-			ts.ti = ti
-			log.Stderr("Torrent has", ts.ti.Complete, "seeders and", ts.ti.Incomplete, "leachers.")
-			peers := ts.ti.Peers
+			t.fetchTrackerInfo("")
+		case ti := <-t.trackerInfoChan:
+			t.ti = ti
+			log.Stderr("Torrent has", t.ti.Complete, "seeders and", t.ti.Incomplete, "leachers.")
+			peers := t.ti.Peers
+			log.Stderr("Tracker gave us", len(peers)/6, "peers")
+			newPeerCount := 0
 			for i := 0; i < len(peers); i += 6 {
 				peer := binaryToDottedPort(peers[i : i+6])
-				if _, ok := ts.peers[peer]; !ok {
+				if _, ok := t.peers[peer]; !ok {
+					newPeerCount++
 					go connectToPeer(peer, conChan)
 				}
 			}
-			interval := ts.ti.Interval
+			log.Stderr("Contacting", newPeerCount, "new peers")
+			interval := t.ti.Interval
 			if interval < 120 {
 				interval = 120
 			} else if interval > 24*3600 {
@@ -277,34 +280,46 @@ func doTorrent(listenPort int) (err os.Error) {
 			log.Stderr("..checking again in", interval, "seconds.")
 			retrackerChan = time.Tick(int64(interval) * NS_PER_S)
 
-		case pm := <-ts.peerMessageChan:
+		case pm := <-t.peerMessageChan:
 			peer, message := pm.peer, pm.message
 			peer.lastReadTime = time.Seconds()
-			err2 := ts.DoMessage(peer, message)
+			err2 := t.DoMessage(peer, message)
 			if err2 != nil {
-				// log.Stderr("Closing peer", peer.address, "because", err2)
-				ts.ClosePeer(peer)
+				if err2 != os.EOF {
+					log.Stderr("Closing peer", peer.address, "because", err2)
+				}
+				t.ClosePeer(peer)
 				// TODO consider looking for more peers
 			}
 		case conn := <-conChan:
-			ts.AddPeer(conn)
+			t.AddPeer(conn)
 		case _ = <-rechokeChan:
 			// TODO: recalculate who to choke / unchoke
-			log.Stderr("Peers:", len(ts.peers), "downloaded:", ts.si.Downloaded)
+			ratio := float64(0.0)
+			if t.si.Downloaded > 0 {
+				ratio = float64(t.si.Uploaded) / float64(t.si.Downloaded)
+			}
+			log.Stderr("Peers:", len(t.peers), "downloaded:", t.si.Downloaded,
+				"uploaded:", t.si.Uploaded, "ratio", ratio)
+			// TODO: Remove this hack when we support DHT and/or PEX
+			// In a large well-seeded swarm, try to maintain a reasonable number of peers.
+			if len(t.peers) < 15 && t.ti.Complete > 100 {
+				t.fetchTrackerInfo("")
+			}
 		case _ = <-keepAliveChan:
 			now := time.Seconds()
-			for _, peer := range (ts.peers) {
+			for _, peer := range t.peers {
 				if peer.lastReadTime != 0 && now-peer.lastReadTime > 3*60 {
 					// log.Stderr("Closing peer", peer.address, "because timed out.")
-					ts.ClosePeer(peer)
+					t.ClosePeer(peer)
 					continue
 				}
-				err2 := ts.doCheckRequests(peer)
+				err2 := t.doCheckRequests(peer)
 				if err2 != nil {
 					if err2 != os.EOF {
-						// log.Stderr("Closing peer", peer.address, "because", err2)
+						log.Stderr("Closing peer", peer.address, "because", err2)
 					}
-					ts.ClosePeer(peer)
+					t.ClosePeer(peer)
 					continue
 				}
 				peer.keepAlive(now)
@@ -494,7 +509,7 @@ func (t *TorrentSession) doCheckRequests(p *peerState) (err os.Error) {
 		if now-v > 30 {
 			piece := int(k >> 32)
 			block := int(k) / STANDARD_BLOCK_LENGTH
-			log.Stderr("timing out request of", piece, ".", block)
+			// log.Stderr("timing out request of", piece, ".", block)
 			t.removeRequest(piece, block)
 		}
 	}
@@ -578,7 +593,7 @@ func (t *TorrentSession) DoMessage(p *peerState, message []byte) (err os.Error) 
 			}
 			t.checkInteresting(p)
 		case 6:
-			// log.Stderr("request")
+			// log.Stderr("request", p.address)
 			if len(message) != 13 {
 				return os.NewError("Unexpected message length")
 			}
@@ -635,7 +650,7 @@ func (t *TorrentSession) DoMessage(p *peerState, message []byte) (err os.Error) 
 			t.RecordBlock(p, index, begin, uint32(length))
 			err = t.RequestBlock(p)
 		case 8:
-			log.Stderr("cancel")
+			// log.Stderr("cancel")
 			if len(message) != 13 {
 				return os.NewError("Unexpected message length")
 			}

@@ -21,7 +21,12 @@ func main() {
 		log.Stderr("Could not choose listen port.")
 		return
 	}
-	err = doTorrent(listenPort)
+	ts, err := NewTorrentSession(*torrent, listenPort)
+	if err != nil {
+		log.Stderr("Could not create torrent session.", err)
+		return
+	}
+	err = ts.DoTorrent(listenPort)
 	if err != nil {
 		log.Stderr("Failed: ", err)
 	} else {
