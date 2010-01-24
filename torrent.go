@@ -33,18 +33,18 @@ func chooseListenPort() (listenPort int, err os.Error) {
 		var nat NAT
 		nat, err = Discover()
 		if err != nil {
-			log.Stderr("Unable to discover NAT")
+			log.Stderr("Unable to discover NAT", err)
 			return
 		}
 		// TODO: Check if the port is already mapped by someone else.
-		err = nat.DeletePortMapping("TCP", listenPort)
-		if err != nil {
-			log.Stderr("Unable to delete port mapping")
-			return
+		err2 := nat.DeletePortMapping("TCP", listenPort)
+		if err2 != nil {
+			log.Stderr("Unable to delete port mapping", err2)
 		}
-		err = nat.AddPortMapping("TCP", listenPort, listenPort, "Taipei-Torrent", 0)
+		err = nat.AddPortMapping("TCP", listenPort, listenPort,
+			"Taipei-Torrent port "+strconv.Itoa(listenPort), 0)
 		if err != nil {
-			log.Stderr("Unable to forward listen port")
+			log.Stderr("Unable to forward listen port", err)
 			return
 		}
 	}
@@ -707,7 +707,7 @@ func (t *TorrentSession) sendRequest(peer *peerState, index, begin, length uint3
 			return
 		}
 		peer.sendMessage(buf)
-		t.si.Uploaded += STANDARD_BLOCK_LENGTH
+		t.si.Uploaded += int64(length)
 	}
 	return
 }
