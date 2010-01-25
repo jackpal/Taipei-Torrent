@@ -21,7 +21,7 @@ type peerState struct {
 	address         string
 	id              string
 	writeChan       chan []byte
-	writeChan2       chan []byte
+	writeChan2      chan []byte
 	lastWriteTime   int64   // In seconds
 	lastReadTime    int64   // In seconds
 	have            *Bitset // What the peer has told us it has
@@ -35,30 +35,29 @@ type peerState struct {
 }
 
 func queueingWriter(in, out chan []byte) {
-    queue := make(map[int] []byte)
-    head, tail := 0, 0
-    for ! closed(in) {
-        if head == tail {
-            select {
-            case m := <- in:
-                ha
-                queue[head] = m
-                head++
-            }
-        } else {
-            select {
-            case m := <- in:
-                queue[head] = m
-                head++
-            case out <- queue[tail]:
-                queue[tail] = nil,false
-                tail++
-            }
-        }            
-    }
-    // We throw away any messages waiting to be sent, including the
-    // nil message that is automatically sent when the in channel is closed
-    close(out)
+	queue := make(map[int][]byte)
+	head, tail := 0, 0
+	for !closed(in) {
+		if head == tail {
+			select {
+			case m := <-in:
+				queue[head] = m
+				head++
+			}
+		} else {
+			select {
+			case m := <-in:
+				queue[head] = m
+				head++
+			case out <- queue[tail]:
+				queue[tail] = nil, false
+				tail++
+			}
+		}
+	}
+	// We throw away any messages waiting to be sent, including the
+	// nil message that is automatically sent when the in channel is closed
+	close(out)
 }
 
 func NewPeerState(conn net.Conn) *peerState {

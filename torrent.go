@@ -141,7 +141,7 @@ type TorrentSession struct {
 	lastPieceLength int
 	goodPieces      int
 	activePieces    map[int]*ActivePiece
-	lastHeartBeat	int64
+	lastHeartBeat   int64
 }
 
 func NewTorrentSession(torrent string, listenPort int) (ts *TorrentSession, err os.Error) {
@@ -229,8 +229,8 @@ func (t *TorrentSession) AddPeer(conn net.Conn) {
 	peer := conn.RemoteAddr().String()
 	// log.Stderr("Adding peer", peer)
 	if len(t.peers) >= MAX_PEERS {
-	    log.Stderr("We have enough peers. Rejecting additional peer", peer)
-	    conn.Close()
+		log.Stderr("We have enough peers. Rejecting additional peer", peer)
+		conn.Close()
 	}
 	ps := NewPeerState(conn)
 	ps.address = peer
@@ -253,18 +253,18 @@ func (t *TorrentSession) ClosePeer(peer *peerState) {
 }
 
 func (t *TorrentSession) deadlockDetector() {
-    for {
-        time.Sleep(60 * NS_PER_S)
-        if time.Seconds() > t.lastHeartBeat + 60 {
-    		log.Stderr("Starvation or deadlock of main thread detected")
-    		panic("Killed by deadlock detector")
-    	}
-    }
+	for {
+		time.Sleep(60 * NS_PER_S)
+		if time.Seconds() > t.lastHeartBeat+60 {
+			log.Stderr("Starvation or deadlock of main thread detected")
+			panic("Killed by deadlock detector")
+		}
+	}
 }
 
 func (t *TorrentSession) DoTorrent(listenPort int) (err os.Error) {
-    t.lastHeartBeat = time.Seconds()
-    go t.deadlockDetector()
+	t.lastHeartBeat = time.Seconds()
+	go t.deadlockDetector()
 	log.Stderr("Fetching torrent.")
 	rechokeChan := time.Tick(10 * NS_PER_S)
 	// Start out polling tracker every 20 seconds untill we get a response.
