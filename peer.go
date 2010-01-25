@@ -21,6 +21,7 @@ type peerState struct {
 	address         string
 	id              string
 	writeChan       chan []byte
+	writeChan2       chan []byte
 	lastWriteTime   int64   // In seconds
 	lastReadTime    int64   // In seconds
 	have            *Bitset // What the peer has told us it has
@@ -33,9 +34,38 @@ type peerState struct {
 	our_requests    map[uint64]int64 // What we requested, when we requested it
 }
 
+func queueingWriter(in, out chan []byte) {
+    queue := make(map[int] []byte)
+    head, tail := 0, 0
+    for ! closed(in) {
+        if head == tail {
+            select {
+            case m := <- in:
+                ha
+                queue[head] = m
+                head++
+            }
+        } else {
+            select {
+            case m := <- in:
+                queue[head] = m
+                head++
+            case out <- queue[tail]:
+                queue[tail] = nil,false
+                tail++
+            }
+        }            
+    }
+    // We throw away any messages waiting to be sent, including the
+    // nil message that is automatically sent when the in channel is closed
+    close(out)
+}
+
 func NewPeerState(conn net.Conn) *peerState {
 	writeChan := make(chan []byte)
-	return &peerState{writeChan: writeChan, conn: conn,
+	writeChan2 := make(chan []byte)
+	go queueingWriter(writeChan, writeChan2)
+	return &peerState{writeChan: writeChan, writeChan2: writeChan2, conn: conn,
 		am_choking: true, peer_choking: true,
 		peer_requests: make(map[uint64]bool, MAX_PEER_REQUESTS),
 		our_requests: make(map[uint64]int64, MAX_OUR_REQUESTS)}
@@ -154,7 +184,7 @@ func (p *peerState) peerWriter(errorChan chan peerMessage, header []byte) {
 		goto exit
 	}
 	// log.Stderr("Writing messages")
-	for msg := range p.writeChan {
+	for msg := range p.writeChan2 {
 		// log.Stderr("Writing", len(msg), conn.RemoteAddr())
 		err = writeNBOUint32(p.conn, uint32(len(msg)))
 		if err != nil {
