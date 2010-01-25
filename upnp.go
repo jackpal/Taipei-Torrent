@@ -6,7 +6,6 @@ package main
 import (
 	"bytes"
 	"jackpal/http"
-	"log"
 	"os"
 	"net"
 	"strings"
@@ -16,11 +15,12 @@ import (
 
 type upnpNAT struct {
 	serviceURL string
+	ourIP      string
 }
 
 type NAT interface {
-	ForwardPort(protocol string, externalPort, internalPort int, description string, timeout int) (err os.Error)
-	DeleteForwardingRule(protocol string, externalPort int) (err os.Error)
+	AddPortMapping(protocol string, externalPort, internalPort int, description string, timeout int) (err os.Error)
+	DeletePortMapping(protocol string, externalPort int) (err os.Error)
 }
 
 func Discover() (nat NAT, err os.Error) {
@@ -39,11 +39,11 @@ func Discover() (nat NAT, err os.Error) {
 		return
 	}
 
-    st := "ST: urn:schemas-upnp-org:device:InternetGatewayDevice:1\r\n"
+	st := "ST: urn:schemas-upnp-org:device:InternetGatewayDevice:1\r\n"
 	buf := bytes.NewBufferString(
 		"M-SEARCH * HTTP/1.1\r\n" +
 			"HOST: 239.255.255.250:1900\r\n" +
-			 st +
+			st +
 			"MAN: \"ssdp:discover\"\r\n" +
 			"MX: 2\r\n\r\n")
 	message := buf.Bytes()
@@ -61,7 +61,7 @@ func Discover() (nat NAT, err os.Error) {
 			// return
 		}
 		answer := string(answerBytes[0:n])
-		if strings.Index(answer, "\r\n" + st) < 0 {
+		if strings.Index(answer, "\r\n"+st) < 0 {
 			continue
 		}
 		locString := "\r\nLocation: "
@@ -80,7 +80,12 @@ func Discover() (nat NAT, err os.Error) {
 		if err != nil {
 			return
 		}
-		nat = &upnpNAT{serviceURL: serviceURL}
+		var ourIP string
+		ourIP, err = getOurIP()
+		if err != nil {
+			return
+		}
+		nat = &upnpNAT{serviceURL: serviceURL, ourIP: ourIP}
 		break
 	}
 	socket.Close()
@@ -128,6 +133,24 @@ func getChildService(d *Device, serviceType string) *Service {
 		}
 	}
 	return nil
+}
+
+
+func getOurIP() (ip string, err os.Error) {
+	hostname, err := os.Hostname()
+	if err != nil {
+		return
+	}
+	_, addrs, err := net.LookupHost(hostname)
+	if err != nil {
+		return
+	}
+	if len(addrs) < 1 {
+		err = os.NewError("No addresses.")
+		return
+	}
+	ip = addrs[0]
+	return
 }
 
 func getServiceURL(rootURL string) (url string, err os.Error) {
@@ -225,7 +248,7 @@ func (sb *stringBuffer) Seek(offset int64, whence int) (ret int64, err os.Error)
 }
 
 func soapRequest(url, function, message string) (r *http.Response, err os.Error) {
-	fullMessage := "<?xml version=\"1.0\"?>" +
+	fullMessage := "<?xml version=\"1.0\" ?>" +
 		"<s:Envelope xmlns:s=\"http://schemas.xmlsoap.org/soap/envelope/\" s:encodingStyle=\"http://schemas.xmlsoap.org/soap/encoding/\">\r\n" +
 		"<s:Body>" + message + "</s:Body></s:Envelope>"
 
@@ -234,7 +257,7 @@ func soapRequest(url, function, message string) (r *http.Response, err os.Error)
 	req.Body = NewStringBuffer(fullMessage)
 	req.UserAgent = "Darwin/10.0.0, UPnP/1.0, MiniUPnPc/1.3"
 	req.Header = map[string]string{
-		"Content-Type": "text/xml",
+		"Content-Type": "text/xml ; charset=\"utf-8\"",
 		// "Transfer-Encoding": "chunked",
 		"SOAPAction": "\"urn:schemas-upnp-org:service:WANIPConnection:1#" + function + "\"",
 		"Connection": "Close",
@@ -251,7 +274,8 @@ func soapRequest(url, function, message string) (r *http.Response, err os.Error)
 
 	r, err = http.Send(&req)
 
-	if r.StatusCode >= 4000 {
+	if r.StatusCode >= 400 {
+		// log.Stderr(function, r.StatusCode)
 		err = os.NewError("Error " + strconv.Itoa(r.StatusCode) + " for " + function)
 		r.Body.Close()
 		r = nil
@@ -260,38 +284,63 @@ func soapRequest(url, function, message string) (r *http.Response, err os.Error)
 	return
 }
 
-func (n *upnpNAT) ForwardPort(protocol string, externalPort, internalPort int, description string, timeout int) (err os.Error) {
+func (n *upnpNAT) GetStatusInfo() (err os.Error) {
+
+	message := "<u:GetStatusInfo xmlns:u=\"urn:schemas-upnp-org:service:WANIPConnection:1\">\r\n" +
+		"</u:GetStatusInfo>"
+
+	var response *http.Response
+	response, err = soapRequest(n.serviceURL, "GetStatusInfo", message)
+	if err != nil {
+		return
+	}
+
+	// TODO: Write a soap reply parser. It has to eat the Body and envelope tags...
+
+	response.Body.Close()
+	return
+}
+
+
+func (n *upnpNAT) AddPortMapping(protocol string, externalPort, internalPort int, description string, timeout int) (err os.Error) {
+
 	message := "<u:AddPortMapping xmlns:u=\"urn:schemas-upnp-org:service:WANIPConnection:1\">\r\n" +
 		"<NewRemoteHost></NewRemoteHost><NewExternalPort>" + strconv.Itoa(externalPort) +
 		"</NewExternalPort><NewProtocol>" + protocol + "</NewProtocol>" +
-		"<NewInternalPort>" + strconv.Itoa(internalPort) + "</NewInternalPort><NewInternalClient>" +
-		"192.168.0.124" + // TODO: Put our IP address here.
-		"</NewInternalClient><NewEnabled>1</NewEnabled><NewPortMappingDescription>" +
+		"<NewInternalPort>" + strconv.Itoa(internalPort) + "</NewInternalPort>" +
+		"<NewInternalClient>" + n.ourIP + "</NewInternalClient>" +
+		"<NewEnabled>1</NewEnabled><NewPortMappingDescription>" +
 		description +
 		"</NewPortMappingDescription><NewLeaseDuration>" + strconv.Itoa(timeout) + "</NewLeaseDuration></u:AddPortMapping>"
 
 	var response *http.Response
 	response, err = soapRequest(n.serviceURL, "AddPortMapping", message)
+	if err != nil {
+		return
+	}
 
 	// TODO: check response to see if the port was forwarded
+	// log.Stderr(message, response)
 	_ = response
 	return
 }
 
-func (n *upnpNAT) DeleteForwardingRule(protocol string, externalPort int) (err os.Error) {
-	return
-}
 
-func testUPnP() {
-	log.Stderr("Starting UPnP test")
-	nat, err := Discover()
-	log.Stderr("nat ", nat, "err ", err)
+func (n *upnpNAT) DeletePortMapping(protocol string, externalPort int) (err os.Error) {
+
+	message := "<u:DeletePortMapping xmlns:u=\"urn:schemas-upnp-org:service:WANIPConnection:1\">\r\n" +
+		"<NewRemoteHost></NewRemoteHost><NewExternalPort>" + strconv.Itoa(externalPort) +
+		"</NewExternalPort><NewProtocol>" + protocol + "</NewProtocol>" +
+		"</u:DeletePortMapping>"
+
+	var response *http.Response
+	response, err = soapRequest(n.serviceURL, "DeletePortMapping", message)
 	if err != nil {
 		return
 	}
-	port := 60001
-	err = nat.ForwardPort("TCP", port, port, "Taipei-Torrent", 0)
-	log.Stderr("err ", err)
-	err = nat.DeleteForwardingRule("TCP", port)
-	log.Stderr("err ", err)
+
+	// TODO: check response to see if the port was deleted
+	// log.Stderr(message, response)
+	_ = response
+	return
 }
