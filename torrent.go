@@ -482,6 +482,7 @@ func (t *TorrentSession) RecordBlock(p *peerState, piece, begin, length uint32) 
 			log.Stderr("Have", t.goodPieces, "of", t.totalPieces, "pieces.")
 			if t.goodPieces == t.totalPieces {
 				t.fetchTrackerInfo("completed")
+				// TODO: Drop connections to all seeders.
 			}
 			for _, p := range (t.peers) {
 				if p.have != nil {
