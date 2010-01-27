@@ -41,8 +41,5 @@ Development Roadmap
 
 BUGS
 - Need to understand why some peers are sending 16K "port" messages.
-- Our current architecture is deadlock-prone because the "peerWriter" needs
-  to buffer an arbitrary number of messages. We need to switch to a pull
-  model where we pick just one message at a time to send to the peer.
 
 
