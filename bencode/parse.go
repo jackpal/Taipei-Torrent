@@ -10,6 +10,7 @@ package bencode
 import (
 	"bufio"
 	"bytes"
+	"fmt"
 	"io"
 	"os"
 	"strconv"
@@ -110,7 +111,7 @@ Switch:
 		goto exit
 	}
 	switch {
-	case c >= '1' && c <= '9':
+	case c >= '0' && c <= '9':
 		// String
 		err = r.UnreadByte()
 		if err != nil {
@@ -193,7 +194,7 @@ Switch:
 			n++
 		}
 	default:
-		err = os.NewError("Unexpected character")
+		err = os.NewError(fmt.Sprintf("Unexpected character: '%v'", c))
 	}
 exit:
 	build.Flush()

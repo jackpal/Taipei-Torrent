@@ -70,13 +70,13 @@ func getMetaInfo(torrent string) (metaInfo *MetaInfo, err os.Error) {
 	m, err = bencode.Decode(input)
 	input.Close()
 	if err != nil {
-		err = os.NewError("Couldn't parse torrent file.")
+		err = os.NewError("Couldn't parse torrent file phase 1: " + err.String())
 		return
 	}
 
 	topMap, ok := m.(map[string]interface{})
 	if !ok {
-		err = os.NewError("Couldn't parse torrent file.")
+		err = os.NewError("Couldn't parse torrent file phase 2.")
 		return
 	}
 
