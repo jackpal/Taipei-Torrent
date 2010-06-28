@@ -61,9 +61,7 @@ func checkFuzzyEqualValue(a, b reflect.Value) (err os.Error) {
 func fuzzyEqualInt64(a int64, b reflect.Value) bool {
 	switch vb := b.(type) {
 	case *reflect.IntValue:
-		return a == (int64)(vb.Get())
-	case *reflect.Int64Value:
-		return a == vb.Get()
+		return a == (vb.Get())
 	default:
 		return false
 	}
@@ -153,8 +151,6 @@ func fuzzyEqualValue(a, b reflect.Value) bool {
 			return false
 		}
 	case *reflect.IntValue:
-		return fuzzyEqualInt64((int64)(va.Get()), b)
-	case *reflect.Int64Value:
 		return fuzzyEqualInt64(va.Get(), b)
 	case *reflect.ArrayValue:
 		return fuzzyEqualArrayOrSlice(va, b)

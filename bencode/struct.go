@@ -30,7 +30,7 @@ var nobuilder *structBuilder
 
 func isfloat(v reflect.Value) bool {
 	switch v.(type) {
-	case *reflect.FloatValue, *reflect.Float32Value, *reflect.Float64Value:
+	case *reflect.FloatValue:
 		return true
 	}
 	return false
@@ -39,35 +39,15 @@ func isfloat(v reflect.Value) bool {
 func setfloat(v reflect.Value, f float64) {
 	switch v := v.(type) {
 	case *reflect.FloatValue:
-		v.Set(float(f))
-	case *reflect.Float32Value:
-		v.Set(float32(f))
-	case *reflect.Float64Value:
-		v.Set(float64(f))
+		v.Set(f)
 	}
 }
 
 func setint(val reflect.Value, i int64) {
 	switch v := val.(type) {
 	case *reflect.IntValue:
-		v.Set(int(i))
-	case *reflect.Int8Value:
-		v.Set(int8(i))
-	case *reflect.Int16Value:
-		v.Set(int16(i))
-	case *reflect.Int32Value:
-		v.Set(int32(i))
-	case *reflect.Int64Value:
 		v.Set(int64(i))
 	case *reflect.UintValue:
-		v.Set(uint(i))
-	case *reflect.Uint8Value:
-		v.Set(uint8(i))
-	case *reflect.Uint16Value:
-		v.Set(uint16(i))
-	case *reflect.Uint32Value:
-		v.Set(uint32(i))
-	case *reflect.Uint64Value:
 		v.Set(uint64(i))
 	case *reflect.InterfaceValue:
 		v.Set(reflect.NewValue(i))
@@ -450,10 +430,6 @@ func writeValue(w io.Writer, val reflect.Value) (err os.Error) {
 	case *reflect.IntValue:
 		_, err = fmt.Fprintf(w, "i%de", v.Get())
 	case *reflect.UintValue:
-		_, err = fmt.Fprintf(w, "i%de", v.Get())
-	case *reflect.Int64Value:
-		_, err = fmt.Fprintf(w, "i%de", v.Get())
-	case *reflect.Uint64Value:
 		_, err = fmt.Fprintf(w, "i%de", v.Get())
 	case *reflect.ArrayValue:
 		err = writeArrayOrSlice(w, v)
