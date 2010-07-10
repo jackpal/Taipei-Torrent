@@ -226,7 +226,7 @@ func Post(url string, bodyType string, body io.Reader) (r *Response, err os.Erro
 	req.Method = "POST"
 	req.Body = body
 	req.Header = map[string]string{
-		"Content-Type": bodyType,
+		"Content-Type":      bodyType,
 		"Transfer-Encoding": "chunked",
 	}
 

@@ -119,7 +119,7 @@ func fuzzyEqualMap(a *reflect.MapValue, b *reflect.MapValue) bool {
 		return false
 	}
 
-	for _, k := range (aKeys) {
+	for _, k := range aKeys {
 		if !fuzzyEqualValue(a.Elem(k), b.Elem(k)) {
 			return false
 		}
@@ -227,7 +227,7 @@ func testDecode() {
 		SVPair{"de", map[string]any{}},
 		SVPair{"d3:cati1e3:dogi2ee", map[string]any{"cat": 1, "dog": 2}},
 	}
-	for _, sv := range (tests) {
+	for _, sv := range tests {
 		checkError(check(sv.s, sv.v))
 	}
 	log.Stderr("testDecode done.")
@@ -256,7 +256,7 @@ func testUnmarshal() {
 		SVPair{"d3:cati1e3:dogi2ee", map[string]any{"cat": 1, "dog": 2}},
 		SVPair{"d1:ai10e1:b3:fooe", structA{10, "foo"}},
 	}
-	for _, sv := range (tests) {
+	for _, sv := range tests {
 		checkError(checkUnmarshal(sv.s, sv.v))
 	}
 	log.Stderr("testUnmarshal done")

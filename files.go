@@ -25,7 +25,7 @@ type fileStore struct {
 
 func createPath(parts []string) (path string, err os.Error) {
 	// TODO: better, OS-specific sanitization.
-	for _, part := range (parts) {
+	for _, part := range parts {
 		// Sanitize file names.
 		if strings.Index(part, "/") >= 0 ||
 			strings.Index(part, "\\") >= 0 ||
@@ -73,7 +73,7 @@ func NewFileStore(info *InfoDict, fileDir string) (f FileStore, totalSize int64,
 	}
 	fs.files = make([]fileEntry, numFiles)
 	fs.offsets = make([]int64, numFiles)
-	for i, _ := range (info.Files) {
+	for i, _ := range info.Files {
 		src := &info.Files[i]
 		torrentPath, err := createPath(src.Path)
 		if err != nil {
@@ -136,7 +136,7 @@ func (f *fileStore) ReadAt(p []byte, off int64) (n int, err os.Error) {
 	}
 	// At this point if there's anything left to read it means we've run off the
 	// end of the file store. Read zeros. This is defined by the bittorrent protocol.
-	for i, _ := range (p) {
+	for i, _ := range p {
 		p[i] = 0
 	}
 	return
@@ -167,7 +167,7 @@ func (f *fileStore) WriteAt(p []byte, off int64) (n int, err os.Error) {
 	// At this point if there's anything left to write it means we've run off the
 	// end of the file store. Check that the data is zeros.
 	// This is defined by the bittorrent protocol.
-	for i, _ := range (p) {
+	for i, _ := range p {
 		if p[i] != 0 {
 			err = os.NewError("Unexpected non-zero data at end of store.")
 			n = n + i
@@ -179,7 +179,7 @@ func (f *fileStore) WriteAt(p []byte, off int64) (n int, err os.Error) {
 }
 
 func (f *fileStore) Close() (err os.Error) {
-	for i, _ := range (f.files) {
+	for i, _ := range f.files {
 		fd := f.files[i].fd
 		if fd != nil {
 			fd.Close()

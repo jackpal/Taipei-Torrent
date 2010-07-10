@@ -334,7 +334,7 @@ func (a StringValueArray) Swap(i, j int) { a[i], a[j] = a[j], a[i] }
 func writeSVList(w io.Writer, svList StringValueArray) (err os.Error) {
 	sort.Sort(svList)
 
-	for _, sv := range (svList) {
+	for _, sv := range svList {
 		if isValueNil(sv.value) {
 			continue // Skip null values
 		}
@@ -367,7 +367,7 @@ func writeMap(w io.Writer, val *reflect.MapValue) (err os.Error) {
 	// Sort keys
 
 	svList := make(StringValueArray, len(keys))
-	for i, key := range (keys) {
+	for i, key := range keys {
 		svList[i].key = key.(*reflect.StringValue).Get()
 		svList[i].value = val.Elem(key)
 	}
