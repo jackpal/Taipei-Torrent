@@ -39,6 +39,10 @@ Development Roadmap
 + Deal with TODOs
 + Add a way of quitting other than typing control-C
 
+Build Instructions
+  cd http ; make ; make install
+  cd beconde ; make ; make install
+
 BUGS
 - Need to understand why some peers are sending 16K "port" messages.
 
