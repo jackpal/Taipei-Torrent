@@ -34,7 +34,7 @@ func chooseListenPort() (listenPort int, err os.Error) {
 		// TODO: Look for ports currently in use. Handle collisions.
 		var nat NAT
 		nat, err = Discover()
-		if err != nil {
+		if nat == nil || err != nil {
 			log.Stderr("Unable to discover NAT", err)
 			return
 		}
@@ -206,7 +206,7 @@ func (t *TorrentSession) fetchTrackerInfo(event string) {
 	ch := t.trackerInfoChan
 	go func() {
 		ti, err := getTrackerInfo(url)
-		if err != nil {
+		if ti == nil || err != nil {
 			log.Stderr("Could not fetch tracker info:", err)
 		} else {
 			ch <- ti
@@ -329,7 +329,7 @@ func (t *TorrentSession) DoTorrent(listenPort int) (err os.Error) {
 				"uploaded:", t.si.Uploaded, "ratio", ratio)
 			// TODO: Remove this hack when we support DHT and/or PEX
 			// In a large well-seeded swarm, try to maintain a reasonable number of peers.
-			if len(t.peers) < 15 && t.goodPieces < t.totalPieces && t.ti.Complete > 100 {
+			if t.ti == nil || ( len(t.peers) < 15 && t.goodPieces < t.totalPieces && t.ti.Complete > 100) {
 				t.fetchTrackerInfo("")
 			}
 		case _ = <-keepAliveChan:
