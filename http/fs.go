@@ -17,13 +17,13 @@ import (
 
 // TODO this should be in a mime package somewhere
 var contentByExt = map[string]string{
-	".css": "text/css",
-	".gif": "image/gif",
+	".css":  "text/css",
+	".gif":  "image/gif",
 	".html": "text/html; charset=utf-8",
-	".jpg": "image/jpeg",
-	".js": "application/x-javascript",
-	".pdf": "application/pdf",
-	".png": "image/png",
+	".jpg":  "image/jpeg",
+	".js":   "application/x-javascript",
+	".pdf":  "application/pdf",
+	".png":  "image/png",
 }
 
 // Heuristic: b is text if it is valid UTF-8 and doesn't

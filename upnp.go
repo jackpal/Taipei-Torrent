@@ -259,10 +259,10 @@ func soapRequest(url, function, message string) (r *http.Response, err os.Error)
 	req.Header = map[string]string{
 		"Content-Type": "text/xml ; charset=\"utf-8\"",
 		// "Transfer-Encoding": "chunked",
-		"SOAPAction": "\"urn:schemas-upnp-org:service:WANIPConnection:1#" + function + "\"",
-		"Connection": "Close",
+		"SOAPAction":    "\"urn:schemas-upnp-org:service:WANIPConnection:1#" + function + "\"",
+		"Connection":    "Close",
 		"Cache-Control": "no-cache",
-		"Pragma": "no-cache",
+		"Pragma":        "no-cache",
 	}
 
 	req.URL, err = http.ParseURL(url)

@@ -34,7 +34,7 @@ func chooseListenPort() (listenPort int, err os.Error) {
 		// TODO: Look for ports currently in use. Handle collisions.
 		var nat NAT
 		nat, err = Discover()
-		if err != nil {
+		if nat == nil || err != nil {
 			log.Stderr("Unable to discover NAT", err)
 			return
 		}
@@ -90,7 +90,7 @@ func (a *ActivePiece) chooseBlockToDownload(endgame bool) (index int) {
 }
 
 func (a *ActivePiece) chooseBlockToDownloadNormal() (index int) {
-	for i, v := range (a.downloaderCount) {
+	for i, v := range a.downloaderCount {
 		if v == 0 {
 			a.downloaderCount[i]++
 			return i
@@ -101,7 +101,7 @@ func (a *ActivePiece) chooseBlockToDownloadNormal() (index int) {
 
 func (a *ActivePiece) chooseBlockToDownloadEndgame() (index int) {
 	index, minCount := -1, -1
-	for i, v := range (a.downloaderCount) {
+	for i, v := range a.downloaderCount {
 		if v >= 0 && (minCount == -1 || minCount > v) {
 			index, minCount = i, v
 		}
@@ -119,7 +119,7 @@ func (a *ActivePiece) recordBlock(index int) (requestCount int) {
 }
 
 func (a *ActivePiece) isComplete() bool {
-	for _, v := range (a.downloaderCount) {
+	for _, v := range a.downloaderCount {
 		if v != -1 {
 			return false
 		}
@@ -148,7 +148,7 @@ func NewTorrentSession(torrent string, listenPort int) (ts *TorrentSession, err 
 
 	t := &TorrentSession{peers: make(map[string]*peerState),
 		peerMessageChan: make(chan peerMessage),
-		activePieces: make(map[int]*ActivePiece)}
+		activePieces:    make(map[int]*ActivePiece)}
 	t.m, err = getMetaInfo(torrent)
 	if err != nil {
 		return
@@ -206,7 +206,7 @@ func (t *TorrentSession) fetchTrackerInfo(event string) {
 	ch := t.trackerInfoChan
 	go func() {
 		ti, err := getTrackerInfo(url)
-		if err != nil {
+		if ti == nil || err != nil {
 			log.Stderr("Could not fetch tracker info:", err)
 		} else {
 			ch <- ti
@@ -356,7 +356,7 @@ func (t *TorrentSession) DoTorrent(listenPort int) (err os.Error) {
 }
 
 func (t *TorrentSession) RequestBlock(p *peerState) (err os.Error) {
-	for k, _ := range (t.activePieces) {
+	for k, _ := range t.activePieces {
 		if p.have.IsSet(k) {
 			err = t.RequestBlock2(p, k, false)
 			if err != os.EOF {
@@ -368,7 +368,7 @@ func (t *TorrentSession) RequestBlock(p *peerState) (err os.Error) {
 	piece := t.ChoosePiece(p)
 	if piece < 0 {
 		// No unclaimed pieces. See if we can double-up on an active piece
-		for k, _ := range (t.activePieces) {
+		for k, _ := range t.activePieces {
 			if p.have.IsSet(k) {
 				err = t.RequestBlock2(p, k, true)
 				if err != os.EOF {
@@ -459,7 +459,7 @@ func (t *TorrentSession) RecordBlock(p *peerState, piece, begin, length uint32) 
 		requestCount := v.recordBlock(int(block))
 		if requestCount > 1 {
 			// Someone else has also requested this, so send cancel notices
-			for _, peer := range (t.peers) {
+			for _, peer := range t.peers {
 				if p != peer {
 					if _, ok := peer.our_requests[requestIndex]; ok {
 						t.requestBlockImp(peer, int(piece), int(block), false)
@@ -484,7 +484,7 @@ func (t *TorrentSession) RecordBlock(p *peerState, piece, begin, length uint32) 
 				t.fetchTrackerInfo("completed")
 				// TODO: Drop connections to all seeders.
 			}
-			for _, p := range (t.peers) {
+			for _, p := range t.peers {
 				if p.have != nil {
 					if p.have.IsSet(int(piece)) {
 						// We don't do anything special. We rely on the caller
@@ -512,7 +512,7 @@ func (t *TorrentSession) doChoke(p *peerState) (err os.Error) {
 }
 
 func (t *TorrentSession) removeRequests(p *peerState) (err os.Error) {
-	for k, _ := range (p.our_requests) {
+	for k, _ := range p.our_requests {
 		piece := int(k >> 32)
 		begin := int(k)
 		block := begin / STANDARD_BLOCK_LENGTH
@@ -532,7 +532,7 @@ func (t *TorrentSession) removeRequest(piece, block int) {
 
 func (t *TorrentSession) doCheckRequests(p *peerState) (err os.Error) {
 	now := time.Seconds()
-	for k, v := range (p.our_requests) {
+	for k, v := range p.our_requests {
 		if now-v > 30 {
 			piece := int(k >> 32)
 			block := int(k) / STANDARD_BLOCK_LENGTH

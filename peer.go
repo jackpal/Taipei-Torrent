@@ -67,7 +67,7 @@ func NewPeerState(conn net.Conn) *peerState {
 	return &peerState{writeChan: writeChan, writeChan2: writeChan2, conn: conn,
 		am_choking: true, peer_choking: true,
 		peer_requests: make(map[uint64]bool, MAX_PEER_REQUESTS),
-		our_requests: make(map[uint64]int64, MAX_OUR_REQUESTS)}
+		our_requests:  make(map[uint64]int64, MAX_OUR_REQUESTS)}
 }
 
 func (p *peerState) Close() {
@@ -90,7 +90,7 @@ func (p *peerState) CancelRequest(index, begin, length uint32) {
 }
 
 func (p *peerState) RemoveRequest() (index, begin, length uint32, ok bool) {
-	for k, _ := range (p.peer_requests) {
+	for k, _ := range p.peer_requests {
 		index, begin = uint32(k>>32), uint32(k)
 		length = STANDARD_BLOCK_LENGTH
 		ok = true
