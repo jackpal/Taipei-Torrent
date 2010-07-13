@@ -329,7 +329,7 @@ func (t *TorrentSession) DoTorrent(listenPort int) (err os.Error) {
 				"uploaded:", t.si.Uploaded, "ratio", ratio)
 			// TODO: Remove this hack when we support DHT and/or PEX
 			// In a large well-seeded swarm, try to maintain a reasonable number of peers.
-			if len(t.peers) < 15 && t.goodPieces < t.totalPieces && t.ti.Complete > 100 {
+			if len(t.peers) < 15 && t.goodPieces < t.totalPieces && (t.ti == nil || t.ti.Complete > 100) {
 				t.fetchTrackerInfo("")
 			}
 		case _ = <-keepAliveChan:
