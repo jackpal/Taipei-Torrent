@@ -34,8 +34,8 @@ func chooseListenPort() (listenPort int, err os.Error) {
 		// TODO: Look for ports currently in use. Handle collisions.
 		var nat NAT
 		nat, err = Discover()
-		if nat == nil || err != nil {
-			log.Stderr("Unable to discover NAT", err)
+		if err != nil {
+			log.Stderr("Unable to discover NAT:", err)
 			return
 		}
 		// TODO: Check if the port is already mapped by someone else.

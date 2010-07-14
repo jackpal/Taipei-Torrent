@@ -18,8 +18,7 @@ func main() {
 	log.Stderr("Starting.")
 	listenPort, err := chooseListenPort()
 	if err != nil {
-		log.Stderr("Could not choose listen port.")
-		return
+		log.Stderr("Could not choose listen port. Peer connectivity will be affected.")
 	}
 	ts, err := NewTorrentSession(*torrent, listenPort)
 	if err != nil {

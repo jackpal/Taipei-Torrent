@@ -33,6 +33,7 @@ func Discover() (nat NAT, err os.Error) {
 		return
 	}
 	socket := conn.(*net.UDPConn)
+	defer socket.Close()
 
 	err = socket.SetReadTimeout(3 * 1000 * 1000 * 1000)
 	if err != nil {
@@ -86,9 +87,9 @@ func Discover() (nat NAT, err os.Error) {
 			return
 		}
 		nat = &upnpNAT{serviceURL: serviceURL, ourIP: ourIP}
-		break
+		return
 	}
-	socket.Close()
+	err = os.NewError("UPnP port discovery failed.")
 	return
 }
 
