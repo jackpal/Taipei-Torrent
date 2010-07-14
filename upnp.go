@@ -65,7 +65,10 @@ func Discover() (nat NAT, err os.Error) {
 		if strings.Index(answer, "\r\n"+st) < 0 {
 			continue
 		}
-		locString := "\r\nLocation: "
+		// HTTP header field names are case-insensitive.
+		// http://www.w3.org/Protocols/rfc2616/rfc2616-sec4.html#sec4.2
+		locString := "\r\nlocation: "
+		answer = strings.ToLower(answer)
 		locIndex := strings.Index(answer, locString)
 		if locIndex < 0 {
 			continue
