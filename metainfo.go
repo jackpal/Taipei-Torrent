@@ -54,13 +54,14 @@ func getMetaInfo(torrent string) (metaInfo *MetaInfo, err os.Error) {
 	if strings.HasPrefix(torrent, "http:") {
 		// 6g compiler bug prevents us from writing r, _, err :=
 		var r *http.Response
-		r, _, err = http.Get(torrent)
+		if r, _, err = http.Get(torrent); err != nil {
+			return
+		}
 		input = r.Body
 	} else {
-		input, err = os.Open(torrent, os.O_RDONLY, 0666)
-	}
-	if err != nil {
-		return
+		if input, err = os.Open(torrent, os.O_RDONLY, 0666); err != nil {
+			return
+		}
 	}
 
 	// We need to calcuate the sha1 of the Info map, including every value in the
