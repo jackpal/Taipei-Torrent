@@ -27,7 +27,7 @@ func Decode(r io.Reader) (data interface{}, err os.Error) {
 	jb := newDecoder(nil, nil)
 	err = Parse(r, jb)
 	if err == nil {
-		data = jb.Data()
+		data = jb.Copy()
 	}
 	return
 }
@@ -87,18 +87,18 @@ func (j *decoder) Flush() {
 	switch c := j.container.(type) {
 	case *vector.Vector:
 		index := j.index.(int)
-		c.Set(index, j.Data())
+		c.Set(index, j.Copy())
 	case map[string]interface{}:
 		index := j.index.(string)
-		c[index] = j.Data()
+		c[index] = j.Copy()
 	}
 }
 
 // Get the value built by this builder.
-func (j *decoder) Data() interface{} {
+func (j *decoder) Copy() interface{} {
 	switch v := j.value.(type) {
 	case *vector.Vector:
-		return v.Data()
+		return v.Copy()
 	}
 	return j.value
 }
