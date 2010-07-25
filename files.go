@@ -3,6 +3,7 @@ package main
 import (
 	"io"
 	"os"
+	"path"
 	"strings"
 	"syscall"
 )
@@ -53,13 +54,20 @@ func (fe *fileEntry) open(name string, length int64) (err os.Error) {
 }
 
 func ensureDirectory(fullPath string) (err os.Error) {
-	pathParts := strings.Split(fullPath, "/", 0)
-	if len(pathParts) < 2 {
-		return
+	fullPath = path.Clean(fullPath)
+	if !strings.HasPrefix(fullPath, "/") {
+		// Transform into absolute path.
+		var cwd string
+		if cwd, err = os.Getwd(); err != nil {
+			return
+		}
+		fullPath = cwd + "/" + fullPath
 	}
-	dirParts := pathParts[0 : len(pathParts)-1]
-	path := strings.Join(dirParts, "/")
-	err = os.MkdirAll(path, 0755)
+	base, _ := path.Split(fullPath)
+	if base == "" {
+		panic("Programming error: could not find base directory for absolute path " + fullPath)
+	}
+	err = os.MkdirAll(base, 0755)
 	return
 }
 
