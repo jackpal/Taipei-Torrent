@@ -75,7 +75,8 @@ func NewFileStore(info *InfoDict, fileDir string) (f FileStore, totalSize int64,
 	fs.offsets = make([]int64, numFiles)
 	for i, _ := range info.Files {
 		src := &info.Files[i]
-		torrentPath, err := createPath(src.Path)
+		var torrentPath string
+		torrentPath, err = createPath(src.Path)
 		if err != nil {
 			return
 		}
