@@ -62,7 +62,8 @@ func listenForPeerConnections(listenPort int, conChan chan net.Conn) {
 		return
 	}
 	for {
-		conn, err := listener.Accept()
+		var conn net.Conn
+		conn, err = listener.Accept()
 		if err != nil {
 			log.Stderr("Listener failed:", err)
 		} else {
@@ -471,7 +472,7 @@ func (t *TorrentSession) RecordBlock(p *peerState, piece, begin, length uint32) 
 		t.si.Downloaded += int64(length)
 		if v.isComplete() {
 			t.activePieces[int(piece)] = v, false
-			ok, err := checkPiece(t.fileStore, t.totalSize, t.m, int(piece))
+			ok, err = checkPiece(t.fileStore, t.totalSize, t.m, int(piece))
 			if !ok || err != nil {
 				log.Stderr("Ignoring bad piece", piece, err)
 				return
@@ -792,7 +793,7 @@ func computeSums(fs FileStore, totalLength int64, pieceLength int64) (sums []byt
 		if i == numPieces-1 {
 			piece = piece[0 : totalLength-i*pieceLength]
 		}
-		_, err := fs.ReadAt(piece, i*pieceLength)
+		_, err = fs.ReadAt(piece, i*pieceLength)
 		if err != nil {
 			return
 		}

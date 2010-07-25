@@ -238,7 +238,7 @@ func (p *peerState) peerReader(msgChan chan peerMessage) {
 			goto exit
 		}
 		buf := make([]byte, n)
-		_, err := io.ReadFull(p.conn, buf)
+		_, err = io.ReadFull(p.conn, buf)
 		if err != nil {
 			goto exit
 		}

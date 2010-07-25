@@ -61,7 +61,8 @@ type Builder interface {
 
 func collectInt(r Reader, delim byte) (buf []byte, err os.Error) {
 	for {
-		c, err := r.ReadByte()
+		var c byte
+		c, err = r.ReadByte()
 		if err != nil {
 			return
 		}
@@ -87,11 +88,11 @@ func decodeInt64(r Reader, delim byte) (data int64, err os.Error) {
 }
 
 func decodeString(r Reader) (data string, err os.Error) {
-	len, err := decodeInt64(r, ':')
+	length, err := decodeInt64(r, ':')
 	if err != nil {
 		return
 	}
-	if len < 0 {
+	if length < 0 {
 		err = os.NewError("Bad string length")
 		return
 	}
