@@ -96,7 +96,7 @@ func decodeString(r Reader) (data string, err os.Error) {
 		err = os.NewError("Bad string length")
 		return
 	}
-	var buf = make([]byte, len)
+	var buf = make([]byte, length)
 	_, err = io.ReadFull(r, buf)
 	if err != nil {
 		return
