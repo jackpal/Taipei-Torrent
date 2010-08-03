@@ -15,18 +15,21 @@ func init() {
 	flag.BoolVar(&debugp, "debug", false, "Turn on debugging")
 }
 
-func main() {
-	flag.Parse()
-	// Check required flags.
+func checkRequiredFlags() {
 	req := []interface{}{"torrent"}
 	for _, n := range req {
 		f := flag.Lookup(n.(string))
 		if f.DefValue == f.Value.String() {
-			log.Stderrf("Required flag not set: -%s", f.Name, f.Value.String())
+			log.Stderrf("Required flag not set: -%s", f.Name)
 			flag.Usage()
 			os.Exit(1)
 		}
 	}
+}
+
+func main() {
+	flag.Parse()
+	checkRequiredFlags()
 	log.Stderr("Starting.")
 	ts, err := taipei.NewTorrentSession(torrent)
 	if err != nil {
