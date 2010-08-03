@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"crypto/sha1"
+	"flag"
 	"fmt"
 	"jackpal/http"
 	"log"
@@ -17,6 +18,21 @@ const NS_PER_S = 1000000000
 
 const MAX_PEERS = 60
 
+// Should be overriden by flag. Not thread safe.
+var port int
+var useUPnP bool
+var fileDir string
+var torrent string
+var debugp bool
+
+func init() {
+	flag.StringVar(&fileDir, "fileDir", ".", "path to directory where files are stored")
+	flag.IntVar(&port, "port", 0, "Port to listen on. Defaults to random.")
+	flag.BoolVar(&useUPnP, "useUPnP", false, "Use UPnP to open port in firewall.")
+	flag.StringVar(&torrent, "torrent", "", "URL or path to a torrent file")
+	flag.BoolVar(&debugp, "debug", false, "Turn on debugging")
+}
+
 func peerId() string {
 	sid := "-tt" + strconv.Itoa(os.Getpid()) + "_" + strconv.Itoa64(rand.Int63())
 	return sid[0:20]
@@ -28,8 +44,8 @@ func binaryToDottedPort(port string) string {
 }
 
 func chooseListenPort() (listenPort int, err os.Error) {
-	listenPort = *port
-	if *useUPnP {
+	listenPort = port
+	if useUPnP {
 		log.Stderr("Using UPnP to open port.")
 		// TODO: Look for ports currently in use. Handle collisions.
 		var nat NAT
@@ -161,7 +177,7 @@ func NewTorrentSession(torrent string, listenPort int) (ts *TorrentSession, err 
 		return
 	}
 
-	fileStore, totalSize, err := NewFileStore(&t.m.Info, *fileDir)
+	fileStore, totalSize, err := NewFileStore(&t.m.Info, fileDir)
 	if err != nil {
 		return
 	}
