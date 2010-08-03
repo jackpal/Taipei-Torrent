@@ -16,9 +16,9 @@ func init() {
 }
 
 func checkRequiredFlags() {
-	req := []interface{}{"torrent"}
+	req := []string{"port", "debug", "torrent"}
 	for _, n := range req {
-		f := flag.Lookup(n.(string))
+		f := flag.Lookup(n)
 		if f.DefValue == f.Value.String() {
 			log.Stderrf("Required flag not set: -%s", f.Name)
 			flag.Usage()
