@@ -1,17 +1,18 @@
-package main
+package bencode
 
-import "bytes"
-import "fmt"
-import "jackpal/bencode"
-import "log"
-import "os"
-import "reflect"
+import (
+	"bytes"
+	"fmt"
+	"os"
+	"reflect"
+	"testing"
+)
 
 type any interface{}
 
 func checkMarshal(expected string, data any) (err os.Error) {
 	var b bytes.Buffer
-	if err = bencode.Marshal(&b, data); err != nil {
+	if err = Marshal(&b, data); err != nil {
 		return
 	}
 	s := b.String()
@@ -27,7 +28,7 @@ func check(expected string, data any) (err os.Error) {
 		return
 	}
 	b2 := bytes.NewBufferString(expected)
-	val, err := bencode.Decode(b2)
+	val, err := Decode(b2)
 	if err != nil {
 		err = os.NewError(fmt.Sprint("Failed decoding ", expected, " ", err))
 		return
@@ -183,12 +184,6 @@ func fuzzyEqualValue(a, b reflect.Value) bool {
 	return false
 }
 
-func checkError(err os.Error) {
-	if err != nil {
-		log.Stderr("Got error: ", err)
-	}
-}
-
 func checkUnmarshal(expected string, data any) (err os.Error) {
 	if err = checkMarshal(expected, data); err != nil {
 		return
@@ -196,7 +191,7 @@ func checkUnmarshal(expected string, data any) (err os.Error) {
 	dataValue := reflect.NewValue(data)
 	newOne := reflect.MakeZero(dataValue.Type())
 	buf := bytes.NewBufferString(expected)
-	if err = bencode.UnmarshalValue(buf, newOne); err != nil {
+	if err = UnmarshalValue(buf, newOne); err != nil {
 		return
 	}
 	if err = checkFuzzyEqualValue(dataValue, newOne); err != nil {
@@ -210,8 +205,7 @@ type SVPair struct {
 	v any
 }
 
-func testDecode() {
-	log.Stderr("test testDecode")
+func TestDecode(t *testing.T) {
 	tests := []SVPair{
 		SVPair{"i0e", int64(0)},
 		SVPair{"i0e", 0},
@@ -228,9 +222,10 @@ func testDecode() {
 		SVPair{"d3:cati1e3:dogi2ee", map[string]any{"cat": 1, "dog": 2}},
 	}
 	for _, sv := range tests {
-		checkError(check(sv.s, sv.v))
+		if err := check(sv.s, sv.v); err != nil {
+			t.Error(err.String())
+		}
 	}
-	log.Stderr("testDecode done.")
 }
 
 type structA struct {
@@ -238,8 +233,7 @@ type structA struct {
 	B string "b"
 }
 
-func testUnmarshal() {
-	log.Stderr("test testUnmarshal")
+func TestUnmarshal(t *testing.T) {
 	tests := []SVPair{
 		SVPair{"i0e", int64(0)},
 		SVPair{"i0e", 0},
@@ -257,13 +251,8 @@ func testUnmarshal() {
 		SVPair{"d1:ai10e1:b3:fooe", structA{10, "foo"}},
 	}
 	for _, sv := range tests {
-		checkError(checkUnmarshal(sv.s, sv.v))
+		if err := checkUnmarshal(sv.s, sv.v); err != nil {
+			t.Error(err.String())
+		}
 	}
-	log.Stderr("testUnmarshal done")
-}
-
-func testBencode() {
-	testUnmarshal()
-	testDecode()
-	testUnmarshal()
 }
