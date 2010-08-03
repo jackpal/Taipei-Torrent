@@ -16,7 +16,7 @@ func init() {
 }
 
 func checkRequiredFlags() {
-	req := []string{"port", "debug", "torrent"}
+	req := []string{"torrent"}
 	for _, n := range req {
 		f := flag.Lookup(n)
 		if f.DefValue == f.Value.String() {
