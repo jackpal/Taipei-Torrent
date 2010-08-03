@@ -8,12 +8,8 @@ bash clean.bash
 
 # Pass 2: make everything
 
-cd bencode
-make
-make install
-cd ..
-cd http
-make
-make install
-cd ..
+DEPS="http bencode taipei"
+for dep in ${DEPS}; do
+	cd $dep ; make ; make install ; cd ..
+done
 make

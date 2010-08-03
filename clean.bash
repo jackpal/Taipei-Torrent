@@ -1,8 +1,8 @@
+#!/bin/bash
+#
 set -e
-cd bencode
-make clean
-cd ..
-cd http
-make clean
-cd ..
-make clean
+
+DEPS="http bencode taipei"
+for dep in ${DEPS}; do
+	cd $dep ; make clean || true; cd ..
+done

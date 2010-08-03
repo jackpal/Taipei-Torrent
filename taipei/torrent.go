@@ -1,4 +1,4 @@
-package main
+package taipei
 
 import (
 	"bytes"
@@ -18,19 +18,31 @@ const NS_PER_S = 1000000000
 
 const MAX_PEERS = 60
 
+// BitTorrent message types. Sources:
+// http://bittorrent.org/beps/bep_0003.html
+// http://wiki.theory.org/BitTorrentSpecification
+const (
+	CHOKE = iota
+	UNCHOKE
+	INTERESTED
+	NOT_INTERESTED
+	HAVE
+	BITFIELD
+	REQUEST
+	PIECE
+	CANCEL
+	PORT // Not implemented. For DHT support.
+)
+
 // Should be overriden by flag. Not thread safe.
 var port int
 var useUPnP bool
 var fileDir string
-var torrent string
-var debugp bool
 
 func init() {
 	flag.StringVar(&fileDir, "fileDir", ".", "path to directory where files are stored")
 	flag.IntVar(&port, "port", 0, "Port to listen on. Defaults to random.")
 	flag.BoolVar(&useUPnP, "useUPnP", false, "Use UPnP to open port in firewall.")
-	flag.StringVar(&torrent, "torrent", "", "URL or path to a torrent file")
-	flag.BoolVar(&debugp, "debug", false, "Turn on debugging")
 }
 
 func peerId() string {
@@ -161,8 +173,13 @@ type TorrentSession struct {
 	lastHeartBeat   int64
 }
 
-func NewTorrentSession(torrent string, listenPort int) (ts *TorrentSession, err os.Error) {
+func NewTorrentSession(torrent string) (ts *TorrentSession, err os.Error) {
 
+	var listenPort int
+	if listenPort, err = chooseListenPort(); err != nil {
+		log.Stderr("Could not choose listen port.")
+		log.Stderr("Peer connectivity will be affected.")
+	}
 	t := &TorrentSession{peers: make(map[string]*peerState),
 		peerMessageChan: make(chan peerMessage),
 		activePieces:    make(map[int]*ActivePiece)}
@@ -279,7 +296,7 @@ func (t *TorrentSession) deadlockDetector() {
 	}
 }
 
-func (t *TorrentSession) DoTorrent(listenPort int) (err os.Error) {
+func (t *TorrentSession) DoTorrent() (err os.Error) {
 	t.lastHeartBeat = time.Seconds()
 	go t.deadlockDetector()
 	log.Stderr("Fetching torrent.")
@@ -582,13 +599,13 @@ func (t *TorrentSession) DoMessage(p *peerState, message []byte) (err os.Error) 
 			p.have = NewBitset(t.totalPieces)
 		}
 		switch id := message[0]; id {
-		case 0:
+		case CHOKE:
 			// log.Stderr("choke", p.address)
 			if len(message) != 1 {
 				return os.NewError("Unexpected length")
 			}
 			err = t.doChoke(p)
-		case 1:
+		case UNCHOKE:
 			// log.Stderr("unchoke", p.address)
 			if len(message) != 1 {
 				return os.NewError("Unexpected length")
@@ -600,20 +617,20 @@ func (t *TorrentSession) DoMessage(p *peerState, message []byte) (err os.Error) 
 					return
 				}
 			}
-		case 2:
+		case INTERESTED:
 			// log.Stderr("interested", p)
 			if len(message) != 1 {
 				return os.NewError("Unexpected length")
 			}
 			p.peer_interested = true
 			// TODO: Consider unchoking
-		case 3:
+		case NOT_INTERESTED:
 			// log.Stderr("not interested", p)
 			if len(message) != 1 {
 				return os.NewError("Unexpected length")
 			}
 			p.peer_interested = false
-		case 4:
+		case HAVE:
 			if len(message) != 5 {
 				return os.NewError("Unexpected length")
 			}
@@ -626,7 +643,7 @@ func (t *TorrentSession) DoMessage(p *peerState, message []byte) (err os.Error) 
 			} else {
 				return os.NewError("have index is out of range.")
 			}
-		case 5:
+		case BITFIELD:
 			// log.Stderr("bitfield", p.address)
 			if p.have != nil {
 				return os.NewError("Late bitfield operation")
@@ -636,7 +653,7 @@ func (t *TorrentSession) DoMessage(p *peerState, message []byte) (err os.Error) 
 				return os.NewError("Invalid bitfield data.")
 			}
 			t.checkInteresting(p)
-		case 6:
+		case REQUEST:
 			// log.Stderr("request", p.address)
 			if len(message) != 13 {
 				return os.NewError("Unexpected message length")
@@ -662,7 +679,7 @@ func (t *TorrentSession) DoMessage(p *peerState, message []byte) (err os.Error) 
 			// TODO: Asynchronous
 			// p.AddRequest(index, begin, length)
 			return t.sendRequest(p, index, begin, length)
-		case 7:
+		case PIECE:
 			// piece
 			if len(message) < 9 {
 				return os.NewError("unexpected message length")
@@ -693,7 +710,7 @@ func (t *TorrentSession) DoMessage(p *peerState, message []byte) (err os.Error) 
 			}
 			t.RecordBlock(p, index, begin, uint32(length))
 			err = t.RequestBlock(p)
-		case 8:
+		case CANCEL:
 			// log.Stderr("cancel")
 			if len(message) != 13 {
 				return os.NewError("Unexpected message length")
@@ -717,7 +734,7 @@ func (t *TorrentSession) DoMessage(p *peerState, message []byte) (err os.Error) 
 				return os.NewError("Unexpected block length.")
 			}
 			p.CancelRequest(index, begin, length)
-		case 9:
+		case PORT:
 			// TODO: Implement this message.
 			// We see peers sending us 16K byte messages here, so
 			// it seems that we don't understand what this is.
