@@ -35,14 +35,13 @@ type peerState struct {
 func queueingWriter(in, out chan []byte) {
 	queue := make(map[int][]byte)
 	head, tail := 0, 0
-	closed := false
-L:
-	for !closed {
+Closed:
+	for {
 		if head == tail {
 			select {
 			case m, ok := <-in:
 				if !ok {
-					break L
+					break Closed
 				}
 				queue[head] = m
 				head++
@@ -51,7 +50,7 @@ L:
 			select {
 			case m, ok := <-in:
 				if !ok {
-					break L
+					break Closed
 				}
 				queue[head] = m
 				head++
@@ -78,12 +77,8 @@ func NewPeerState(conn net.Conn) *peerState {
 
 func (p *peerState) Close() {
 	p.conn.Close()
-	select {
-	case _, ok := <-p.writeChan:
-		if ok {
-			close(p.writeChan)
-		}
-	}
+	// We don't have to close the p.writeChan channel. As long as we stop
+	// referencing this peer everywhere, it will get garbage collected.
 }
 
 func (p *peerState) AddRequest(index, begin, length uint32) {
@@ -124,7 +119,7 @@ func (p *peerState) SetChoke(choke bool) {
 
 func (p *peerState) SetInterested(interested bool) {
 	if interested != p.am_interested {
-		// log.Stderr("SetInterested", interested, p.address)
+		// log.Println("SetInterested", interested, p.address)
 		p.am_interested = interested
 		b := byte(3)
 		if interested {
@@ -135,7 +130,7 @@ func (p *peerState) SetInterested(interested bool) {
 }
 
 func (p *peerState) sendOneCharMessage(b byte) {
-	// log.Stderr("ocm", b, p.address)
+	// log.Println("ocm", b, p.address)
 	p.sendMessage([]byte{b})
 }
 
@@ -188,26 +183,26 @@ func readNBOUint32(conn net.Conn) (n uint32, err error) {
 // listens for messages on a channel and sends them to a peer.
 
 func (p *peerState) peerWriter(errorChan chan peerMessage, header []byte) {
-	// log.Stderr("Writing header.")
+	// log.Println("Writing header.")
 	_, err := p.conn.Write(header)
 	if err != nil {
 		goto exit
 	}
-	// log.Stderr("Writing messages")
+	// log.Println("Writing messages")
 	for msg := range p.writeChan2 {
-		// log.Stderr("Writing", len(msg), conn.RemoteAddr())
+		// log.Println("Writing", len(msg), conn.RemoteAddr())
 		err = writeNBOUint32(p.conn, uint32(len(msg)))
 		if err != nil {
 			goto exit
 		}
 		_, err = p.conn.Write(msg)
 		if err != nil {
-			// log.Stderr("Failed to write a message", p.address, len(msg), msg, err)
+			// log.Println("Failed to write a message", p.address, len(msg), msg, err)
 			goto exit
 		}
 	}
 exit:
-	// log.Stderr("peerWriter exiting")
+	// log.Println("peerWriter exiting")
 	errorChan <- peerMessage{p, nil}
 }
 
@@ -215,7 +210,7 @@ exit:
 // listens for messages from the peer and forwards them to a channel.
 
 func (p *peerState) peerReader(msgChan chan peerMessage) {
-	// log.Stderr("Reading header.")
+	// log.Println("Reading header.")
 	var header [68]byte
 	_, err := p.conn.Read(header[0:1])
 	if err != nil {
@@ -237,7 +232,7 @@ func (p *peerState) peerReader(msgChan chan peerMessage) {
 		goto exit
 	}
 	msgChan <- peerMessage{p, header[20:]}
-	// log.Stderr("Reading messages")
+	// log.Println("Reading messages")
 	for {
 		var n uint32
 		n, err = readNBOUint32(p.conn)
@@ -245,7 +240,7 @@ func (p *peerState) peerReader(msgChan chan peerMessage) {
 			goto exit
 		}
 		if n > 130*1024 {
-			// log.Stderr("Message size too large: ", n)
+			// log.Println("Message size too large: ", n)
 			goto exit
 		}
 		buf := make([]byte, n)
@@ -258,5 +253,5 @@ func (p *peerState) peerReader(msgChan chan peerMessage) {
 
 exit:
 	msgChan <- peerMessage{p, nil}
-	// log.Stderr("peerReader exiting")
+	// log.Println("peerReader exiting")
 }

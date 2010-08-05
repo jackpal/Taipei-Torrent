@@ -7,5 +7,7 @@ GOFILES=\
         metainfo.go\
         peer.go\
         torrent.go\
-        upnp.go
+        upnp.go\
+        dht.go\
+        krpc.go
 include $(GOROOT)/src/Make.pkg

@@ -212,7 +212,7 @@ func soapRequest(url, function, message string) (r *http.Response, err error) {
 	req.Header.Set("Cache-Control", "no-cache")
 	req.Header.Set("Pragma", "no-cache")
 
-	// log.Stderr("soapRequest ", req)
+	// log.Println("soapRequest ", req)
 
 	r, err = http.DefaultClient.Do(req)
 	if r.Body != nil {
@@ -264,7 +264,7 @@ func (n *upnpNAT) AddPortMapping(protocol string, externalPort, internalPort int
 	}
 
 	// TODO: check response to see if the port was forwarded
-	// log.Stderr(message, response)
+	// log.Println(message, response)
 	_ = response
 	return
 }
@@ -283,7 +283,7 @@ func (n *upnpNAT) DeletePortMapping(protocol string, externalPort int) (err erro
 	}
 
 	// TODO: check response to see if the port was deleted
-	// log.Stderr(message, response)
+	// log.Println(message, response)
 	_ = response
 	return
 }
