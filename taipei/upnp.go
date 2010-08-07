@@ -307,15 +307,16 @@ func (n *upnpNAT) GetStatusInfo() (err os.Error) {
 
 
 func (n *upnpNAT) AddPortMapping(protocol string, externalPort, internalPort int, description string, timeout int) (err os.Error) {
-
+	// A single concatenation would brake ARM compilation.
 	message := "<u:AddPortMapping xmlns:u=\"urn:schemas-upnp-org:service:WANIPConnection:1\">\r\n" +
-		"<NewRemoteHost></NewRemoteHost><NewExternalPort>" + strconv.Itoa(externalPort) +
-		"</NewExternalPort><NewProtocol>" + protocol + "</NewProtocol>" +
-		"<NewInternalPort>" + strconv.Itoa(internalPort) + "</NewInternalPort>" +
+		"<NewRemoteHost></NewRemoteHost><NewExternalPort>" + strconv.Itoa(externalPort)
+	message += "</NewExternalPort><NewProtocol>" + protocol + "</NewProtocol>"
+	message += "<NewInternalPort>" + strconv.Itoa(internalPort) + "</NewInternalPort>" +
 		"<NewInternalClient>" + n.ourIP + "</NewInternalClient>" +
-		"<NewEnabled>1</NewEnabled><NewPortMappingDescription>" +
-		description +
-		"</NewPortMappingDescription><NewLeaseDuration>" + strconv.Itoa(timeout) + "</NewLeaseDuration></u:AddPortMapping>"
+		"<NewEnabled>1</NewEnabled><NewPortMappingDescription>"
+	message += description +
+		"</NewPortMappingDescription><NewLeaseDuration>" + strconv.Itoa(timeout) +
+		"</NewLeaseDuration></u:AddPortMapping>"
 
 	var response *http.Response
 	response, err = soapRequest(n.serviceURL, "AddPortMapping", message)
