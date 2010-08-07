@@ -234,6 +234,15 @@ type structA struct {
 }
 
 func TestUnmarshal(t *testing.T) {
+	type structNested struct {
+		T string            "t"
+		Y string            "y"
+		Q string            "q"
+		A map[string]string "a"
+	}
+	innerDict := map[string]string{"id": "abcdefghij0123456789"}
+	nestedDictionary := structNested{"aa", "q", "ping", innerDict}
+
 	tests := []SVPair{
 		SVPair{"i0e", int64(0)},
 		SVPair{"i0e", 0},
@@ -249,6 +258,7 @@ func TestUnmarshal(t *testing.T) {
 		SVPair{"de", map[string]any{}},
 		SVPair{"d3:cati1e3:dogi2ee", map[string]any{"cat": 1, "dog": 2}},
 		SVPair{"d1:ai10e1:b3:fooe", structA{10, "foo"}},
+		SVPair{"d1:ad2:id20:abcdefghij0123456789e1:q4:ping1:t2:aa1:y1:qe", nestedDictionary},
 	}
 	for _, sv := range tests {
 		if err := checkUnmarshal(sv.s, sv.v); err != nil {
