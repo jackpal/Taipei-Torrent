@@ -10,10 +10,11 @@ import (
 var torrent string
 var debugp bool
 
-func init() {
+func parseFlags() {
 	flag.StringVar(&torrent, "torrent", "", "URL or path to a torrent file (Required)")
 	flag.BoolVar(&debugp, "debug", false, "Turn on debugging")
 
+	flag.Parse()
 	// Check required flags.
 	req := []interface{}{"torrent"}
 	for _, n := range req {
@@ -29,7 +30,7 @@ func init() {
 func main() {
 	// testBencode()
 	// testUPnP()
-	flag.Parse()
+	parseFlags()
 	log.Stderr("Starting.")
 	ts, err := taipei.NewTorrentSession(torrent)
 	if err != nil {
