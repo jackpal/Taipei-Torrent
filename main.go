@@ -20,7 +20,7 @@ func parseFlags() {
 	for _, n := range req {
 		f := flag.Lookup(n.(string))
 		if f.DefValue == f.Value.String() {
-			log.Stderrf("Required flag not set: -%s", f.Name)
+			log.Printf("Required flag not set: -%s", f.Name)
 			flag.Usage()
 			os.Exit(1)
 		}
@@ -31,16 +31,16 @@ func main() {
 	// testBencode()
 	// testUPnP()
 	parseFlags()
-	log.Stderr("Starting.")
+	log.Println("Starting.")
 	ts, err := taipei.NewTorrentSession(torrent)
 	if err != nil {
-		log.Stderr("Could not create torrent session.", err)
+		log.Println("Could not create torrent session.", err)
 		return
 	}
 	err = ts.DoTorrent()
 	if err != nil {
-		log.Stderr("Failed: ", err)
+		log.Println("Failed: ", err)
 	} else {
-		log.Stderr("Done")
+		log.Println("Done")
 	}
 }

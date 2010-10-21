@@ -151,8 +151,8 @@ func uint32ToBytes(buf []byte, n uint32) {
 }
 
 func writeNBOUint32(conn net.Conn, n uint32) (err os.Error) {
-	var buf [4]byte
-	uint32ToBytes(&buf, n)
+	var buf []byte = make([]byte, 4)
+	uint32ToBytes(buf, n)
 	_, err = conn.Write(buf[0:])
 	return
 }

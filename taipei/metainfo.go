@@ -138,7 +138,7 @@ func getTrackerInfo(url string) (tr *TrackerResponse, err os.Error) {
 	if r.StatusCode >= 400 {
 		data, _ := ioutil.ReadAll(r.Body)
 		reason := "Bad Request " + string(data)
-		log.Stderr(reason)
+		log.Println(reason)
 		err = os.NewError(reason)
 		return
 	}
