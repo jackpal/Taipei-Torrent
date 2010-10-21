@@ -124,11 +124,11 @@ func (c *Conn) SetHeader(hdr, val string) { c.header[CanonicalHeaderKey(hdr)] = 
 // send error codes.
 func (c *Conn) WriteHeader(code int) {
 	if c.hijacked {
-		log.Stderr("http: Conn.WriteHeader on hijacked connection")
+		log.Println("http: Conn.WriteHeader on hijacked connection")
 		return
 	}
 	if c.wroteHeader {
-		log.Stderr("http: multiple Conn.WriteHeader calls")
+		log.Println("http: multiple Conn.WriteHeader calls")
 		return
 	}
 	c.wroteHeader = true
@@ -158,7 +158,7 @@ func (c *Conn) WriteHeader(code int) {
 // before writing the data.
 func (c *Conn) Write(data []byte) (n int, err os.Error) {
 	if c.hijacked {
-		log.Stderr("http: Conn.Write on hijacked connection")
+		log.Println("http: Conn.Write on hijacked connection")
 		return 0, ErrHijacked
 	}
 	if !c.wroteHeader {
