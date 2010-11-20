@@ -225,7 +225,7 @@ func NewTorrentSession(torrent string) (ts *TorrentSession, err os.Error) {
 
 func (t *TorrentSession) fetchTrackerInfo(event string) {
 	m, si := t.m, t.si
-	log.Stderr("Stats: Uploaded", si.Uploaded, "Downloaded", si.Downloaded, "Left", si.Left)
+	log.Println("Stats: Uploaded", si.Uploaded, "Downloaded", si.Downloaded, "Left", si.Left)
 	// A single concatenation would brake compilation for ARM.
 	url := m.Announce + "?" +
 		"info_hash=" + http.URLEscape(m.InfoHash) +
