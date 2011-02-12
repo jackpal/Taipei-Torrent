@@ -9,7 +9,6 @@ package bencode
 
 import (
 	"bufio"
-	"bytes"
 	"fmt"
 	"io"
 	"os"
@@ -73,7 +72,7 @@ func collectInt(r Reader, delim byte) (buf []byte, err os.Error) {
 			err = os.NewError("expected digit")
 			return
 		}
-		buf = bytes.AddByte(buf, c)
+		buf = append(buf, c)
 	}
 	return
 }
