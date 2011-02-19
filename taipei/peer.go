@@ -72,7 +72,9 @@ func NewPeerState(conn net.Conn) *peerState {
 
 func (p *peerState) Close() {
 	p.conn.Close()
-	close(p.writeChan)
+	if ! closed(p.writeChan) {
+	    close(p.writeChan)
+    }
 }
 
 func (p *peerState) AddRequest(index, begin, length uint32) {
