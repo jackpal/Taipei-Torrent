@@ -225,12 +225,9 @@ func NewTorrentSession(torrent string) (ts *TorrentSession, err os.Error) {
 
 func (t *TorrentSession) fetchTrackerInfo(event string) {
 	m, si := t.m, t.si
-<<<<<<< HEAD
 	log.Println("Stats: Uploaded", si.Uploaded, "Downloaded", si.Downloaded, "Left", si.Left)
-=======
-	log.Stderr("Stats: Uploaded", si.Uploaded, "Downloaded", si.Downloaded, "Left", si.Left)
-	// A single concatenation would brake compilation for ARM.
->>>>>>> e30996a... Fixing build for arm architecture where compilation would fail with "out of fixed registers".
+	// We build the URL in two steps because of a bug on the ARM go compiler.
+	// A single long concatenation would break compilation for ARM.
 	url := m.Announce + "?" +
 		"info_hash=" + http.URLEscape(m.InfoHash) +
 		"&peer_id=" + si.PeerId +
