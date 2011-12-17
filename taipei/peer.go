@@ -3,10 +3,8 @@ package taipei
 import (
 	"io"
 	"net"
-	"os"
 	"time"
 )
-
 
 const MAX_OUR_REQUESTS = 2
 const MAX_PEER_REQUESTS = 10
@@ -22,8 +20,8 @@ type peerState struct {
 	id              string
 	writeChan       chan []byte
 	writeChan2      chan []byte
-	lastWriteTime   int64   // In seconds
-	lastReadTime    int64   // In seconds
+	lastWriteTime   time.Time
+	lastReadTime    time.Time
 	have            *Bitset // What the peer has told us it has
 	conn            net.Conn
 	am_choking      bool // this client is choking the peer
@@ -31,26 +29,34 @@ type peerState struct {
 	peer_choking    bool // peer is choking this client
 	peer_interested bool // peer is interested in this client
 	peer_requests   map[uint64]bool
-	our_requests    map[uint64]int64 // What we requested, when we requested it
+	our_requests    map[uint64]time.Time // What we requested, when we requested it
 }
 
 func queueingWriter(in, out chan []byte) {
 	queue := make(map[int][]byte)
 	head, tail := 0, 0
-	for !closed(in) {
+	closed := false
+L:
+	for !closed {
 		if head == tail {
 			select {
-			case m := <-in:
+			case m, ok := <-in:
+				if !ok {
+					break L
+				}
 				queue[head] = m
 				head++
 			}
 		} else {
 			select {
-			case m := <-in:
+			case m, ok := <-in:
+				if !ok {
+					break L
+				}
 				queue[head] = m
 				head++
 			case out <- queue[tail]:
-				queue[tail] = nil, false
+				delete(queue, tail)
 				tail++
 			}
 		}
@@ -67,14 +73,17 @@ func NewPeerState(conn net.Conn) *peerState {
 	return &peerState{writeChan: writeChan, writeChan2: writeChan2, conn: conn,
 		am_choking: true, peer_choking: true,
 		peer_requests: make(map[uint64]bool, MAX_PEER_REQUESTS),
-		our_requests:  make(map[uint64]int64, MAX_OUR_REQUESTS)}
+		our_requests:  make(map[uint64]time.Time, MAX_OUR_REQUESTS)}
 }
 
 func (p *peerState) Close() {
 	p.conn.Close()
-	if ! closed(p.writeChan) {
-	    close(p.writeChan)
-    }
+	select {
+	case _, ok := <-p.writeChan:
+		if ok {
+			close(p.writeChan)
+		}
+	}
 }
 
 func (p *peerState) AddRequest(index, begin, length uint32) {
@@ -87,7 +96,7 @@ func (p *peerState) AddRequest(index, begin, length uint32) {
 func (p *peerState) CancelRequest(index, begin, length uint32) {
 	offset := (uint64(index) << 32) | uint64(begin)
 	if _, ok := p.peer_requests[offset]; ok {
-		p.peer_requests[offset] = false, false
+		delete(p.peer_requests, offset)
 	}
 }
 
@@ -132,11 +141,11 @@ func (p *peerState) sendOneCharMessage(b byte) {
 
 func (p *peerState) sendMessage(b []byte) {
 	p.writeChan <- b
-	p.lastWriteTime = time.Seconds()
+	p.lastWriteTime = time.Now()
 }
 
-func (p *peerState) keepAlive(now int64) {
-	if now-p.lastWriteTime >= 120 {
+func (p *peerState) keepAlive(now time.Time) {
+	if now.Sub(p.lastWriteTime) >= 2*time.Minute {
 		// log.Stderr("Sending keep alive", p)
 		p.sendMessage([]byte{})
 	}
@@ -152,7 +161,7 @@ func uint32ToBytes(buf []byte, n uint32) {
 	buf[3] = byte(n)
 }
 
-func writeNBOUint32(conn net.Conn, n uint32) (err os.Error) {
+func writeNBOUint32(conn net.Conn, n uint32) (err error) {
 	var buf []byte = make([]byte, 4)
 	uint32ToBytes(buf, n)
 	_, err = conn.Write(buf[0:])
@@ -165,7 +174,7 @@ func bytesToUint32(buf []byte) uint32 {
 		(uint32(buf[2]) << 8) | uint32(buf[3])
 }
 
-func readNBOUint32(conn net.Conn) (n uint32, err os.Error) {
+func readNBOUint32(conn net.Conn) (n uint32, err error) {
 	var buf [4]byte
 	_, err = conn.Read(buf[0:])
 	if err != nil {

@@ -5,12 +5,13 @@ package taipei
 
 import (
 	"bytes"
-	"jackpal/http"
-	"os"
+	"encoding/xml"
+	"errors"
 	"net"
-	"strings"
+	"net/http"
+	"os"
 	"strconv"
-	"xml"
+	"strings"
 )
 
 type upnpNAT struct {
@@ -19,12 +20,12 @@ type upnpNAT struct {
 }
 
 type NAT interface {
-	AddPortMapping(protocol string, externalPort, internalPort int, description string, timeout int) (err os.Error)
-	DeletePortMapping(protocol string, externalPort int) (err os.Error)
+	AddPortMapping(protocol string, externalPort, internalPort int, description string, timeout int) (err error)
+	DeletePortMapping(protocol string, externalPort int) (err error)
 }
 
-func Discover() (nat NAT, err os.Error) {
-	ssdp, err := net.ResolveUDPAddr("239.255.255.250:1900")
+func Discover() (nat NAT, err error) {
+	ssdp, err := net.ResolveUDPAddr("udp4", "239.255.255.250:1900")
 	if err != nil {
 		return
 	}
@@ -92,7 +93,7 @@ func Discover() (nat NAT, err os.Error) {
 		nat = &upnpNAT{serviceURL: serviceURL, ourIP: ourIP}
 		return
 	}
-	err = os.NewError("UPnP port discovery failed.")
+	err = errors.New("UPnP port discovery failed.")
 	return
 }
 
@@ -139,32 +140,22 @@ func getChildService(d *Device, serviceType string) *Service {
 	return nil
 }
 
-
-func getOurIP() (ip string, err os.Error) {
+func getOurIP() (ip string, err error) {
 	hostname, err := os.Hostname()
 	if err != nil {
 		return
 	}
-	_, addrs, err := net.LookupHost(hostname)
-	if err != nil {
-		return
-	}
-	if len(addrs) < 1 {
-		err = os.NewError("No addresses.")
-		return
-	}
-	ip = addrs[0]
-	return
+	return net.LookupCNAME(hostname)
 }
 
-func getServiceURL(rootURL string) (url string, err os.Error) {
-	r, _, err := http.Get(rootURL)
+func getServiceURL(rootURL string) (url string, err error) {
+	r, err := http.Get(rootURL)
 	if err != nil {
 		return
 	}
 	defer r.Body.Close()
 	if r.StatusCode >= 400 {
-		err = os.NewError(string(r.StatusCode))
+		err = errors.New(string(r.StatusCode))
 		return
 	}
 	var root Root
@@ -174,22 +165,22 @@ func getServiceURL(rootURL string) (url string, err os.Error) {
 	}
 	a := &root.Device
 	if a.DeviceType != "urn:schemas-upnp-org:device:InternetGatewayDevice:1" {
-		err = os.NewError("No InternetGatewayDevice")
+		err = errors.New("No InternetGatewayDevice")
 		return
 	}
 	b := getChildDevice(a, "urn:schemas-upnp-org:device:WANDevice:1")
 	if b == nil {
-		err = os.NewError("No WANDevice")
+		err = errors.New("No WANDevice")
 		return
 	}
 	c := getChildDevice(b, "urn:schemas-upnp-org:device:WANConnectionDevice:1")
 	if c == nil {
-		err = os.NewError("No WANConnectionDevice")
+		err = errors.New("No WANConnectionDevice")
 		return
 	}
 	d := getChildService(c, "urn:schemas-upnp-org:service:WANIPConnection:1")
 	if d == nil {
-		err = os.NewError("No WANIPConnection")
+		err = errors.New("No WANIPConnection")
 		return
 	}
 	url = combineURL(rootURL, d.ControlURL)
@@ -204,91 +195,87 @@ func combineURL(rootURL, subURL string) string {
 	return rootURL[0:protoEndIndex+len(protocolEnd)+rootIndex] + subURL
 }
 
-type stringBuffer struct {
-	base    string
-	current string
-}
+//type stringBuffer struct {
+//	base    string
+//	current string
+//}
+//
+//func NewStringBuffer(s string) *stringBuffer { return &stringBuffer{s, s} }
+//
+//func (sb *stringBuffer) Read(p []byte) (n int, err error) {
+//	s := sb.current
+//	lenStr := len(s)
+//	if lenStr == 0 {
+//		return 0, io.EOF
+//	}
+//	n = len(p)
+//	if n > lenStr {
+//		n = lenStr
+//		err = io.EOF
+//	}
+//	for i := 0; i < n; i++ {
+//		p[i] = s[i]
+//	}
+//	sb.current = s[n:]
+//	return
+//}
+//
+//func (sb *stringBuffer) Seek(offset int64, whence int) (ret int64, err error) {
+//	var newOffset int64
+//	switch whence {
+//	case 0: // from beginning
+//		newOffset = offset
+//	case 1: // relative
+//		newOffset = int64(len(sb.base)-len(sb.current)) + offset
+//	case 2: // from end
+//		newOffset = int64(len(sb.base)) - offset
+//	default:
+//		err = errors.New("bad whence")
+//		return
+//	}
+//	if newOffset < 0 || newOffset > int64(len(sb.base)) {
+//		err = errors.New("offset out of range")
+//	} else {
+//		sb.current = sb.base[newOffset:]
+//		ret = newOffset
+//	}
+//	return
+//}
 
-func NewStringBuffer(s string) *stringBuffer { return &stringBuffer{s, s} }
-
-func (sb *stringBuffer) Read(p []byte) (n int, err os.Error) {
-	s := sb.current
-	lenStr := len(s)
-	if lenStr == 0 {
-		return 0, os.EOF
-	}
-	n = len(p)
-	if n > lenStr {
-		n = lenStr
-		err = os.EOF
-	}
-	for i := 0; i < n; i++ {
-		p[i] = s[i]
-	}
-	sb.current = s[n:]
-	return
-}
-
-func (sb *stringBuffer) Seek(offset int64, whence int) (ret int64, err os.Error) {
-	var newOffset int64
-	switch whence {
-	case 0: // from beginning
-		newOffset = offset
-	case 1: // relative
-		newOffset = int64(len(sb.base)-len(sb.current)) + offset
-	case 2: // from end
-		newOffset = int64(len(sb.base)) - offset
-	default:
-		err = os.NewError("bad whence")
-		return
-	}
-	if newOffset < 0 || newOffset > int64(len(sb.base)) {
-		err = os.NewError("offset out of range")
-	} else {
-		sb.current = sb.base[newOffset:]
-		ret = newOffset
-	}
-	return
-}
-
-func soapRequest(url, function, message string) (r *http.Response, err os.Error) {
+func soapRequest(url, function, message string) (r *http.Response, err error) {
 	fullMessage := "<?xml version=\"1.0\" ?>" +
 		"<s:Envelope xmlns:s=\"http://schemas.xmlsoap.org/soap/envelope/\" s:encodingStyle=\"http://schemas.xmlsoap.org/soap/encoding/\">\r\n" +
 		"<s:Body>" + message + "</s:Body></s:Envelope>"
 
-	var req http.Request
-	req.Method = "POST"
-	req.Body = NewStringBuffer(fullMessage)
-	req.UserAgent = "Darwin/10.0.0, UPnP/1.0, MiniUPnPc/1.3"
-	req.Header = map[string]string{
-		"Content-Type": "text/xml ; charset=\"utf-8\"",
-		// "Transfer-Encoding": "chunked",
-		"SOAPAction":    "\"urn:schemas-upnp-org:service:WANIPConnection:1#" + function + "\"",
-		"Connection":    "Close",
-		"Cache-Control": "no-cache",
-		"Pragma":        "no-cache",
-	}
-
-	req.URL, err = http.ParseURL(url)
+	req, err := http.NewRequest("POST", url, strings.NewReader(fullMessage))
 	if err != nil {
-		return
+		return nil, err
 	}
+	req.Header.Set("Content-Type", "text/xml ; charset=\"utf-8\"")
+	req.Header.Set("User-Agent", "Darwin/10.0.0, UPnP/1.0, MiniUPnPc/1.3")
+	//req.Header.Set("Transfer-Encoding", "chunked")
+	req.Header.Set("SOAPAction", "\"urn:schemas-upnp-org:service:WANIPConnection:1#"+function+"\"")
+	req.Header.Set("Connection", "Close")
+	req.Header.Set("Cache-Control", "no-cache")
+	req.Header.Set("Pragma", "no-cache")
 
 	// log.Stderr("soapRequest ", req)
 
-	r, err = http.Send(&req)
+	r, err = http.DefaultClient.Do(req)
+	if r.Body != nil {
+		defer r.Body.Close()
+	}
 
 	if r.StatusCode >= 400 {
 		// log.Stderr(function, r.StatusCode)
-		err = os.NewError("Error " + strconv.Itoa(r.StatusCode) + " for " + function)
-		r.Body.Close()
+		err = errors.New("Error " + strconv.Itoa(r.StatusCode) + " for " + function)
 		r = nil
 		return
 	}
 	return
 }
 
-func (n *upnpNAT) GetStatusInfo() (err os.Error) {
+func (n *upnpNAT) GetStatusInfo() (err error) {
 
 	message := "<u:GetStatusInfo xmlns:u=\"urn:schemas-upnp-org:service:WANIPConnection:1\">\r\n" +
 		"</u:GetStatusInfo>"
@@ -305,8 +292,7 @@ func (n *upnpNAT) GetStatusInfo() (err os.Error) {
 	return
 }
 
-
-func (n *upnpNAT) AddPortMapping(protocol string, externalPort, internalPort int, description string, timeout int) (err os.Error) {
+func (n *upnpNAT) AddPortMapping(protocol string, externalPort, internalPort int, description string, timeout int) (err error) {
 	// A single concatenation would brake ARM compilation.
 	message := "<u:AddPortMapping xmlns:u=\"urn:schemas-upnp-org:service:WANIPConnection:1\">\r\n" +
 		"<NewRemoteHost></NewRemoteHost><NewExternalPort>" + strconv.Itoa(externalPort)
@@ -330,8 +316,7 @@ func (n *upnpNAT) AddPortMapping(protocol string, externalPort, internalPort int
 	return
 }
 
-
-func (n *upnpNAT) DeletePortMapping(protocol string, externalPort int) (err os.Error) {
+func (n *upnpNAT) DeletePortMapping(protocol string, externalPort int) (err error) {
 
 	message := "<u:DeletePortMapping xmlns:u=\"urn:schemas-upnp-org:service:WANIPConnection:1\">\r\n" +
 		"<NewRemoteHost></NewRemoteHost><NewExternalPort>" + strconv.Itoa(externalPort) +
