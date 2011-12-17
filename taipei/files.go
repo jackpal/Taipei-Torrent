@@ -1,11 +1,11 @@
 package taipei
 
 import (
+	"errors"
 	"io"
 	"os"
 	"path"
 	"strings"
-	"syscall"
 )
 
 type FileStore interface {
@@ -24,14 +24,14 @@ type fileStore struct {
 	files   []fileEntry // Stored in increasing globalOffset order
 }
 
-func createPath(parts []string) (path string, err os.Error) {
+func createPath(parts []string) (path string, err error) {
 	// TODO: better, OS-specific sanitization.
 	for _, part := range parts {
 		// Sanitize file names.
 		if strings.Index(part, "/") >= 0 ||
 			strings.Index(part, "\\") >= 0 ||
 			part == ".." {
-			err = os.NewError("Bad path part " + part)
+			err = errors.New("Bad path part " + part)
 			return
 		}
 	}
@@ -40,20 +40,21 @@ func createPath(parts []string) (path string, err os.Error) {
 	return
 }
 
-func (fe *fileEntry) open(name string, length int64) (err os.Error) {
+func (fe *fileEntry) open(name string, length int64) (err error) {
 	fe.length = length
-	fe.fd, err = os.Open(name, os.O_RDWR|os.O_CREAT, 0666)
+	fe.fd, err = os.Create(name)
 	if err != nil {
 		return
 	}
-	errno := syscall.Truncate(name, length)
-	if errno != 0 {
-		err = os.NewError("Could not truncate file.")
+	err = os.Truncate(name, length)
+	if err != nil {
+		return
+		err = errors.New("Could not truncate file.")
 	}
 	return
 }
 
-func ensureDirectory(fullPath string) (err os.Error) {
+func ensureDirectory(fullPath string) (err error) {
 	fullPath = path.Clean(fullPath)
 	if !strings.HasPrefix(fullPath, "/") {
 		// Transform into absolute path.
@@ -71,7 +72,7 @@ func ensureDirectory(fullPath string) (err os.Error) {
 	return
 }
 
-func NewFileStore(info *InfoDict, fileDir string) (f FileStore, totalSize int64, err os.Error) {
+func NewFileStore(info *InfoDict, fileDir string) (f FileStore, totalSize int64, err error) {
 	fs := new(fileStore)
 	numFiles := len(info.Files)
 	if numFiles == 0 {
@@ -121,7 +122,7 @@ func (f *fileStore) find(offset int64) int {
 	return low
 }
 
-func (f *fileStore) ReadAt(p []byte, off int64) (n int, err os.Error) {
+func (f *fileStore) ReadAt(p []byte, off int64) (n int, err error) {
 	index := f.find(off)
 	for len(p) > 0 && index < len(f.offsets) {
 		chunk := int64(len(p))
@@ -152,7 +153,7 @@ func (f *fileStore) ReadAt(p []byte, off int64) (n int, err os.Error) {
 	return
 }
 
-func (f *fileStore) WriteAt(p []byte, off int64) (n int, err os.Error) {
+func (f *fileStore) WriteAt(p []byte, off int64) (n int, err error) {
 	index := f.find(off)
 	for len(p) > 0 && index < len(f.offsets) {
 		chunk := int64(len(p))
@@ -180,7 +181,7 @@ func (f *fileStore) WriteAt(p []byte, off int64) (n int, err os.Error) {
 	// This is defined by the bittorrent protocol.
 	for i, _ := range p {
 		if p[i] != 0 {
-			err = os.NewError("Unexpected non-zero data at end of store.")
+			err = errors.New("Unexpected non-zero data at end of store.")
 			n = n + i
 			return
 		}
@@ -189,7 +190,7 @@ func (f *fileStore) WriteAt(p []byte, off int64) (n int, err os.Error) {
 	return
 }
 
-func (f *fileStore) Close() (err os.Error) {
+func (f *fileStore) Close() (err error) {
 	for i, _ := range f.files {
 		fd := f.files[i].fd
 		if fd != nil {

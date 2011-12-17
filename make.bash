@@ -8,7 +8,7 @@ bash clean.bash
 
 # Pass 2: make everything
 
-DEPS="http bencode taipei"
+DEPS="bencode taipei"
 for dep in ${DEPS}; do
 	cd $dep ; make ; make install ; cd ..
 done
