@@ -2,35 +2,35 @@ package bencode
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
-	"os"
 	"reflect"
 	"testing"
 )
 
 type any interface{}
 
-func checkMarshal(expected string, data any) (err os.Error) {
+func checkMarshal(expected string, data any) (err error) {
 	var b bytes.Buffer
 	if err = Marshal(&b, data); err != nil {
 		return
 	}
 	s := b.String()
 	if expected != s {
-		err = os.NewError(fmt.Sprintf("Expected %s got %s", expected, s))
+		err = errors.New(fmt.Sprintf("Expected %s got %s", expected, s))
 		return
 	}
 	return
 }
 
-func check(expected string, data any) (err os.Error) {
+func check(expected string, data any) (err error) {
 	if err = checkMarshal(expected, data); err != nil {
 		return
 	}
 	b2 := bytes.NewBufferString(expected)
 	val, err := Decode(b2)
 	if err != nil {
-		err = os.NewError(fmt.Sprint("Failed decoding ", expected, " ", err))
+		err = errors.New(fmt.Sprint("Failed decoding ", expected, " ", err))
 		return
 	}
 	if err = checkFuzzyEqual(data, val); err != nil {
@@ -39,41 +39,41 @@ func check(expected string, data any) (err os.Error) {
 	return
 }
 
-func checkFuzzyEqual(a any, b any) (err os.Error) {
+func checkFuzzyEqual(a any, b any) (err error) {
 	if !fuzzyEqual(a, b) {
-		err = os.NewError(fmt.Sprint(a, " != ", b,
-			":", reflect.NewValue(a), "!=", reflect.NewValue(b)))
+		err = errors.New(fmt.Sprint(a, " != ", b,
+			":", reflect.ValueOf(a), "!=", reflect.ValueOf(b)))
 	}
 	return
 }
 
 func fuzzyEqual(a, b any) bool {
-	return fuzzyEqualValue(reflect.NewValue(a), reflect.NewValue(b))
+	return fuzzyEqualValue(reflect.ValueOf(a), reflect.ValueOf(b))
 }
 
-func checkFuzzyEqualValue(a, b reflect.Value) (err os.Error) {
+func checkFuzzyEqualValue(a, b reflect.Value) (err error) {
 	if !fuzzyEqualValue(a, b) {
-		err = os.NewError(fmt.Sprint(a, " != ", b,
+		err = errors.New(fmt.Sprint(a, " != ", b,
 			":", a.Interface(), "!=", b.Interface()))
 	}
 	return
 }
 
 func fuzzyEqualInt64(a int64, b reflect.Value) bool {
-	switch vb := b.(type) {
-	case *reflect.IntValue:
-		return a == (vb.Get())
+	switch vb := b; vb.Kind() {
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		return a == (vb.Int())
 	default:
 		return false
 	}
 	return false
 }
 
-func fuzzyEqualArrayOrSlice(va reflect.ArrayOrSliceValue, b reflect.Value) bool {
-	switch vb := b.(type) {
-	case *reflect.ArrayValue:
+func fuzzyEqualArrayOrSlice(va reflect.Value, b reflect.Value) bool {
+	switch vb := b; vb.Kind() {
+	case reflect.Array:
 		return fuzzyEqualArrayOrSlice2(va, vb)
-	case *reflect.SliceValue:
+	case reflect.Slice:
 		return fuzzyEqualArrayOrSlice2(va, vb)
 	default:
 		return false
@@ -82,21 +82,21 @@ func fuzzyEqualArrayOrSlice(va reflect.ArrayOrSliceValue, b reflect.Value) bool 
 }
 
 func deInterface(a reflect.Value) reflect.Value {
-	switch va := a.(type) {
-	case *reflect.InterfaceValue:
+	switch va := a; va.Kind() {
+	case reflect.Interface:
 		return va.Elem()
 	}
 	return a
 }
 
-func fuzzyEqualArrayOrSlice2(a reflect.ArrayOrSliceValue, b reflect.ArrayOrSliceValue) bool {
+func fuzzyEqualArrayOrSlice2(a reflect.Value, b reflect.Value) bool {
 	if a.Len() != b.Len() {
 		return false
 	}
 
 	for i := 0; i < a.Len(); i++ {
-		ea := deInterface(a.Elem(i))
-		eb := deInterface(b.Elem(i))
+		ea := deInterface(a.Index(i))
+		eb := deInterface(b.Index(i))
 		if !fuzzyEqualValue(ea, eb) {
 			return false
 		}
@@ -104,31 +104,31 @@ func fuzzyEqualArrayOrSlice2(a reflect.ArrayOrSliceValue, b reflect.ArrayOrSlice
 	return true
 }
 
-func fuzzyEqualMap(a *reflect.MapValue, b *reflect.MapValue) bool {
-	key := a.Type().(*reflect.MapType).Key()
-	if _, ok := key.(*reflect.StringType); !ok {
+func fuzzyEqualMap(a reflect.Value, b reflect.Value) bool {
+	key := a.Type().Key()
+	if key.Kind() != reflect.String {
 		return false
 	}
-	key = b.Type().(*reflect.MapType).Key()
-	if _, ok := key.(*reflect.StringType); !ok {
+	key = b.Type().Key()
+	if key.Kind() != reflect.String {
 		return false
 	}
 
-	aKeys, bKeys := a.Keys(), b.Keys()
+	aKeys, bKeys := a.MapKeys(), b.MapKeys()
 
 	if len(aKeys) != len(bKeys) {
 		return false
 	}
 
 	for _, k := range aKeys {
-		if !fuzzyEqualValue(a.Elem(k), b.Elem(k)) {
+		if !fuzzyEqualValue(a.MapIndex(k), b.MapIndex(k)) {
 			return false
 		}
 	}
 	return true
 }
 
-func fuzzyEqualStruct(a *reflect.StructValue, b *reflect.StructValue) bool {
+func fuzzyEqualStruct(a reflect.Value, b reflect.Value) bool {
 	numA, numB := a.NumField(), b.NumField()
 	if numA != numB {
 		return false
@@ -143,37 +143,37 @@ func fuzzyEqualStruct(a *reflect.StructValue, b *reflect.StructValue) bool {
 }
 
 func fuzzyEqualValue(a, b reflect.Value) bool {
-	switch va := a.(type) {
-	case *reflect.StringValue:
-		switch vb := b.(type) {
-		case *reflect.StringValue:
-			return va.Get() == vb.Get()
+	switch va := a; va.Kind() {
+	case reflect.String:
+		switch vb := b; vb.Kind() {
+		case reflect.String:
+			return va.String() == vb.String()
 		default:
 			return false
 		}
-	case *reflect.IntValue:
-		return fuzzyEqualInt64(va.Get(), b)
-	case *reflect.ArrayValue:
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		return fuzzyEqualInt64(va.Int(), b)
+	case reflect.Array:
 		return fuzzyEqualArrayOrSlice(va, b)
-	case *reflect.SliceValue:
+	case reflect.Slice:
 		return fuzzyEqualArrayOrSlice(va, b)
-	case *reflect.MapValue:
-		switch vb := b.(type) {
-		case *reflect.MapValue:
+	case reflect.Map:
+		switch vb := b; vb.Kind() {
+		case reflect.Map:
 			return fuzzyEqualMap(va, vb)
 		default:
 			return false
 		}
-	case *reflect.StructValue:
-		switch vb := b.(type) {
-		case *reflect.StructValue:
+	case reflect.Struct:
+		switch vb := b; vb.Kind() {
+		case reflect.Struct:
 			return fuzzyEqualStruct(va, vb)
 		default:
 			return false
 		}
-	case *reflect.InterfaceValue:
-		switch vb := b.(type) {
-		case *reflect.InterfaceValue:
+	case reflect.Interface:
+		switch vb := b; vb.Kind() {
+		case reflect.Interface:
 			return fuzzyEqualValue(va.Elem(), vb.Elem())
 		default:
 			return false
@@ -184,12 +184,12 @@ func fuzzyEqualValue(a, b reflect.Value) bool {
 	return false
 }
 
-func checkUnmarshal(expected string, data any) (err os.Error) {
+func checkUnmarshal(expected string, data any) (err error) {
 	if err = checkMarshal(expected, data); err != nil {
 		return
 	}
-	dataValue := reflect.NewValue(data)
-	newOne := reflect.MakeZero(dataValue.Type())
+	dataValue := reflect.ValueOf(data)
+	newOne := reflect.Zero(dataValue.Type())
 	buf := bytes.NewBufferString(expected)
 	if err = UnmarshalValue(buf, newOne); err != nil {
 		return
@@ -223,7 +223,7 @@ func TestDecode(t *testing.T) {
 	}
 	for _, sv := range tests {
 		if err := check(sv.s, sv.v); err != nil {
-			t.Error(err.String())
+			t.Error(err.Error())
 		}
 	}
 }
@@ -262,7 +262,7 @@ func TestUnmarshal(t *testing.T) {
 	}
 	for _, sv := range tests {
 		if err := checkUnmarshal(sv.s, sv.v); err != nil {
-			t.Error(err.String())
+			t.Error(err.Error())
 		}
 	}
 }

@@ -10,9 +10,10 @@
 package bencode
 
 import (
+	"errors"
 	"fmt"
 	"io"
-	"os"
+
 	"reflect"
 	"sort"
 	"strings"
@@ -22,35 +23,35 @@ type structBuilder struct {
 	val reflect.Value
 
 	// if map_ != nil, write val to map_[key] on each change
-	map_ *reflect.MapValue
+	map_ reflect.Value
 	key  reflect.Value
 }
 
 var nobuilder *structBuilder
 
 func isfloat(v reflect.Value) bool {
-	switch v.(type) {
-	case *reflect.FloatValue:
+	switch v.Kind() {
+	case reflect.Float32, reflect.Float64:
 		return true
 	}
 	return false
 }
 
 func setfloat(v reflect.Value, f float64) {
-	switch v := v.(type) {
-	case *reflect.FloatValue:
-		v.Set(f)
+	switch v.Kind() {
+	case reflect.Float32, reflect.Float64:
+		v.SetFloat(f)
 	}
 }
 
 func setint(val reflect.Value, i int64) {
-	switch v := val.(type) {
-	case *reflect.IntValue:
-		v.Set(int64(i))
-	case *reflect.UintValue:
-		v.Set(uint64(i))
-	case *reflect.InterfaceValue:
-		v.Set(reflect.NewValue(i))
+	switch v := val; v.Kind() {
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		v.SetInt(int64(i))
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
+		v.SetUint(uint64(i))
+	case reflect.Interface:
+		v.Set(reflect.ValueOf(i))
 	}
 }
 
@@ -60,8 +61,8 @@ func (b *structBuilder) Flush() {
 	if b == nil {
 		return
 	}
-	if b.map_ != nil {
-		b.map_.SetElem(b.key, b.val)
+	if b.map_.IsValid() {
+		b.map_.SetMapIndex(b.key, b.val)
 	}
 }
 
@@ -106,11 +107,11 @@ func (b *structBuilder) String(s string) {
 		return
 	}
 
-	switch v := b.val.(type) {
-	case *reflect.StringValue:
-		v.Set(s)
-	case *reflect.InterfaceValue:
-		v.Set(reflect.NewValue(s))
+	switch v := b.val; v.Kind() {
+	case reflect.String:
+		v.SetString(s)
+	case reflect.Interface:
+		v.Set(reflect.ValueOf(s))
 	}
 }
 
@@ -118,9 +119,9 @@ func (b *structBuilder) Array() {
 	if b == nil {
 		return
 	}
-	if v, ok := b.val.(*reflect.SliceValue); ok {
+	if v := b.val; v.Kind() == reflect.Slice {
 		if v.IsNil() {
-			v.Set(reflect.MakeSlice(v.Type().(*reflect.SliceType), 0, 8))
+			v.Set(reflect.MakeSlice(v.Type(), 0, 8))
 		}
 	}
 }
@@ -129,12 +130,12 @@ func (b *structBuilder) Elem(i int) Builder {
 	if b == nil || i < 0 {
 		return nobuilder
 	}
-	switch v := b.val.(type) {
-	case *reflect.ArrayValue:
+	switch v := b.val; v.Kind() {
+	case reflect.Array:
 		if i < v.Len() {
-			return &structBuilder{val: v.Elem(i)}
+			return &structBuilder{val: v.Index(i)}
 		}
-	case *reflect.SliceValue:
+	case reflect.Slice:
 		if i >= v.Cap() {
 			n := v.Cap()
 			if n < 8 {
@@ -143,7 +144,7 @@ func (b *structBuilder) Elem(i int) Builder {
 			for n <= i {
 				n *= 2
 			}
-			nv := reflect.MakeSlice(v.Type().(*reflect.SliceType), v.Len(), n)
+			nv := reflect.MakeSlice(v.Type(), v.Len(), n)
 			reflect.Copy(nv, v)
 			v.Set(nv)
 		}
@@ -151,7 +152,7 @@ func (b *structBuilder) Elem(i int) Builder {
 			v.SetLen(i + 1)
 		}
 		if i < v.Len() {
-			return &structBuilder{val: v.Elem(i)}
+			return &structBuilder{val: v.Index(i)}
 		}
 	}
 	return nobuilder
@@ -161,16 +162,16 @@ func (b *structBuilder) Map() {
 	if b == nil {
 		return
 	}
-	if v, ok := b.val.(*reflect.PtrValue); ok && v.IsNil() {
+	if v := b.val; v.Kind() == reflect.Ptr && v.IsNil() {
 		if v.IsNil() {
-			v.PointTo(reflect.MakeZero(v.Type().(*reflect.PtrType).Elem()))
+			v.Set(reflect.Zero(v.Type().Elem()).Addr())
 			b.Flush()
 		}
-		b.map_ = nil
+		b.map_ = reflect.Value{}
 		b.val = v.Elem()
 	}
-	if v, ok := b.val.(*reflect.MapValue); ok && v.IsNil() {
-		v.Set(reflect.MakeMap(v.Type().(*reflect.MapType)))
+	if v := b.val; v.Kind() == reflect.Map && v.IsNil() {
+		v.Set(reflect.MakeMap(v.Type()))
 	}
 }
 
@@ -178,28 +179,28 @@ func (b *structBuilder) Key(k string) Builder {
 	if b == nil {
 		return nobuilder
 	}
-	switch v := reflect.Indirect(b.val).(type) {
-	case *reflect.StructValue:
-		t := v.Type().(*reflect.StructType)
+	switch v := reflect.Indirect(b.val); v.Kind() {
+	case reflect.Struct:
+		t := v.Type()
 		// Case-insensitive field lookup.
 		k = strings.ToLower(k)
 		for i := 0; i < t.NumField(); i++ {
 			field := t.Field(i)
-			if strings.ToLower(field.Tag) == k ||
+			if strings.ToLower(string(field.Tag)) == k ||
 				strings.ToLower(field.Name) == k {
 				return &structBuilder{val: v.Field(i)}
 			}
 		}
-	case *reflect.MapValue:
-		t := v.Type().(*reflect.MapType)
-		if t.Key() != reflect.Typeof(k) {
+	case reflect.Map:
+		t := v.Type()
+		if t.Key() != reflect.TypeOf(k) {
 			break
 		}
-		key := reflect.NewValue(k)
-		elem := v.Elem(key)
-		if elem == nil {
-			v.SetElem(key, reflect.MakeZero(t.Elem()))
-			elem = v.Elem(key)
+		key := reflect.ValueOf(k)
+		elem := v.MapIndex(key)
+		if !elem.IsValid() {
+			v.SetMapIndex(key, reflect.Zero(t.Elem()))
+			elem = v.MapIndex(key)
 		}
 		return &structBuilder{val: elem, map_: v, key: key}
 	}
@@ -258,26 +259,26 @@ func (b *structBuilder) Key(k string) Builder {
 // slice of the correct type.
 //
 
-func Unmarshal(r io.Reader, val interface{}) (err os.Error) {
+func Unmarshal(r io.Reader, val interface{}) (err error) {
 	// If e represents a value, the answer won't get back to the
 	// caller.  Make sure it's a pointer.
-	if _, ok := reflect.Typeof(val).(*reflect.PtrType); !ok {
-		err = os.ErrorString("Attempt to unmarshal into a non-pointer")
+	if reflect.TypeOf(val).Kind() != reflect.Ptr {
+		err = errors.New("Attempt to unmarshal into a non-pointer")
 		return
 	}
-	err = UnmarshalValue(r, reflect.NewValue(val))
+	err = UnmarshalValue(r, reflect.ValueOf(val))
 	return
 }
 
 // This API is public primarily to make testing easier, but it is available if you
 // have a use for it.
 
-func UnmarshalValue(r io.Reader, v reflect.Value) (err os.Error) {
+func UnmarshalValue(r io.Reader, v reflect.Value) (err error) {
 	var b *structBuilder
 
 	// If val is a pointer to a slice, we append to the slice.
-	if ptr, ok := v.(*reflect.PtrValue); ok {
-		if slice, ok := ptr.Elem().(*reflect.SliceValue); ok {
+	if ptr := v; ptr.Kind() == reflect.Ptr {
+		if slice := ptr.Elem(); slice.Kind() == reflect.Slice {
 			b = &structBuilder{val: slice}
 		}
 	}
@@ -294,17 +295,17 @@ type MarshalError struct {
 	T reflect.Type
 }
 
-func (e *MarshalError) String() string {
+func (e *MarshalError) Error() string {
 	return "bencode cannot encode value of type " + e.T.String()
 }
 
-func writeArrayOrSlice(w io.Writer, val reflect.ArrayOrSliceValue) (err os.Error) {
+func writeArrayOrSlice(w io.Writer, val reflect.Value) (err error) {
 	_, err = fmt.Fprint(w, "l")
 	if err != nil {
 		return
 	}
 	for i := 0; i < val.Len(); i++ {
-		if err := writeValue(w, val.Elem(i)); err != nil {
+		if err := writeValue(w, val.Index(i)); err != nil {
 			return err
 		}
 	}
@@ -331,7 +332,7 @@ func (a StringValueArray) Less(i, j int) bool { return a[i].key < a[j].key }
 
 func (a StringValueArray) Swap(i, j int) { a[i], a[j] = a[j], a[i] }
 
-func writeSVList(w io.Writer, svList StringValueArray) (err os.Error) {
+func writeSVList(w io.Writer, svList StringValueArray) (err error) {
 	sort.Sort(svList)
 
 	for _, sv := range svList {
@@ -351,10 +352,9 @@ func writeSVList(w io.Writer, svList StringValueArray) (err os.Error) {
 	return
 }
 
-
-func writeMap(w io.Writer, val *reflect.MapValue) (err os.Error) {
-	key := val.Type().(*reflect.MapType).Key()
-	if _, ok := key.(*reflect.StringType); !ok {
+func writeMap(w io.Writer, val reflect.Value) (err error) {
+	key := val.Type().Key()
+	if key.Kind() != reflect.String {
 		return &MarshalError{val.Type()}
 	}
 	_, err = fmt.Fprint(w, "d")
@@ -362,14 +362,14 @@ func writeMap(w io.Writer, val *reflect.MapValue) (err os.Error) {
 		return
 	}
 
-	keys := val.Keys()
+	keys := val.MapKeys()
 
 	// Sort keys
 
 	svList := make(StringValueArray, len(keys))
 	for i, key := range keys {
-		svList[i].key = key.(*reflect.StringValue).Get()
-		svList[i].value = val.Elem(key)
+		svList[i].key = key.String()
+		svList[i].value = val.MapIndex(key)
 	}
 
 	err = writeSVList(w, svList)
@@ -384,13 +384,13 @@ func writeMap(w io.Writer, val *reflect.MapValue) (err os.Error) {
 	return
 }
 
-func writeStruct(w io.Writer, val *reflect.StructValue) (err os.Error) {
+func writeStruct(w io.Writer, val reflect.Value) (err error) {
 	_, err = fmt.Fprint(w, "d")
 	if err != nil {
 		return
 	}
 
-	typ := val.Type().(*reflect.StructType)
+	typ := val.Type()
 
 	numFields := val.NumField()
 	svList := make(StringValueArray, numFields)
@@ -399,7 +399,7 @@ func writeStruct(w io.Writer, val *reflect.StructValue) (err os.Error) {
 		field := typ.Field(i)
 		key := field.Name
 		if len(field.Tag) > 0 {
-			key = field.Tag
+			key = string(field.Tag)
 		}
 		svList[i].key = key
 		svList[i].value = val.Field(i)
@@ -417,29 +417,29 @@ func writeStruct(w io.Writer, val *reflect.StructValue) (err os.Error) {
 	return
 }
 
-func writeValue(w io.Writer, val reflect.Value) (err os.Error) {
-	if val == nil {
-		err = os.NewError("Can't write null value")
+func writeValue(w io.Writer, val reflect.Value) (err error) {
+	if !val.IsValid() {
+		err = errors.New("Can't write null value")
 		return
 	}
 
-	switch v := val.(type) {
-	case *reflect.StringValue:
-		s := v.Get()
+	switch v := val; v.Kind() {
+	case reflect.String:
+		s := v.String()
 		_, err = fmt.Fprintf(w, "%d:%s", len(s), s)
-	case *reflect.IntValue:
-		_, err = fmt.Fprintf(w, "i%de", v.Get())
-	case *reflect.UintValue:
-		_, err = fmt.Fprintf(w, "i%de", v.Get())
-	case *reflect.ArrayValue:
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		_, err = fmt.Fprintf(w, "i%de", v.Int())
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
+		_, err = fmt.Fprintf(w, "i%de", v.Uint())
+	case reflect.Array:
 		err = writeArrayOrSlice(w, v)
-	case *reflect.SliceValue:
+	case reflect.Slice:
 		err = writeArrayOrSlice(w, v)
-	case *reflect.MapValue:
+	case reflect.Map:
 		err = writeMap(w, v)
-	case *reflect.StructValue:
+	case reflect.Struct:
 		err = writeStruct(w, v)
-	case *reflect.InterfaceValue:
+	case reflect.Interface:
 		err = writeValue(w, v.Elem())
 	default:
 		err = &MarshalError{val.Type()}
@@ -448,11 +448,11 @@ func writeValue(w io.Writer, val reflect.Value) (err os.Error) {
 }
 
 func isValueNil(val reflect.Value) bool {
-	if val == nil {
+	if !val.IsValid() {
 		return true
 	}
-	switch v := val.(type) {
-	case *reflect.InterfaceValue:
+	switch v := val; v.Kind() {
+	case reflect.Interface:
 		return isValueNil(v.Elem())
 	default:
 		return false
@@ -460,6 +460,6 @@ func isValueNil(val reflect.Value) bool {
 	return false
 }
 
-func Marshal(w io.Writer, val interface{}) os.Error {
-	return writeValue(w, reflect.NewValue(val))
+func Marshal(w io.Writer, val interface{}) error {
+	return writeValue(w, reflect.ValueOf(val))
 }
