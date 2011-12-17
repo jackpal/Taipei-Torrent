@@ -3,14 +3,12 @@
 // license that can be found in the LICENSE file.
 
 // Represents bencode data structure using native Go types: booleans, floats,
-// strings, arrays, and maps.
+// strings, slices, and maps.
 
 package bencode
 
 import (
-	"container/vector"
 	"io"
-	"os"
 )
 
 // Decode a bencode stream
@@ -18,12 +16,12 @@ import (
 // Decode parses the stream r and returns the
 // generic bencode object representation.  The object representation is a tree
 // of Go data types.  The data return value may be one of string,
-// int64, uint64, []interface{} or map[string]interface{}.  The array and map
+// int64, uint64, []interface{} or map[string]interface{}.  The slice and map
 // elements may in turn contain any of the types listed above and so on.
 //
 // If Decode encounters a syntax error, it returns with err set to an
 // instance of ParseError.  See ParseError documentation for details.
-func Decode(r io.Reader) (data interface{}, err os.Error) {
+func Decode(r io.Reader) (data interface{}, err error) {
 	jb := newDecoder(nil, nil)
 	err = Parse(r, jb)
 	if err == nil {
@@ -35,7 +33,7 @@ func Decode(r io.Reader) (data interface{}, err os.Error) {
 type decoder struct {
 	// A value being constructed.
 	value interface{}
-	// Container entity to flush into.  Can be either vector.Vector or
+	// Container entity to flush into.  Can be either []interface{} or
 	// map[string]interface{}.
 	container interface{}
 	// The index into the container interface.  Either int or string.
@@ -58,19 +56,24 @@ func (j *decoder) Bool(b bool) { j.value = b }
 
 func (j *decoder) Null() { j.value = nil }
 
-func (j *decoder) Array() { j.value = new(vector.Vector) }
+func (j *decoder) Array() { j.value = make([]interface{}, 0, 8) }
 
 func (j *decoder) Map() { j.value = make(map[string]interface{}) }
 
 func (j *decoder) Elem(i int) Builder {
-	v, ok := j.value.(*vector.Vector)
+	v, ok := j.value.([]interface{})
 	if !ok {
-		v = new(vector.Vector)
+		v = make([]interface{}, 0, 8)
 		j.value = v
 	}
-	if v.Len() <= i {
-		v.Resize(i+1, (i+1)*2)
+	lens := len(v)
+	if cap(v) <= lens {
+		news := make([]interface{}, 0, lens*2)
+		copy(news, j.value.([]interface{}))
+		v = news
 	}
+	v = v[0 : lens+1]
+	j.value = v
 	return newDecoder(v, i)
 }
 
@@ -85,9 +88,9 @@ func (j *decoder) Key(s string) Builder {
 
 func (j *decoder) Flush() {
 	switch c := j.container.(type) {
-	case *vector.Vector:
+	case []interface{}:
 		index := j.index.(int)
-		c.Set(index, j.Copy())
+		c[index] = j.Copy()
 	case map[string]interface{}:
 		index := j.index.(string)
 		c[index] = j.Copy()
@@ -96,9 +99,5 @@ func (j *decoder) Flush() {
 
 // Get the value built by this builder.
 func (j *decoder) Copy() interface{} {
-	switch v := j.value.(type) {
-	case *vector.Vector:
-		return v.Copy()
-	}
 	return j.value
 }

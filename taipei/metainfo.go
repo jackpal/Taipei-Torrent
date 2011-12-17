@@ -3,13 +3,15 @@ package taipei
 import (
 	"bytes"
 	"crypto/sha1"
+	"errors"
 	"io"
 	"io/ioutil"
-	"jackpal/http"
 	"jackpal/bencode"
 	"log"
+	"net/http"
 	"os"
 	"strings"
+	"time"
 )
 
 type FileDict struct {
@@ -49,17 +51,17 @@ func getString(m map[string]interface{}, k string) string {
 	return ""
 }
 
-func getMetaInfo(torrent string) (metaInfo *MetaInfo, err os.Error) {
+func getMetaInfo(torrent string) (metaInfo *MetaInfo, err error) {
 	var input io.ReadCloser
 	if strings.HasPrefix(torrent, "http:") {
 		// 6g compiler bug prevents us from writing r, _, err :=
 		var r *http.Response
-		if r, _, err = http.Get(torrent); err != nil {
+		if r, err = http.Get(torrent); err != nil {
 			return
 		}
 		input = r.Body
 	} else {
-		if input, err = os.Open(torrent, os.O_RDONLY, 0666); err != nil {
+		if input, err = os.Open(torrent); err != nil {
 			return
 		}
 	}
@@ -71,19 +73,19 @@ func getMetaInfo(torrent string) (metaInfo *MetaInfo, err os.Error) {
 	m, err = bencode.Decode(input)
 	input.Close()
 	if err != nil {
-		err = os.NewError("Couldn't parse torrent file phase 1: " + err.String())
+		err = errors.New("Couldn't parse torrent file phase 1: " + err.Error())
 		return
 	}
 
 	topMap, ok := m.(map[string]interface{})
 	if !ok {
-		err = os.NewError("Couldn't parse torrent file phase 2.")
+		err = errors.New("Couldn't parse torrent file phase 2.")
 		return
 	}
 
 	infoMap, ok := topMap["info"]
 	if !ok {
-		err = os.NewError("Couldn't parse torrent file. info")
+		err = errors.New("Couldn't parse torrent file. info")
 		return
 	}
 	var b bytes.Buffer
@@ -99,7 +101,7 @@ func getMetaInfo(torrent string) (metaInfo *MetaInfo, err os.Error) {
 		return
 	}
 
-	m2.InfoHash = string(hash.Sum())
+	m2.InfoHash = string(hash.Sum(nil))
 	m2.Announce = getString(topMap, "announce")
 	m2.CreationDate = getString(topMap, "creation date")
 	m2.Comment = getString(topMap, "comment")
@@ -113,9 +115,9 @@ func getMetaInfo(torrent string) (metaInfo *MetaInfo, err os.Error) {
 type TrackerResponse struct {
 	FailureReason  string "failure reason"
 	WarningMessage string "warning message"
-	Interval       int
-	MinInterval    int    "min interval"
-	TrackerId      string "tracker id"
+	Interval       time.Duration
+	MinInterval    time.Duration "min interval"
+	TrackerId      string        "tracker id"
 	Complete       int
 	Incomplete     int
 	Peers          string
@@ -129,8 +131,8 @@ type SessionInfo struct {
 	Left       int64
 }
 
-func getTrackerInfo(url string) (tr *TrackerResponse, err os.Error) {
-	r, _, err := http.Get(url)
+func getTrackerInfo(url string) (tr *TrackerResponse, err error) {
+	r, err := http.Get(url)
 	if err != nil {
 		return
 	}
@@ -139,7 +141,7 @@ func getTrackerInfo(url string) (tr *TrackerResponse, err os.Error) {
 		data, _ := ioutil.ReadAll(r.Body)
 		reason := "Bad Request " + string(data)
 		log.Println(reason)
-		err = os.NewError(reason)
+		err = errors.New(reason)
 		return
 	}
 	var tr2 TrackerResponse
