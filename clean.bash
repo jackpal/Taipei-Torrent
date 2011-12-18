@@ -4,7 +4,7 @@ set -e
 
 make clean
 
-DEPS="http bencode taipei"
+DEPS="bencode taipei"
 for dep in ${DEPS}; do
 	cd $dep ; make clean || true; cd ..
 done

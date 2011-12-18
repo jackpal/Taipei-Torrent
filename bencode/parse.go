@@ -9,16 +9,16 @@ package bencode
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"io"
-	"os"
 	"strconv"
 )
 
 type Reader interface {
 	io.Reader
-	ReadByte() (c byte, err os.Error)
-	UnreadByte() os.Error
+	ReadByte() (c byte, err error)
+	UnreadByte() error
 }
 
 // Parser
@@ -29,7 +29,7 @@ type Reader interface {
 // Calling a method like Int64(i) sets that object to i.
 // Calling a method like Elem(i) or Key(s) creates a
 // new builder for a subpiece of the object (logically,
-// an array element or a map key).
+// a slice element or a map key).
 //
 // There are two Builders, in other files.
 // The decoder builds a generic bencode structures
@@ -37,7 +37,6 @@ type Reader interface {
 // The structBuilder copies data into a possibly
 // nested data structure, using the "map keys"
 // as struct field names.
-
 
 // A Builder is an interface implemented by clients and passed
 // to the bencode parser.  It gives clients full control over the
@@ -58,7 +57,7 @@ type Builder interface {
 	Flush()
 }
 
-func collectInt(r Reader, delim byte) (buf []byte, err os.Error) {
+func collectInt(r Reader, delim byte) (buf []byte, err error) {
 	for {
 		var c byte
 		c, err = r.ReadByte()
@@ -69,7 +68,7 @@ func collectInt(r Reader, delim byte) (buf []byte, err os.Error) {
 			return
 		}
 		if !(c == '-' || (c >= '0' && c <= '9')) {
-			err = os.NewError("expected digit")
+			err = errors.New("expected digit")
 			return
 		}
 		buf = append(buf, c)
@@ -77,22 +76,22 @@ func collectInt(r Reader, delim byte) (buf []byte, err os.Error) {
 	return
 }
 
-func decodeInt64(r Reader, delim byte) (data int64, err os.Error) {
+func decodeInt64(r Reader, delim byte) (data int64, err error) {
 	buf, err := collectInt(r, delim)
 	if err != nil {
 		return
 	}
-	data, err = strconv.Atoi64(string(buf))
+	data, err = strconv.ParseInt(string(buf), 10, 64)
 	return
 }
 
-func decodeString(r Reader) (data string, err os.Error) {
+func decodeString(r Reader) (data string, err error) {
 	length, err := decodeInt64(r, ':')
 	if err != nil {
 		return
 	}
 	if length < 0 {
-		err = os.NewError("Bad string length")
+		err = errors.New("Bad string length")
 		return
 	}
 	var buf = make([]byte, length)
@@ -104,8 +103,7 @@ func decodeString(r Reader) (data string, err os.Error) {
 	return
 }
 
-func parse(r Reader, build Builder) (err os.Error) {
-Switch:
+func parse(r Reader, build Builder) (err error) {
 	c, err := r.ReadByte()
 	if err != nil {
 		goto exit
@@ -163,12 +161,12 @@ Switch:
 		var i2 uint64
 		str = string(buf)
 		// If the number is exactly an integer, use that.
-		if i, err = strconv.Atoi64(str); err == nil {
+		if i, err = strconv.ParseInt(str, 10, 64); err == nil {
 			build.Int64(i)
-		} else if i2, err = strconv.Atoui64(str); err == nil {
+		} else if i2, err = strconv.ParseUint(str, 10, 64); err == nil {
 			build.Uint64(i2)
 		} else {
-			err = os.NewError("Bad integer")
+			err = errors.New("Bad integer")
 		}
 
 	case c == 'l':
@@ -194,7 +192,7 @@ Switch:
 			n++
 		}
 	default:
-		err = os.NewError(fmt.Sprintf("Unexpected character: '%v'", c))
+		err = errors.New(fmt.Sprintf("Unexpected character: '%v'", c))
 	}
 exit:
 	build.Flush()
@@ -203,7 +201,7 @@ exit:
 
 // Parse parses the bencode stream and makes calls to
 // the builder to construct a parsed representation.
-func Parse(r io.Reader, builder Builder) (err os.Error) {
+func Parse(r io.Reader, builder Builder) (err error) {
 	rr, ok := r.(Reader)
 	if !ok {
 		rr = bufio.NewReader(r)
