@@ -1,11 +1,11 @@
 package taipei
 
 import (
-	"expvar"
 	"log"
 	"math/rand"
 	"net"
 	"os"
+	"sort"
 	"testing"
 	"time"
 )
@@ -33,7 +33,7 @@ var pingTests = []pingTest{
 func TestPing(t *testing.T) {
 	for _, p := range pingTests {
 		node := startDhtNode(t)
-		r := node.newRemoteNode("", "") // id, Address
+		r := node.newRemoteNode("", "127.0.0.1:1234") // id, Address
 		v, _ := r.encodedPing(p.transId)
 		if v != p.out {
 			t.Errorf("Ping(%s) = %s, want %s.", p.nodeId, v, p.out)
@@ -56,7 +56,7 @@ var getPeersTests = []getPeersTest{
 func TestGetPeers(t *testing.T) {
 	for _, p := range getPeersTests {
 		n := startDhtNode(t)
-		r := n.newRemoteNode("", "") // id, address
+		r := n.newRemoteNode("", "127.0.0.1:1234") // id, address
 		v, _ := r.encodedGetPeers(p.transId, p.infoHash)
 		if v != p.out {
 			t.Errorf("GetPeers(%s, %s) = %s, want %s.", p.nodeId, p.infoHash, v, p.out)
@@ -66,28 +66,52 @@ func TestGetPeers(t *testing.T) {
 
 func dumpStats() {
 	log.Println("=== Stats ===")
-	log.Printf("total nodes contacted =>  %v\n", expvar.Get("nodes"))
+	log.Println("totalReachableNodes", totalReachableNodes)
+	log.Println("totalDupes", totalDupes)
+	log.Println("totalPeers", totalPeers)
+	log.Println("totalGetPeers", totalGetPeers)
+}
+
+func TestNodeDistance(t *testing.T) {
+	var zeroDistance = "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+
+	var nd = &nodeDistances{"mnopqrstuvwxyz123456", []*DhtRemoteNode{
+		{id: "00000000000000000000", address: nil},
+		{id: "mnopqrstuvwxyz123456", address: nil}, // zeroDistance.
+		{id: "FFFFFFFFFFFFFFFFFFFF", address: nil}}, map[string]string{}}
+
+	sort.Sort(nd)
+	n := nd.nodes[0]
+	if nd.distances[n.id] != zeroDistance {
+		t.Errorf("Distance to closest node: wanted %x, got %x", zeroDistance, nd.distances[n.id])
+	}
 }
 
 // Requires Internet access.
 func TestDhtBigAndSlow(t *testing.T) {
 	log.Println("start node.")
 	node := startDhtNode(t)
-	log.Println("done start node.")
+	log.Println("done start node.", node.port)
 	realDHTNodes := map[string]string{
-		// We currently don't support hostnames.
-		//"DHT_ROUTER": "router.bittorrent.com:6881",
-		"DHT_ROUTER": "67.215.242.138:6881",
+		//"DHT_ROUTER": "router.bittorrent.com",
+		//"DHT_ROUTER": "cetico.org",
+		"DHT_ROUTER": "65.99.215.8",
 		// DHT test router.
 		//"DHT_ROUTER": "dht.cetico.org:9660",
 		//"DHT_ROUTER": "localhost:33149",
 	}
 	// make this a ping response instead.
 	//for id, address := range realDHTNodes {
-	for id, _ := range realDHTNodes {
-		_, addrs := net.LookupHost("router.bittorrent.com")
-		candidate := &DhtNodeCandidate{id: id, address: addrs[0] + ":6881"}
-		node.RemoteNodeAcquaintance <- candidate
+	for id, addr := range realDHTNodes {
+		ip, err := net.LookupHost(addr)
+		if err != nil {
+			t.Error(err)
+			continue
+		}
+		addr = ip[0] + ":6881"
+		realDHTNodes[id] = addr
+		candidate := &DhtNodeCandidate{id: id, address: addr}
+		go node.RemoteNodeAcquaintance(candidate)
 	}
 	time.Sleep(1.5 * UDP_TIMEOUT)
 	for _, address := range realDHTNodes {
@@ -95,16 +119,14 @@ func TestDhtBigAndSlow(t *testing.T) {
 			t.Fatalf("External DHT node not reachable: %s", address)
 		}
 	}
-	// Test the needPeers feature using an Ubuntu image.
-	// http://releases.ubuntu.com/9.10/ubuntu-9.10-desktop-i386.iso.torrent
-	infoHash := string([]byte{0x98, 0xc5, 0xc3, 0x61, 0xd0, 0xbe, 0x5f,
-		0x2a, 0x07, 0xea, 0x8f, 0xa5, 0x05, 0x2e,
-		0x5a, 0xa4, 0x80, 0x97, 0xe7, 0xf6})
-	time.Sleep(3e9)
-	node.PeersRequest <- infoHash
+	// Bah, need to find a more permanent test torrent.
+	// http://www.osst.co.uk/Download/DamnSmallLinux/current/dsl-4.4.10.iso.torrent
+	infoHash := "\xa4\x1d\x1f\x89\x28\x64\x54\xb1\x8d\x8d\x4c\xb2\xe0\x2f\xfe\x11\x58\x74\x76\xc4"
+	time.Sleep(1.5e9)
+	go node.PeersRequest(infoHash)
 	timeout := make(chan bool, 1)
 	go func() {
-		time.Sleep(5e9) // seconds
+		time.Sleep(10e9) // seconds
 		timeout <- true
 	}()
 	var infoHashPeers map[string][]string
@@ -113,7 +135,6 @@ func TestDhtBigAndSlow(t *testing.T) {
 	case <-timeout:
 		t.Fatal("could not find new torrent peers: timeout")
 	}
-	//time.Sleep(1e9)
 	t.Logf("%d new torrent peers obtained.", len(infoHashPeers))
 	for ih, peers := range infoHashPeers {
 		if infoHash != ih {
@@ -132,5 +153,5 @@ func TestDhtBigAndSlow(t *testing.T) {
 }
 
 func init() {
-	rand.Seed(int64(time.Now() % (1e9 - 1)))
+	rand.Seed((time.Now().Unix() % (1e9 - 1)))
 }

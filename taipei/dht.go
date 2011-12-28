@@ -58,10 +58,10 @@ import (
 const (
 	// How many nodes to contact initially each time we are asked to find new torrent peers.
 	NUM_INCREMENTAL_NODE_QUERIES = 5
-	// If we have less than so known nodes for a particular peer, be
+	// If we have less than so peers for a particular node, be
 	// aggressive about collecting new ones. Otherwise, wait for the
 	// torrent client to ask us. (currently does not consider reachability).
-	MIN_INFOHASH_PEERS = 100
+	//MIN_INFOHASH_PEERS = 15
 	// Consider a node stale if it has more than this number of oustanding queries from us.
 	MAX_NODE_PENDING_QUERIES = 5
 	// Ask the same infoHash to a node after a long time.
@@ -111,6 +111,7 @@ type DhtNodeCandidate struct {
 func (d *DhtEngine) newRemoteNode(id string, hostPort string) (r *DhtRemoteNode) {
 	address, err := net.ResolveUDPAddr("udp", hostPort)
 	if err != nil {
+		log.Println(err)
 		return nil
 	}
 	r = &DhtRemoteNode{
@@ -195,14 +196,6 @@ func (d *DhtEngine) DoDht() {
 			// directions. The goroutine will write into the PeersNeededResults channel.
 			log.Println("DHT: torrent client asking for more peers. Calling GetPeers().")
 			d.GetPeers(needPeers)
-			// XXX stats
-			c := 0
-			for _, node := range d.remoteNodes {
-				if node.reachable {
-					c++
-				}
-			}
-			log.Println("DHT: Reachable hosts", c)
 		case p := <-socketChan:
 			addr := p.raddr.String()
 			// XXX needs to work for dialogs we didnt initiate.
@@ -221,6 +214,7 @@ func (d *DhtEngine) DoDht() {
 			// Response.
 			case r.Y == "r":
 				if query, ok := node.pendingQueries[r.T]; ok {
+					totalReachableNodes.Add(1)
 					node.reachable = true
 					node.lastTime = time.Now()
 					if _, ok := d.infoHashPeers[query.ih]; !ok {
@@ -271,17 +265,19 @@ func (d *DhtEngine) processGetPeerResults(node *DhtRemoteNode, resp responseType
 	if resp.R.Nodes != "" {
 		for id, address := range parseNodesString(resp.R.Nodes) {
 			// XXX
-			log.Printf("DHT: Got node reference: %x@%v from %x%v.", id, address, node.id, node.address)
+			log.Printf("DHT: Got node reference: %x@%v from %x@%v.", id, address, node.id, node.address)
 			// If it's in our routing table already, ignore it.
 			if _, ok := d.remoteNodes[address]; ok {
 				totalDupes.Add(1)
+				d, _ := hashDistance(query.ih, node.id)
+				log.Printf("distance to receiver node: %x", d)
 				// XXX Gotta improve things so we stop receiving so many dupes. Waste.
 				log.Println("DHT: total dupes:", totalDupes.String())
 			} else {
 				log.Println("DHT: and it is actually new. Interesting. LEN:", len(d.infoHashPeers[query.ih]))
 				nr := d.newRemoteNode(id, address)
 				d.remoteNodes[address] = nr
-				if len(d.infoHashPeers[query.ih]) < MIN_INFOHASH_PEERS {
+				if len(d.infoHashPeers[query.ih]) < TARGET_NUM_PEERS {
 					d.GetPeers(query.ih)
 				} else {
 					log.Println("DHT: .. just saving in the routing table")
@@ -295,9 +291,6 @@ func (d *DhtEngine) processGetPeerResults(node *DhtRemoteNode, resp responseType
 // peer node ID.
 func hashDistance(id1 string, id2 string) (distance string, err error) {
 	d := make([]byte, 20)
-	if id1 == id2 {
-		err = errors.New("===> Zero distance between identical IDs")
-	}
 	if len(id1) != 20 || len(id2) != 20 {
 		err = errors.New(fmt.Sprintf("idDistance unexpected id length(s): %d %d", len(id1), len(id2)))
 	} else {
@@ -312,18 +305,31 @@ func hashDistance(id1 string, id2 string) (distance string, err error) {
 // Implements sort.Interface to find the closest nodes for a particular
 // infoHash.
 type nodeDistances struct {
-	infoHash string
-	nodes    []*DhtRemoteNode
+	infoHash  string
+	nodes     []*DhtRemoteNode
+	distances map[string]string
+}
+
+func (n *nodeDistances) distance(i int) string {
+	nid := n.nodes[i].id
+	ret, ok := n.distances[nid]
+	if !ok {
+		var err error
+		ret, err = hashDistance(n.infoHash, nid)
+		if err != nil {
+			log.Println("hashDistance err:", err)
+			ret = "\U0010FFFF\U0010FFFF\U0010FFFF\U0010FFFF\U0010FFFF\U0010FFFF\U0010FFFF\U0010FFFF\U0010FFFF\U0010FFFF\U0010FFFF\U0010FFFF\U0010FFFF\U0010FFFF\U0010FFFF\U0010FFFF\U0010FFFF\U0010FFFF\U0010FFFF\U0010FFFF"
+		}
+		n.distances[nid] = ret
+	}
+	return ret
 }
 
 func (n *nodeDistances) Len() int {
 	return len(n.nodes)
 }
 func (n *nodeDistances) Less(i, j int) bool {
-	// XXX: what to do if an error occurred?
-	ii, _ := hashDistance(n.infoHash, n.nodes[i].id)
-	jj, _ := hashDistance(n.infoHash, n.nodes[j].id)
-	return ii < jj
+	return n.distance(i) < n.distance(j)
 }
 func (n *nodeDistances) Swap(i, j int) {
 	ni := n.nodes[i]
@@ -336,14 +342,18 @@ func (n *nodeDistances) Swap(i, j int) {
 // finish quickly. Currently this does not implement the official DHT routing
 // table from the spec, but my own thing :-P.
 //
-// The basic principle is to store as many node addresses as possible, even if their hash is distant from other nodes we asked.
+// The basic principle is to store as many node addresses as possible, even if
+// their hash is distant from other nodes we asked.
+//
+// It's probably very slow, but I dont need the performance right now.
 func (d *DhtEngine) GetPeers(infoHash string) {
 	ih := infoHash
 	if d.remoteNodes == nil {
 		log.Println("DHT: Error: no remote nodes are known yet.")
 		return
 	}
-	targets := &nodeDistances{infoHash, make([]*DhtRemoteNode, 0, len(d.remoteNodes))}
+	// XXX: Maybe I shouldn't recalculate the distances after every GetPeers.
+	targets := &nodeDistances{infoHash, make([]*DhtRemoteNode, 0, len(d.remoteNodes)), map[string]string{}}
 	for _, r := range d.remoteNodes {
 		// Skip nodes with pending queries. First, we don't want to flood them, but most importantly they are
 		// probably unreachable. We just need to make sure we clean the pendingQueries map when appropriate.
@@ -388,6 +398,11 @@ func (d *DhtEngine) GetPeers(infoHash string) {
 	sort.Sort(targets)
 	for i := 0; i < NUM_INCREMENTAL_NODE_QUERIES && i < len(targets.nodes); i++ {
 		r := targets.nodes[i]
+		d, ok := targets.distances[r.id]
+		if !ok {
+			d, _ = hashDistance(r.id, ih)
+		}
+		log.Printf("target: %x, distance: %x", r.id, d)
 		t := r.newQuery("get_peers")
 		r.pendingQueries[t].ih = ih
 		m, _ := r.encodedGetPeers(t, ih)
@@ -399,7 +414,8 @@ func (d *DhtEngine) GetPeers(infoHash string) {
 
 // Debugging information:
 // Which nodes we contacted.
-var nodesVar = expvar.NewMap("totalNodes")
+var nodesVar = expvar.NewMap("Nodes")
+var totalReachableNodes = expvar.NewInt("totalReachableNodes")
 var totalDupes = expvar.NewInt("totalDupes")
 var totalPeers = expvar.NewInt("totalPeers")
 var totalGetPeers = expvar.NewInt("totalGetPeers")
@@ -419,9 +435,6 @@ func (d *DhtEngine) bootStrapNetwork() error {
 // - sendMsg()
 // - readFromSocket()
 //
-// There is a risk of deadlock between the client asking for peers and the server trying to send a response. I added a
-// buffer but I'm not sure if that's enough.
-// UPDATE: it's not. http://pastebin.com/Yy5G1VGJ
 
 func init() {
 	//	DhtStats.engines = make([]*DhtEngine, 1, 10)

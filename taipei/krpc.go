@@ -107,7 +107,7 @@ func (r *DhtRemoteNode) sendMsg(msg string) (response responseType, err error) {
 	}
 	defer conn.Close()
 	if _, err = conn.Write(bytes.NewBufferString(msg).Bytes()); err != nil {
-		log.Println("DHT: node write failed", err.Error())
+		log.Println("DHT: node write failed", err)
 		return
 	}
 	return
@@ -130,7 +130,7 @@ func readResponse(p packetType) (response responseType, err error) {
 		err = nil
 		return
 	} else {
-		log.Printf("DHT: unmarshal error, odd or partial data during UDP read? %+v, err=%s", p, e2.Error())
+		log.Printf("DHT: unmarshal error, odd or partial data during UDP read? %+v, err=%s", p, e2)
 	}
 	return
 }
@@ -145,7 +145,7 @@ func encodeMsg(queryType string, queryArguments map[string]string, transId strin
 	query := structNested{transId, "q", queryType, queryArguments}
 	var b bytes.Buffer
 	if err = bencode.Marshal(&b, query); err != nil {
-		log.Println("DHT: bencode error: " + err.Error())
+		log.Println("DHT: bencode error:", err)
 		return
 	}
 	msg = string(b.Bytes())
@@ -161,7 +161,7 @@ func listen(listenPort int) (socket *net.UDPConn, err error) {
 	log.Printf("DHT: Listening for peers on port: %d\n", listenPort)
 	listener, err := net.ListenPacket("udp", ":"+strconv.Itoa(listenPort))
 	if err != nil {
-		log.Println("DHT: Listen failed:", err.Error())
+		log.Println("DHT: Listen failed:", err)
 	}
 	if listener != nil {
 		socket = listener.(*net.UDPConn)
@@ -190,7 +190,7 @@ func readFromSocket(socket *net.UDPConn, conChan chan packetType) {
 			continue
 		}
 		if n == 0 {
-			log.Println("DHT: readResponse: got n == 0. Err:", err.Error())
+			log.Println("DHT: readResponse: got n == 0. Err:", err)
 			continue
 		}
 	}

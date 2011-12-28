@@ -180,7 +180,7 @@ type TorrentSession struct {
 	goodPieces      int
 	activePieces    map[int]*ActivePiece
 	lastHeartBeat   time.Time
-	dht		*DhtEngine
+	dht             *DhtEngine
 }
 
 func NewTorrentSession(torrent string) (ts *TorrentSession, err error) {
@@ -197,7 +197,7 @@ func NewTorrentSession(torrent string) (ts *TorrentSession, err error) {
 	if err != nil {
 		return
 	}
-	log.Println("Tracker:", t.m.Announce, "Comment:", t.m.Comment, "Encoding:", t.m.Encoding)
+	log.Printf("Tracker: %v, Comment: %v, InfoHash: %x, Encoding: %v", t.m.Announce, t.m.Comment, t.m.InfoHash, t.m.Encoding)
 	if e := t.m.Encoding; e != "" && e != "UTF-8" {
 		log.Println("Unknown encoding", e)
 		err = errors.New("Unknown encoding")
@@ -234,7 +234,7 @@ func NewTorrentSession(torrent string) (ts *TorrentSession, err error) {
 	if useDHT {
 		// TODO: UPnP UDP port mapping.
 		if t.dht, err = NewDhtNode(t.si.PeerId, listenPort); err != nil {
-			log.Println("DHT node creation error", err.Error())
+			log.Println("DHT node creation error", err)
 			return
 		}
 		go t.dht.DoDht()
@@ -310,9 +310,9 @@ func (t *TorrentSession) ClosePeer(peer *peerState) {
 
 func (t *TorrentSession) deadlockDetector() {
 	for {
-		time.Sleep(10 * time.Second)
+		time.Sleep(15 * time.Second)
 		age := time.Now().Sub(t.lastHeartBeat)
-		if age > 10*time.Second {
+		if age > 15*time.Second {
 			log.Println("Starvation or deadlock of main thread detected. Look in the stack dump for what DoTorrent() is currently doing.")
 			log.Println("Last heartbeat", age.Seconds(), "seconds ago")
 			panic("Killed by deadlock detector")
