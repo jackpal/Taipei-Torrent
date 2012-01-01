@@ -19,7 +19,6 @@ import (
 const (
 	MAX_NUM_PEERS    = 60
 	TARGET_NUM_PEERS = 15
-	DHT_BIT          = 128
 )
 
 // BitTorrent message types. Sources:
@@ -292,6 +291,9 @@ func (t *TorrentSession) AddPeer(conn net.Conn) {
 	var header [68]byte
 	copy(header[0:], kBitTorrentHeader[0:])
 	// TODO: Announce DHT support when we're ready.
+	if useDHT {
+		header[27] = header[27] | 0x01
+	}
 	copy(header[28:48], string2Bytes(t.m.InfoHash))
 	copy(header[48:68], string2Bytes(t.si.PeerId))
 
@@ -645,7 +647,7 @@ func (t *TorrentSession) DoMessage(p *peerState, message []byte) (err error) {
 		// This is the header message from the peer.
 		if useDHT {
 			// If 128, then it supports DHT.
-			if int(message[0])&DHT_BIT == DHT_BIT {
+			if int(message[7])&0x01 == 0x01 {
 				candidate := &DhtNodeCandidate{id: p.id, address: p.address}
 				// It's OK if we know this node already. The DHT engine will
 				// ignore it accordingly.
@@ -808,10 +810,11 @@ func (t *TorrentSession) DoMessage(p *peerState, message []byte) (err error) {
 			// TODO: Implement this message.
 			// We see peers sending us 16K byte messages here, so
 			// it seems that we don't understand what this is.
-			log.Println("port len=", len(message))
-			//if len(message) != 3 {
-			//	return os.NewError("Unexpected length")
-			//}
+			if len(message) != 3 {
+				return errors.New(fmt.Sprintf("Unexpected length for port message:", len(message)))
+			}
+			candidate := &DhtNodeCandidate{id: p.id, address: p.address}
+			go t.dht.RemoteNodeAcquaintance(candidate)
 		default:
 			return errors.New("Uknown message id")
 		}

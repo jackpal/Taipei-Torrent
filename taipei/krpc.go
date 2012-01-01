@@ -60,14 +60,14 @@ func parseNodesString(nodes string) (parsed map[string]string) {
 
 // encodedPing returns the bencoded string to be used for DHT ping queries.
 func (r *DhtRemoteNode) encodedPing(transId string) (msg string, err error) {
-	queryArguments := map[string]string{"id": r.localNode.peerID}
+	queryArguments := map[string]interface{}{"id": r.localNode.peerID}
 	msg, err = encodeMsg("ping", queryArguments, transId)
 	return
 }
 
 // encodedGetPeers returns the bencoded string to be used for DHT get_peers queries.
 func (r *DhtRemoteNode) encodedGetPeers(transId string, infohash string) (msg string, err error) {
-	queryArguments := map[string]string{
+	queryArguments := map[string]interface{}{
 		"id":        r.localNode.peerID,
 		"info_hash": infohash,
 	}
@@ -76,11 +76,11 @@ func (r *DhtRemoteNode) encodedGetPeers(transId string, infohash string) (msg st
 
 }
 
-func (r *DhtRemoteNode) newQuery(transType string) string {
+func (r *DhtRemoteNode) newQuery(transType string) (transId string) {
 	r.lastQueryID = (r.lastQueryID + 1) % 256
-	t := strconv.Itoa(r.lastQueryID)
-	r.pendingQueries[t] = &queryType{Type: transType}
-	return t
+	transId = strconv.Itoa(r.lastQueryID)
+	r.pendingQueries[transId] = &queryType{Type: transType}
+	return
 }
 
 type getPeersResponse struct {
@@ -88,18 +88,22 @@ type getPeersResponse struct {
 	Values []string "values"
 	Id     string   "id"
 	Nodes  string   "nodes"
+	Token  string   "token"
 }
 
+// Generic stuff we read from the wire, not know what it is. This time is as generic as can be.
 type responseType struct {
 	T string           "t"
 	Y string           "y"
 	Q string           "q"
-	R getPeersResponse "R"
+	R getPeersResponse "r"
+	E []string         "e"
+	A map[string]interface{} "a"
 }
 
 // Sends a message to the remote node. msg should be the bencoded string ready to be sent in the wire.
 // Clients usually run it as a goroutine, so it must not change mutable shared state.
-func (r *DhtRemoteNode) sendMsg(msg string) (response responseType, err error) {
+func (r *DhtRemoteNode) sendMsg(msg string) (err error) {
 	laddr := &net.UDPAddr{Port: r.localNode.port}
 	conn, err := net.DialUDP("udp", laddr, r.address)
 	if conn == nil || err != nil {
@@ -120,29 +124,31 @@ func (r *DhtRemoteNode) dialNode(ch chan net.Conn) {
 // Read responses from bencode-speaking nodes. Return the appropriate data structure.
 func readResponse(p packetType) (response responseType, err error) {
 	// The calls to bencode.Unmarshal() can be fragile.
-	defer func() {
-		if x := recover(); x != nil {
-			log.Println("DHT: !!! Recovering from panic() after bencode.Unmarshal")
-		}
-	}()
+	//defer func() {
+	//	if x := recover(); x != nil {
+	//		log.Printf("DHT: !!! Recovering from panic() after bencode.Unmarshal %q, %v", string(p.b), x)
+	//	}
+	//}()
 
 	if e2 := bencode.Unmarshal(bytes.NewBuffer(p.b), &response); e2 == nil {
 		err = nil
 		return
 	} else {
-		log.Printf("DHT: unmarshal error, odd or partial data during UDP read? %+v, err=%s", p, e2)
+		log.Printf("DHT: unmarshal error, odd or partial data during UDP read? %v, err=%s", string(p.b), e2)
 	}
 	return
 }
 
-func encodeMsg(queryType string, queryArguments map[string]string, transId string) (msg string, err error) {
-	type structNested struct {
-		T string            "t"
-		Y string            "y"
-		Q string            "q"
-		A map[string]string "a"
-	}
-	query := structNested{transId, "q", queryType, queryArguments}
+// Message to be sent out in the wire. Must not have any extra fields.
+type queryMessage struct {
+	T string                 "t"
+	Y string                 "y"
+	Q string                 "q"
+	A map[string]interface{} "a"
+}
+
+func encodeMsg(queryType string, queryArguments map[string]interface{}, transId string) (msg string, err error) {
+	query := queryMessage{transId, "q", queryType, queryArguments}
 	var b bytes.Buffer
 	if err = bencode.Marshal(&b, query); err != nil {
 		log.Println("DHT: bencode error:", err)
@@ -187,7 +193,7 @@ func readFromSocket(socket *net.UDPConn, conChan chan packetType) {
 			continue
 		}
 		if e, ok := err.(*net.OpError); ok && e.Err == os.EAGAIN {
-			continue
+			log.Println("EGAIN")
 		}
 		if n == 0 {
 			log.Println("DHT: readResponse: got n == 0. Err:", err)

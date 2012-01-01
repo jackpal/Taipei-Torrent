@@ -147,13 +147,33 @@ func (d *DhtEngine) ping(address string, async bool) (err error) {
 	if async {
 		go r.sendMsg(p)
 	} else {
-		_, err = r.sendMsg(p)
+		err = r.sendMsg(p)
 		if err != nil {
 			log.Println("DHT: Handshake error with node", r.address, err.Error())
 		}
 	}
 	return
 }
+
+// blocks.
+func (d *DhtEngine) announcePeer(address string, ih string, token string) {
+	r := d.getOrCreateRemoteNode(address)
+	log.Printf("DHT: announce_peer => %v %x %x\n", address, ih, token)
+	transId := r.newQuery("ping")
+	queryArguments := map[string]interface{}{
+			"id": r.localNode.peerID,
+			"info_hash": ih,
+			"port": d.port,
+			"token": token,
+		}
+	msg, err := encodeMsg("announce_peer", queryArguments, transId)
+	if err != nil { log.Println(err); return }
+	err = r.sendMsg(msg)
+	if err != nil {
+		log.Println("DHT: announce_peer error with node", r.address, err.Error())
+	}
+}
+
 
 // PeersRequest tells the DHT to search for more peers for the infoHash
 // provided. Must be called as a goroutine.
@@ -199,20 +219,20 @@ func (d *DhtEngine) DoDht() {
 		case p := <-socketChan:
 			addr := p.raddr.String()
 			// XXX needs to work for dialogs we didnt initiate.
-			r, _ := readResponse(p)
-			node, ok := d.remoteNodes[addr]
-			if !ok {
-				log.Println("DHT: Contacted by a host we don't know:", addr)
-				log.Println("DHT: -> ignoring this for now because I'm dumb.")
-				continue
-			}
-			// Fix the node ID. Or is there a better time do it?
-			if node.id == "" {
-				node.id = r.R.Id
-			}
+			r, err := readResponse(p)
 			switch {
 			// Response.
 			case r.Y == "r":
+				node, ok := d.remoteNodes[addr]
+				if !ok {
+					log.Println("DHT: Received reply from a host we don't know:", addr)
+					log.Println("DHT: -> ignoring. Details:", r, err)
+					continue
+				}
+				// Fix the node ID. Or is there a better time do it?
+				if node.id == "" {
+					node.id = r.R.Id
+				}
 				if query, ok := node.pendingQueries[r.T]; ok {
 					totalReachableNodes.Add(1)
 					node.reachable = true
@@ -226,7 +246,7 @@ func (d *DhtEngine) DoDht() {
 					case query.Type == "get_peers":
 						d.processGetPeerResults(node, r)
 					default:
-						log.Println("DHT: Unknown query type:", query.Type)
+						log.Println("DHT: Unknown query type:", query.Type, addr)
 					}
 					node.pastQueries[r.T] = query
 					delete(node.pendingQueries, r.T)
@@ -234,8 +254,15 @@ func (d *DhtEngine) DoDht() {
 					// XXX
 					log.Println("DHT: Unknown query id:", r.T)
 				}
+			case r.Y == "q":
+				switch r.Q {
+				case "ping":
+					log.Println("DHT XXX would have processed ping from %v %x", addr, r.A["id"])
+				default:
+					log.Println("DHT XXX non-implemented handler for type", r.Q)
+				}
 			default:
-				log.Println("DHT: Unknown DHT query. Forgive me for being a bit illiterate.")
+				log.Printf("DHT: Unknown DHT query from %v. Forgive me for being a bit illiterate. Details: %+v", addr, r)
 			}
 		}
 	}
@@ -244,8 +271,10 @@ func (d *DhtEngine) DoDht() {
 // Process another node's response to a get_peers query. If the response contains peers, send them to the Torrent
 // engine, our client, using the DhtEngine.PeersRequestResults channel. If it contains closest nodes, query them if we
 // still need it.
+// Also announce ourselves as a peer for that node.
 func (d *DhtEngine) processGetPeerResults(node *DhtRemoteNode, resp responseType) {
 	query, _ := node.pendingQueries[resp.T]
+	go d.announcePeer(node.address.String(), query.ih, resp.R.Token)
 	if resp.R.Values != nil {
 		peers := make([]string, 0)
 		for _, peerContact := range resp.R.Values {
@@ -318,7 +347,7 @@ func (n *nodeDistances) distance(i int) string {
 		ret, err = hashDistance(n.infoHash, nid)
 		if err != nil {
 			log.Println("hashDistance err:", err)
-			ret = "\U0010FFFF\U0010FFFF\U0010FFFF\U0010FFFF\U0010FFFF\U0010FFFF\U0010FFFF\U0010FFFF\U0010FFFF\U0010FFFF\U0010FFFF\U0010FFFF\U0010FFFF\U0010FFFF\U0010FFFF\U0010FFFF\U0010FFFF\U0010FFFF\U0010FFFF\U0010FFFF"
+			ret = "\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff"
 		}
 		n.distances[nid] = ret
 	}
