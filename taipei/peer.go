@@ -35,13 +35,13 @@ type peerState struct {
 func queueingWriter(in, out chan []byte) {
 	queue := make(map[int][]byte)
 	head, tail := 0, 0
-Closed:
+L:
 	for {
 		if head == tail {
 			select {
 			case m, ok := <-in:
 				if !ok {
-					break Closed
+					break L
 				}
 				queue[head] = m
 				head++
@@ -50,7 +50,7 @@ Closed:
 			select {
 			case m, ok := <-in:
 				if !ok {
-					break Closed
+					break L
 				}
 				queue[head] = m
 				head++
@@ -77,8 +77,12 @@ func NewPeerState(conn net.Conn) *peerState {
 
 func (p *peerState) Close() {
 	p.conn.Close()
-	// We don't have to close the p.writeChan channel. As long as we stop
-	// referencing this peer everywhere, it will get garbage collected.
+	select {
+	case _, ok := <-p.writeChan:
+		if ok {
+			close(p.writeChan)
+		}
+	}
 }
 
 func (p *peerState) AddRequest(index, begin, length uint32) {

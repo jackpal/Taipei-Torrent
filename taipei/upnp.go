@@ -212,7 +212,7 @@ func soapRequest(url, function, message string) (r *http.Response, err error) {
 	req.Header.Set("Cache-Control", "no-cache")
 	req.Header.Set("Pragma", "no-cache")
 
-	// log.Println("soapRequest ", req)
+	// log.Stderr("soapRequest ", req)
 
 	r, err = http.DefaultClient.Do(req)
 	if r.Body != nil {
