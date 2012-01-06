@@ -388,8 +388,8 @@ func (t *TorrentSession) DoTorrent() (err error) {
 				}
 				log.Println("..checking again in", interval, "seconds.")
 				retrackerChan = time.Tick(interval * time.Second)
+				log.Println("Contacting", newPeerCount, "new peers")
 			}
-			log.Println("Contacting", newPeerCount, "new peers")
 			interval := t.ti.Interval
 			if interval < 120 {
 				interval = 120
