@@ -138,42 +138,63 @@ func (d *DhtEngine) getOrCreateRemoteNode(address string) (r *DhtRemoteNode) {
 	return r
 }
 
-func (d *DhtEngine) ping(address string, async bool) (err error) {
+func (d *DhtEngine) ping(address string) {
 	// TODO: should translate to an IP first.
 	r := d.getOrCreateRemoteNode(address)
 	log.Printf("DHT: ping => %+v\n", r)
 	t := r.newQuery("ping")
-	p, _ := r.encodedPing(t)
-	if async {
-		go r.sendMsg(p)
-	} else {
-		err = r.sendMsg(p)
-		if err != nil {
-			log.Println("DHT: Handshake error with node", r.address, err.Error())
-		}
+
+	//p, _ := r.encodedPing(t)
+	//err = r.sendMsg(p)
+	//if err != nil {
+	//	log.Println("DHT: Handshake error with node", r.address, err.Error())
+	//}
+
+	queryArguments := map[string]interface{}{"id": r.localNode.peerID}
+	query := queryMessage{t, "q", "ping", queryArguments}
+	go sendMsg(d.port, r.address, query)
+}
+
+func (d *DhtEngine) getPeers(r *DhtRemoteNode, ih string) {
+	totalGetPeers.Add(1)
+	ty := "get_peers"
+	transId := r.newQuery(ty)
+	r.pendingQueries[transId].ih = ih
+	queryArguments := map[string]interface{}{
+		"id":        r.localNode.peerID,
+		"info_hash": ih,
 	}
-	return
+	query := queryMessage{transId, "q", ty, queryArguments}
+	go sendMsg(d.port, r.address, query)
 }
 
 // blocks.
-func (d *DhtEngine) announcePeer(address string, ih string, token string) {
-	r := d.getOrCreateRemoteNode(address)
+func (d *DhtEngine) announcePeer(address *net.UDPAddr, ih string, token string) {
+	r := d.getOrCreateRemoteNode(address.String())
+	ty := "announce_peer"
 	log.Printf("DHT: announce_peer => %v %x %x\n", address, ih, token)
-	transId := r.newQuery("ping")
+	transId := r.newQuery(ty)
 	queryArguments := map[string]interface{}{
-			"id": r.localNode.peerID,
-			"info_hash": ih,
-			"port": d.port,
-			"token": token,
-		}
-	msg, err := encodeMsg("announce_peer", queryArguments, transId)
-	if err != nil { log.Println(err); return }
-	err = r.sendMsg(msg)
-	if err != nil {
-		log.Println("DHT: announce_peer error with node", r.address, err.Error())
+		"id":        r.localNode.peerID,
+		"info_hash": ih,
+		"port":      d.port,
+		"token":     token,
 	}
+	query := queryMessage{transId, "q", ty, queryArguments}
+	go sendMsg(d.port, address, query)
 }
 
+// blocks.
+func (d *DhtEngine) replyPing(addr *net.UDPAddr, response responseType) {
+	//r := d.getOrCreateRemoteNode(address)
+	log.Printf("DHT: reply ping => %v\n", addr)
+	reply := pingReplyMessage{
+		T: response.T,
+		Y: "r",
+		R: map[string]string{"id": d.peerID},
+	}
+	go sendMsg(d.port, addr, reply)
+}
 
 // PeersRequest tells the DHT to search for more peers for the infoHash
 // provided. Must be called as a goroutine.
@@ -208,7 +229,7 @@ func (d *DhtEngine) DoDht() {
 			// - later, we'll implement bucketing, etc.
 			if _, ok := d.remoteNodes[helloNode.id]; !ok {
 				_ = d.newRemoteNode(helloNode.id, helloNode.address)
-				d.ping(helloNode.address, true)
+				d.ping(helloNode.address)
 			}
 
 		case needPeers := <-d.peersRequest:
@@ -217,52 +238,64 @@ func (d *DhtEngine) DoDht() {
 			log.Println("DHT: torrent client asking for more peers. Calling GetPeers().")
 			d.GetPeers(needPeers)
 		case p := <-socketChan:
-			addr := p.raddr.String()
-			// XXX needs to work for dialogs we didnt initiate.
+			if p.b[0] != 'd' {
+				log.Println("DHT: UDP packet of unknown protocol")
+				continue
+			}
 			r, err := readResponse(p)
+			if err != nil {
+				log.Printf("DHT: readResponse Error: %v, %q", err, string(p.b))
+				continue
+			}
 			switch {
 			// Response.
 			case r.Y == "r":
-				node, ok := d.remoteNodes[addr]
+				node, ok := d.remoteNodes[p.raddr.String()]
 				if !ok {
-					log.Println("DHT: Received reply from a host we don't know:", addr)
+					log.Println("DHT: Received reply from a host we don't know:", p.raddr)
 					log.Println("DHT: -> ignoring. Details:", r, err)
 					continue
 				}
-				// Fix the node ID. Or is there a better time do it?
+				// Fix the node ID.
 				if node.id == "" {
 					node.id = r.R.Id
 				}
 				if query, ok := node.pendingQueries[r.T]; ok {
-					totalReachableNodes.Add(1)
-					node.reachable = true
+					if !node.reachable {
+						node.reachable = true
+						totalReachableNodes.Add(1)
+					}
 					node.lastTime = time.Now()
 					if _, ok := d.infoHashPeers[query.ih]; !ok {
 						d.infoHashPeers[query.ih] = map[string]int{}
 					}
-					switch {
-					case query.Type == "ping":
+					switch query.Type {
+					case "ping", "announce_peer":
 						// served its purpose, nothing else to be done.
-					case query.Type == "get_peers":
+					case "get_peers":
 						d.processGetPeerResults(node, r)
 					default:
-						log.Println("DHT: Unknown query type:", query.Type, addr)
+						log.Println("DHT: Unknown query type:", query.Type, p.raddr)
 					}
 					node.pastQueries[r.T] = query
 					delete(node.pendingQueries, r.T)
 				} else {
-					// XXX
+					// XXX debugging.
 					log.Println("DHT: Unknown query id:", r.T)
 				}
 			case r.Y == "q":
+				log.Printf("DHT XXX query %q ==> %#v", p.b, r)
 				switch r.Q {
 				case "ping":
-					log.Println("DHT XXX would have processed ping from %v %x", addr, r.A["id"])
+					d.replyPing(p.raddr, r)
+				case "get_peers":
+					x, _ := hashDistance(r.A.InfoHash, d.peerID)
+					log.Printf("DHT XXXX get_peers not implemented. Host: %v, peerID: %x, InfoHash: %x, distance to me: %x", p.raddr, r.A.Id, r.A.InfoHash, x)
 				default:
 					log.Println("DHT XXX non-implemented handler for type", r.Q)
 				}
 			default:
-				log.Printf("DHT: Unknown DHT query from %v. Forgive me for being a bit illiterate. Details: %+v", addr, r)
+				log.Printf("DHT: Bogus DHT query from %v.", p.raddr)
 			}
 		}
 	}
@@ -274,7 +307,7 @@ func (d *DhtEngine) DoDht() {
 // Also announce ourselves as a peer for that node.
 func (d *DhtEngine) processGetPeerResults(node *DhtRemoteNode, resp responseType) {
 	query, _ := node.pendingQueries[resp.T]
-	go d.announcePeer(node.address.String(), query.ih, resp.R.Token)
+	d.announcePeer(node.address, query.ih, resp.R.Token)
 	if resp.R.Values != nil {
 		peers := make([]string, 0)
 		for _, peerContact := range resp.R.Values {
@@ -381,7 +414,7 @@ func (d *DhtEngine) GetPeers(infoHash string) {
 		log.Println("DHT: Error: no remote nodes are known yet.")
 		return
 	}
-	// XXX: Maybe I shouldn't recalculate the distances after every GetPeers.
+	// XXX: I shouldn't recalculate the distances after every GetPeers.
 	targets := &nodeDistances{infoHash, make([]*DhtRemoteNode, 0, len(d.remoteNodes)), map[string]string{}}
 	for _, r := range d.remoteNodes {
 		// Skip nodes with pending queries. First, we don't want to flood them, but most importantly they are
@@ -423,20 +456,16 @@ func (d *DhtEngine) GetPeers(infoHash string) {
 	}
 	log.Printf("DHT: Candidate nodes for asking: %d", len(targets.nodes))
 	log.Printf("DHT: Currently know %d nodes", len(d.remoteNodes))
-	// Go rules!
+
 	sort.Sort(targets)
 	for i := 0; i < NUM_INCREMENTAL_NODE_QUERIES && i < len(targets.nodes); i++ {
 		r := targets.nodes[i]
-		d, ok := targets.distances[r.id]
+		di, ok := targets.distances[r.id]
 		if !ok {
-			d, _ = hashDistance(r.id, ih)
+			di, _ = hashDistance(r.id, ih)
 		}
-		log.Printf("target: %x, distance: %x", r.id, d)
-		t := r.newQuery("get_peers")
-		r.pendingQueries[t].ih = ih
-		m, _ := r.encodedGetPeers(t, ih)
-		totalGetPeers.Add(1)
-		go r.sendMsg(m)
+		log.Printf("target: %x, distance: %x", r.id, di)
+		d.getPeers(r, ih)
 	}
 	log.Println("DHT: totalGetPeers", totalGetPeers.String())
 }
@@ -449,8 +478,8 @@ var totalDupes = expvar.NewInt("totalDupes")
 var totalPeers = expvar.NewInt("totalPeers")
 var totalGetPeers = expvar.NewInt("totalGetPeers")
 
-func (d *DhtEngine) bootStrapNetwork() error {
-	return d.ping(dhtRouter, false)
+func (d *DhtEngine) bootStrapNetwork() {
+	d.ping(dhtRouter)
 }
 
 // TODO: Create a proper routing table with buckets, per the protocol.
@@ -459,7 +488,7 @@ func (d *DhtEngine) bootStrapNetwork() error {
 
 // === Notes ==
 //
-// Everything is running in a single goroutine so synchronization is not an issue. There are exceptions of methods
+// All methods of DhtRemoteNode run in a single goroutine so synchronization is not an issue. There are exceptions of methods
 // that may run in their own goroutine. 
 // - sendMsg()
 // - readFromSocket()

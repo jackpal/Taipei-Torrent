@@ -35,7 +35,7 @@ const (
 	NODE_ID_LEN         = 20
 	NODE_CONTACT_LEN    = 26
 	PEER_CONTACT_LEN    = 6
-	MAX_UDP_PACKET_SIZE = 8192
+	MAX_UDP_PACKET_SIZE = 65535
 	UDP_TIMEOUT         = 2e9 // two seconds
 )
 
@@ -58,24 +58,27 @@ func parseNodesString(nodes string) (parsed map[string]string) {
 
 }
 
-// encodedPing returns the bencoded string to be used for DHT ping queries.
-func (r *DhtRemoteNode) encodedPing(transId string) (msg string, err error) {
-	queryArguments := map[string]interface{}{"id": r.localNode.peerID}
-	msg, err = encodeMsg("ping", queryArguments, transId)
-	return
-}
+//// encodedPing returns the bencoded string to be used for DHT ping queries.
+//func (r *DhtRemoteNode) encodedPing(transId string) (msg string, err error) {
+//	queryArguments := map[string]interface{}{"id": r.localNode.peerID}
+//	msg, err = encodeMsg("ping", queryArguments, transId)
+//	return
+//}
+//
+//// encodedGetPeers returns the bencoded string to be used for DHT get_peers queries.
+//func (r *DhtRemoteNode) encodedGetPeers(transId string, infohash string) (msg string, err error) {
+//	queryArguments := map[string]interface{}{
+//		"id":        r.localNode.peerID,
+//		"info_hash": infohash,
+//	}
+//	msg, err = encodeMsg("get_peers", queryArguments, transId)
+//	return
+//
+//}
 
-// encodedGetPeers returns the bencoded string to be used for DHT get_peers queries.
-func (r *DhtRemoteNode) encodedGetPeers(transId string, infohash string) (msg string, err error) {
-	queryArguments := map[string]interface{}{
-		"id":        r.localNode.peerID,
-		"info_hash": infohash,
-	}
-	msg, err = encodeMsg("get_peers", queryArguments, transId)
-	return
-
-}
-
+// newQuery creates a new transaction id and adds an entry to r.pendingQueries.
+// It does not set any extra information to the transaction information, so the
+// caller must take care of that. (XXX: Ugly)
 func (r *DhtRemoteNode) newQuery(transType string) (transId string) {
 	r.lastQueryID = (r.lastQueryID + 1) % 256
 	transId = strconv.Itoa(r.lastQueryID)
@@ -91,6 +94,14 @@ type getPeersResponse struct {
 	Token  string   "token"
 }
 
+type answerType struct {
+	Id       string "id"
+	Target   string "target"
+	InfoHash string "info_hash"
+	Port     int    "port"
+	Token    string "token"
+}
+
 // Generic stuff we read from the wire, not know what it is. This time is as generic as can be.
 type responseType struct {
 	T string           "t"
@@ -98,26 +109,49 @@ type responseType struct {
 	Q string           "q"
 	R getPeersResponse "r"
 	E []string         "e"
-	A map[string]interface{} "a"
+	A answerType       "a"
+	// mainline extension for client identification.
+	//V string(?)	"v"
 }
 
-// Sends a message to the remote node. msg should be the bencoded string ready to be sent in the wire.
-// Clients usually run it as a goroutine, so it must not change mutable shared state.
-func (r *DhtRemoteNode) sendMsg(msg string) (err error) {
-	laddr := &net.UDPAddr{Port: r.localNode.port}
-	conn, err := net.DialUDP("udp", laddr, r.address)
+//// Sends a message to the remote node. msg should be the bencoded string ready to be sent in the wire.
+//// Clients usually run it as a goroutine, so it must not change mutable shared state.
+//func (r *DhtRemoteNode) sendMsg(msg string) (err error) {
+//	// XXX Merge with DhtEngine.sendMsg
+//	log.Printf("Marshalled %q", msg)
+//	laddr := &net.UDPAddr{Port: r.localNode.port}
+//	conn, err := net.DialUDP("udp", laddr, r.address)
+//	if conn == nil || err != nil {
+//		return
+//	}
+//	defer conn.Close()
+//	if _, err = conn.Write(bytes.NewBufferString(msg).Bytes()); err != nil {
+//		log.Println("DHT: node write failed", err)
+//		return
+//	}
+//	return
+//}
+
+//func (r *DhtRemoteNode) dialNode(ch chan net.Conn) {
+//	return
+//}
+
+// sendMsg bencodes the data in 'query' and sends it to the remote node.
+func sendMsg(lport int, raddr *net.UDPAddr, query interface{}) {
+	var b bytes.Buffer
+	if err := bencode.Marshal(&b, query); err != nil {
+		return
+	}
+	laddr := &net.UDPAddr{Port: lport}
+	conn, err := net.DialUDP("udp", laddr, raddr)
 	if conn == nil || err != nil {
 		return
 	}
 	defer conn.Close()
-	if _, err = conn.Write(bytes.NewBufferString(msg).Bytes()); err != nil {
+	_, err = conn.Write(b.Bytes())
+	if err != nil {
 		log.Println("DHT: node write failed", err)
-		return
 	}
-	return
-}
-
-func (r *DhtRemoteNode) dialNode(ch chan net.Conn) {
 	return
 }
 
@@ -129,12 +163,13 @@ func readResponse(p packetType) (response responseType, err error) {
 	//		log.Printf("DHT: !!! Recovering from panic() after bencode.Unmarshal %q, %v", string(p.b), x)
 	//	}
 	//}()
-
+	log.Printf("DHT: DEBUG %v ==== %q ===", p.raddr, p.b)
 	if e2 := bencode.Unmarshal(bytes.NewBuffer(p.b), &response); e2 == nil {
 		err = nil
 		return
 	} else {
 		log.Printf("DHT: unmarshal error, odd or partial data during UDP read? %v, err=%s", string(p.b), e2)
+		return response, e2
 	}
 	return
 }
@@ -147,20 +182,27 @@ type queryMessage struct {
 	A map[string]interface{} "a"
 }
 
-func encodeMsg(queryType string, queryArguments map[string]interface{}, transId string) (msg string, err error) {
-	query := queryMessage{transId, "q", queryType, queryArguments}
-	var b bytes.Buffer
-	if err = bencode.Marshal(&b, query); err != nil {
-		log.Println("DHT: bencode error:", err)
-		return
-	}
-	msg = string(b.Bytes())
-	return
+type pingReplyMessage struct {
+	T string            "t"
+	Y string            "y"
+	R map[string]string "r"
 }
+
+//// XXX retire in favor of sendMsg.
+//func encodeMsg(queryType string, queryArguments map[string]interface{}, transId string) (msg string, err error) {
+//	query := queryMessage{transId, "q", queryType, queryArguments}
+//	var b bytes.Buffer
+//	if err = bencode.Marshal(&b, query); err != nil {
+//		log.Println("DHT: bencode error:", err)
+//		return
+//	}
+//	msg = string(b.Bytes())
+//	return
+//}
 
 type packetType struct {
 	b     []byte
-	raddr net.Addr
+	raddr *net.UDPAddr
 }
 
 func listen(listenPort int) (socket *net.UDPConn, err error) {
@@ -180,21 +222,22 @@ func listen(listenPort int) (socket *net.UDPConn, err error) {
 func readFromSocket(socket *net.UDPConn, conChan chan packetType) {
 	socket.SetReadTimeout(0)
 	for {
-		// Unfortunately this won't read directly into a buffer, so I have to set a fixed "fake" buffer.
 		b := make([]byte, MAX_UDP_PACKET_SIZE)
-		n, addr, err := socket.ReadFrom(b)
+		n, addr, err := socket.ReadFromUDP(b)
 		b = b[0:n]
 		if n == MAX_UDP_PACKET_SIZE {
 			log.Printf("DHT: Warning. Received packet with len >= %d, some data may have been discarded.\n", MAX_UDP_PACKET_SIZE)
 		}
-		if err == nil {
+		if n > 0 && err == nil {
 			p := packetType{b, addr}
 			conChan <- p
 			continue
 		}
 		if e, ok := err.(*net.OpError); ok && e.Err == os.EAGAIN {
-			log.Println("EGAIN")
+			log.Println("DHT: EGAIN")
+			continue
 		}
+		// Happens if timeout is set.
 		if n == 0 {
 			log.Println("DHT: readResponse: got n == 0. Err:", err)
 			continue
