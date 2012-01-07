@@ -3,9 +3,8 @@
 // Status:
 //  - able to get peers from the network
 //  - uses a very simple routing table
-//  - not able to _answer_ queries from remote nodes
+//  - not able to answer get_peers from remote nodes
 //  - does not 'bucketize' the remote nodes
-//  - does not announce torrents to the network.
 //  - has only soft limits for memory growth.
 //
 // Usage: 
@@ -168,7 +167,6 @@ func (d *DhtEngine) getPeers(r *DhtRemoteNode, ih string) {
 	go sendMsg(d.port, r.address, query)
 }
 
-// blocks.
 func (d *DhtEngine) announcePeer(address *net.UDPAddr, ih string, token string) {
 	r := d.getOrCreateRemoteNode(address.String())
 	ty := "announce_peer"
@@ -184,9 +182,7 @@ func (d *DhtEngine) announcePeer(address *net.UDPAddr, ih string, token string) 
 	go sendMsg(d.port, address, query)
 }
 
-// blocks.
 func (d *DhtEngine) replyPing(addr *net.UDPAddr, response responseType) {
-	//r := d.getOrCreateRemoteNode(address)
 	log.Printf("DHT: reply ping => %v\n", addr)
 	reply := pingReplyMessage{
 		T: response.T,

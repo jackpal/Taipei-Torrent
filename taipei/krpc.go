@@ -6,7 +6,6 @@ import (
 	"jackpal/bencode"
 	"log"
 	"net"
-	"os"
 	"strconv"
 	"time"
 )
@@ -58,24 +57,6 @@ func parseNodesString(nodes string) (parsed map[string]string) {
 
 }
 
-//// encodedPing returns the bencoded string to be used for DHT ping queries.
-//func (r *DhtRemoteNode) encodedPing(transId string) (msg string, err error) {
-//	queryArguments := map[string]interface{}{"id": r.localNode.peerID}
-//	msg, err = encodeMsg("ping", queryArguments, transId)
-//	return
-//}
-//
-//// encodedGetPeers returns the bencoded string to be used for DHT get_peers queries.
-//func (r *DhtRemoteNode) encodedGetPeers(transId string, infohash string) (msg string, err error) {
-//	queryArguments := map[string]interface{}{
-//		"id":        r.localNode.peerID,
-//		"info_hash": infohash,
-//	}
-//	msg, err = encodeMsg("get_peers", queryArguments, transId)
-//	return
-//
-//}
-
 // newQuery creates a new transaction id and adds an entry to r.pendingQueries.
 // It does not set any extra information to the transaction information, so the
 // caller must take care of that. (XXX: Ugly)
@@ -102,7 +83,7 @@ type answerType struct {
 	Token    string "token"
 }
 
-// Generic stuff we read from the wire, not know what it is. This time is as generic as can be.
+// Generic stuff we read from the wire, not knowing what it is. This is as generic as can be.
 type responseType struct {
 	T string           "t"
 	Y string           "y"
@@ -113,28 +94,6 @@ type responseType struct {
 	// mainline extension for client identification.
 	//V string(?)	"v"
 }
-
-//// Sends a message to the remote node. msg should be the bencoded string ready to be sent in the wire.
-//// Clients usually run it as a goroutine, so it must not change mutable shared state.
-//func (r *DhtRemoteNode) sendMsg(msg string) (err error) {
-//	// XXX Merge with DhtEngine.sendMsg
-//	log.Printf("Marshalled %q", msg)
-//	laddr := &net.UDPAddr{Port: r.localNode.port}
-//	conn, err := net.DialUDP("udp", laddr, r.address)
-//	if conn == nil || err != nil {
-//		return
-//	}
-//	defer conn.Close()
-//	if _, err = conn.Write(bytes.NewBufferString(msg).Bytes()); err != nil {
-//		log.Println("DHT: node write failed", err)
-//		return
-//	}
-//	return
-//}
-
-//func (r *DhtRemoteNode) dialNode(ch chan net.Conn) {
-//	return
-//}
 
 // sendMsg bencodes the data in 'query' and sends it to the remote node.
 func sendMsg(lport int, raddr *net.UDPAddr, query interface{}) {
@@ -158,11 +117,11 @@ func sendMsg(lport int, raddr *net.UDPAddr, query interface{}) {
 // Read responses from bencode-speaking nodes. Return the appropriate data structure.
 func readResponse(p packetType) (response responseType, err error) {
 	// The calls to bencode.Unmarshal() can be fragile.
-	//defer func() {
-	//	if x := recover(); x != nil {
-	//		log.Printf("DHT: !!! Recovering from panic() after bencode.Unmarshal %q, %v", string(p.b), x)
-	//	}
-	//}()
+	defer func() {
+		if x := recover(); x != nil {
+			log.Printf("DHT: !!! Recovering from panic() after bencode.Unmarshal %q, %v", string(p.b), x)
+		}
+	}()
 	log.Printf("DHT: DEBUG %v ==== %q ===", p.raddr, p.b)
 	if e2 := bencode.Unmarshal(bytes.NewBuffer(p.b), &response); e2 == nil {
 		err = nil
@@ -187,18 +146,6 @@ type pingReplyMessage struct {
 	Y string            "y"
 	R map[string]string "r"
 }
-
-//// XXX retire in favor of sendMsg.
-//func encodeMsg(queryType string, queryArguments map[string]interface{}, transId string) (msg string, err error) {
-//	query := queryMessage{transId, "q", queryType, queryArguments}
-//	var b bytes.Buffer
-//	if err = bencode.Marshal(&b, query); err != nil {
-//		log.Println("DHT: bencode error:", err)
-//		return
-//	}
-//	msg = string(b.Bytes())
-//	return
-//}
 
 type packetType struct {
 	b     []byte
@@ -233,14 +180,15 @@ func readFromSocket(socket *net.UDPConn, conChan chan packetType) {
 			conChan <- p
 			continue
 		}
-		if e, ok := err.(*net.OpError); ok && e.Err == os.EAGAIN {
-			log.Println("DHT: EGAIN")
-			continue
-		}
+		log.Println("DHT: readResponse error:", err)
 		// Happens if timeout is set.
-		if n == 0 {
-			log.Println("DHT: readResponse: got n == 0. Err:", err)
-			continue
-		}
+		//if e, ok := err.(*net.OpError); ok && e.Err == os.EAGAIN {
+		//	log.Println("DHT: EGAIN")
+		//	continue
+		//}
+		//if n == 0 {
+		//	log.Println("DHT: readResponse: got n == 0. Err:", err)
+		//	continue
+		//}
 	}
 }
