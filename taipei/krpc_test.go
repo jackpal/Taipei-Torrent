@@ -26,44 +26,6 @@ func startDhtNode(t *testing.T) *DhtEngine {
 	return node
 }
 
-var pingTests = []pingTest{
-	pingTest{"XX", "abcdefghij0123456789", "d1:ad2:id20:abcdefghij0123456789e1:q4:ping1:t2:XX1:y1:qe"},
-}
-
-func TestPing(t *testing.T) {
-	for _, p := range pingTests {
-		node := startDhtNode(t)
-		r := node.newRemoteNode("", "127.0.0.1:1234") // id, Address
-		v, _ := r.encodedPing(p.transId)
-		if v != p.out {
-			t.Errorf("Ping(%s) = %s, want %s.", p.nodeId, v, p.out)
-		}
-	}
-}
-
-type getPeersTest struct {
-	transId  string
-	nodeId   string
-	infoHash string
-	out      string
-}
-
-var getPeersTests = []getPeersTest{
-	getPeersTest{"aa", "abcdefghij0123456789", "mnopqrstuvwxyz123456",
-		"d1:ad2:id20:abcdefghij01234567899:info_hash20:mnopqrstuvwxyz123456e1:q9:get_peers1:t2:aa1:y1:qe"},
-}
-
-func TestGetPeers(t *testing.T) {
-	for _, p := range getPeersTests {
-		n := startDhtNode(t)
-		r := n.newRemoteNode("", "127.0.0.1:1234") // id, address
-		v, _ := r.encodedGetPeers(p.transId, p.infoHash)
-		if v != p.out {
-			t.Errorf("GetPeers(%s, %s) = %s, want %s.", p.nodeId, p.infoHash, v, p.out)
-		}
-	}
-}
-
 func dumpStats() {
 	log.Println("=== Stats ===")
 	log.Println("totalReachableNodes", totalReachableNodes)
