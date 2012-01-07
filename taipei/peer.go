@@ -3,7 +3,6 @@ package taipei
 import (
 	"io"
 	"net"
-	"sync"
 	"time"
 )
 
@@ -31,7 +30,6 @@ type peerState struct {
 	peer_interested bool // peer is interested in this client
 	peer_requests   map[uint64]bool
 	our_requests    map[uint64]time.Time // What we requested, when we requested it
-	end             sync.Once
 }
 
 func queueingWriter(in, out chan []byte) {
@@ -64,7 +62,7 @@ L:
 	}
 	// We throw away any messages waiting to be sent, including the
 	// nil message that is automatically sent when the in channel is closed
-	close(out)
+	// close(out) // No need to close channel.
 }
 
 func NewPeerState(conn net.Conn) *peerState {
@@ -78,10 +76,8 @@ func NewPeerState(conn net.Conn) *peerState {
 }
 
 func (p *peerState) Close() {
-	p.end.Do(func() {
-		p.conn.Close()
-		close(p.writeChan)
-	})
+	p.conn.Close()
+	// No need to close p.writeChan. Further writes to p.conn will just fail.
 }
 
 func (p *peerState) AddRequest(index, begin, length uint32) {
