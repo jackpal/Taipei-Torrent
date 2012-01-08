@@ -657,7 +657,7 @@ func (t *TorrentSession) DoMessage(p *peerState, message []byte) (err error) {
 		if useDHT {
 			// If 128, then it supports DHT.
 			if int(message[7])&0x01 == 0x01 {
-				candidate := &DhtNodeCandidate{id: p.id, address: p.address}
+				candidate := &DhtNodeCandidate{Id: p.id, Address: p.address}
 				// It's OK if we know this node already. The DHT engine will
 				// ignore it accordingly.
 				go t.dht.RemoteNodeAcquaintance(candidate)
@@ -822,7 +822,7 @@ func (t *TorrentSession) DoMessage(p *peerState, message []byte) (err error) {
 			if len(message) != 3 {
 				return errors.New(fmt.Sprintf("Unexpected length for port message:", len(message)))
 			}
-			candidate := &DhtNodeCandidate{id: p.id, address: p.address}
+			candidate := &DhtNodeCandidate{Id: p.id, Address: p.address}
 			go t.dht.RemoteNodeAcquaintance(candidate)
 		default:
 			return errors.New("Uknown message id")

@@ -103,8 +103,8 @@ func NewDhtNode(nodeId string, port int) (node *DhtEngine, err error) {
 }
 
 type DhtNodeCandidate struct {
-	id      string
-	address string
+	Id      string
+	Address string
 }
 
 func (d *DhtEngine) newRemoteNode(id string, hostPort string) (r *DhtRemoteNode) {
@@ -137,10 +137,10 @@ func (d *DhtEngine) getOrCreateRemoteNode(address string) (r *DhtRemoteNode) {
 	return r
 }
 
-func (d *DhtEngine) ping(address string) {
+func (d *DhtEngine) Ping(address string) {
 	// TODO: should translate to an IP first.
 	r := d.getOrCreateRemoteNode(address)
-	log.Printf("DHT: ping => %+v\n", r)
+	log.Printf("DHT: ping => %+v\n", address)
 	t := r.newQuery("ping")
 
 	//p, _ := r.encodedPing(t)
@@ -223,9 +223,9 @@ func (d *DhtEngine) DoDht() {
 			// - ping it and see if it's reachable. Ignore otherwise.
 			// - save it on our list of good nodes.
 			// - later, we'll implement bucketing, etc.
-			if _, ok := d.remoteNodes[helloNode.id]; !ok {
-				_ = d.newRemoteNode(helloNode.id, helloNode.address)
-				d.ping(helloNode.address)
+			if _, ok := d.remoteNodes[helloNode.Id]; !ok {
+				_ = d.newRemoteNode(helloNode.Id, helloNode.Address)
+				d.Ping(helloNode.Address)
 			}
 
 		case needPeers := <-d.peersRequest:
@@ -345,6 +345,13 @@ func (d *DhtEngine) processGetPeerResults(node *DhtRemoteNode, resp responseType
 	}
 }
 
+func (d *DhtEngine) RoutingTable() (tbl map[string][]byte) {
+	tbl = make(map[string][]byte)
+	for addr, r := range d.remoteNodes {
+		tbl[addr] = []byte(r.id)
+	}
+	return
+}
 // Calculates the distance between two hashes. In DHT/Kademlia, "distance" is the XOR of the torrent infohash and the
 // peer node ID.
 func hashDistance(id1 string, id2 string) (distance string, err error) {
@@ -475,7 +482,7 @@ var totalPeers = expvar.NewInt("totalPeers")
 var totalGetPeers = expvar.NewInt("totalGetPeers")
 
 func (d *DhtEngine) bootStrapNetwork() {
-	d.ping(dhtRouter)
+	d.Ping(dhtRouter)
 }
 
 // TODO: Create a proper routing table with buckets, per the protocol.
