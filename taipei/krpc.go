@@ -17,17 +17,19 @@ type DhtRemoteNode struct {
 	// lastQueryID should be incremented after consumed. Based on the
 	// protocol, it would be two letters, but I'm using 0-255, although
 	// treated as string.
-	lastQueryID    int
-	pendingQueries map[string]*queryType // key: transaction ID
-	pastQueries    map[string]*queryType // key: transaction ID
-	localNode      *DhtEngine
-	reachable      bool
-	lastTime       time.Time
+	lastQueryID     int
+	pendingQueries  map[string]*queryType // key: transaction ID
+	pastQueries     map[string]*queryType // key: transaction ID
+	localNode       *DhtEngine
+	reachable       bool
+	lastTime        time.Time
+	ActiveDownloads []string // List of infohashes we know this peer is downloading.
 }
 
 type queryType struct {
-	Type string
-	ih   string
+	Type    string
+	ih      string
+	srcNode string
 }
 
 const (
@@ -141,10 +143,10 @@ type queryMessage struct {
 	A map[string]interface{} "a"
 }
 
-type pingReplyMessage struct {
-	T string            "t"
-	Y string            "y"
-	R map[string]string "r"
+type replyMessage struct {
+	T string                 "t"
+	Y string                 "y"
+	R map[string]interface{} "r"
 }
 
 type packetType struct {

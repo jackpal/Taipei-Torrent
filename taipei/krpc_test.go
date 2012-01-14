@@ -72,7 +72,7 @@ func TestDhtBigAndSlow(t *testing.T) {
 		}
 		addr = ip[0] + ":6881"
 		realDHTNodes[id] = addr
-		candidate := &DhtNodeCandidate{id: id, address: addr}
+		candidate := &DhtNodeCandidate{Id: id, Address: addr}
 		go node.RemoteNodeAcquaintance(candidate)
 	}
 	time.Sleep(1.5 * UDP_TIMEOUT)

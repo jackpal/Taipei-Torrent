@@ -182,12 +182,35 @@ func (d *DhtEngine) announcePeer(address *net.UDPAddr, ih string, token string) 
 	go sendMsg(d.port, address, query)
 }
 
+func (d *DhtEngine) replyGetPeers(addr *net.UDPAddr, r responseType) {
+	x, _ := hashDistance(r.A.InfoHash, d.peerID)
+	log.Printf("DHT XXXX get_peers. Host: %v, peerID: %x, InfoHash: %x, distance to me: %x", addr, r.A.Id, r.A.InfoHash, x)
+
+	ih := r.A.InfoHash
+	r0 := map[string]interface{}{"id": ih, "token": r.A.Token}
+	reply := replyMessage{
+		T: r.T,
+		Y: "r",
+		R: r0,
+	}
+
+	if peers, ok := d.infoHashPeers[ih]; ok {
+		log.Printf("Excelent. %v wanted %x, and we knew %d peers!",
+			addr.String(), ih, len(peers))
+		reply.R["values"] = peers
+	} else {
+		reply.R["nodes"] = []string{} // XXX closest nodes.
+	}
+	go sendMsg(d.port, addr, reply)
+
+}
+
 func (d *DhtEngine) replyPing(addr *net.UDPAddr, response responseType) {
 	log.Printf("DHT: reply ping => %v\n", addr)
-	reply := pingReplyMessage{
+	reply := replyMessage{
 		T: response.T,
 		Y: "r",
-		R: map[string]string{"id": d.peerID},
+		R: map[string]interface{}{"id": d.peerID},
 	}
 	go sendMsg(d.port, addr, reply)
 }
@@ -285,8 +308,7 @@ func (d *DhtEngine) DoDht() {
 				case "ping":
 					d.replyPing(p.raddr, r)
 				case "get_peers":
-					x, _ := hashDistance(r.A.InfoHash, d.peerID)
-					log.Printf("DHT XXXX get_peers not implemented. Host: %v, peerID: %x, InfoHash: %x, distance to me: %x", p.raddr, r.A.Id, r.A.InfoHash, x)
+					d.replyGetPeers(p.raddr, r)
 				default:
 					log.Println("DHT XXX non-implemented handler for type", r.Q)
 				}
@@ -352,6 +374,7 @@ func (d *DhtEngine) RoutingTable() (tbl map[string][]byte) {
 	}
 	return
 }
+
 // Calculates the distance between two hashes. In DHT/Kademlia, "distance" is the XOR of the torrent infohash and the
 // peer node ID.
 func hashDistance(id1 string, id2 string) (distance string, err error) {
@@ -411,6 +434,7 @@ func (n *nodeDistances) Swap(i, j int) {
 // their hash is distant from other nodes we asked.
 //
 // It's probably very slow, but I dont need the performance right now.
+// .. although it runs in the same goroutine, so it must be fast, or I should move this to another routine. Or live with it.
 func (d *DhtEngine) GetPeers(infoHash string) {
 	ih := infoHash
 	if d.remoteNodes == nil {
