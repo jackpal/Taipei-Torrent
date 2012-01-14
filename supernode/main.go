@@ -14,9 +14,9 @@ const port = 63010
 
 func main() {
 	c := openConfig(port)
-	if c.Id == "" {
+	if len(c.Id) != 20 {
 		// TODO: Create a new node config.
-		log.Fatal("Empty config file found.")
+		log.Fatal("Bogus config file found. c.Id:", c.Id, len(c.Id))
 	}
 	dht, err := taipei.NewDhtNode(c.Id, port)
 	if err != nil {
@@ -34,7 +34,8 @@ func main() {
 	}
 
 	for {
-		dht.PeersRequest("+bcdefghij0123456789")
+		// From test.torrent.
+		dht.PeersRequest("\x66\xcb\x16\x1e\x27\xe5\xcd\x7c\x44\xab\x32\x38\x30\x67\x57\x68\xa2\x76\x01\x29")
 		tbl := dht.RoutingTable()
 		c.Remotes = tbl
 		saveConfig(*c)

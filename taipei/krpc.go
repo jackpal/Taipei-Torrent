@@ -156,7 +156,7 @@ type packetType struct {
 
 func listen(listenPort int) (socket *net.UDPConn, err error) {
 	log.Printf("DHT: Listening for peers on port: %d\n", listenPort)
-	listener, err := net.ListenPacket("udp", ":"+strconv.Itoa(listenPort))
+	listener, err := net.ListenPacket("udp4", ":"+strconv.Itoa(listenPort))
 	if err != nil {
 		log.Println("DHT: Listen failed:", err)
 	}

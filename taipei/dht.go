@@ -65,6 +65,8 @@ const (
 	MAX_NODE_PENDING_QUERIES = 5
 	// Ask the same infoHash to a node after a long time.
 	MIN_SECONDS_NODE_REPEAT_QUERY = 30 * time.Minute
+
+	GET_PEERS_NUM_NODES_RESPONSE = 8
 )
 
 var dhtRouter string
@@ -107,11 +109,10 @@ type DhtNodeCandidate struct {
 	Address string
 }
 
-func (d *DhtEngine) newRemoteNode(id string, hostPort string) (r *DhtRemoteNode) {
+func (d *DhtEngine) newRemoteNode(id string, hostPort string) (r *DhtRemoteNode, err error) {
 	address, err := net.ResolveUDPAddr("udp", hostPort)
 	if err != nil {
-		log.Println(err)
-		return nil
+		return nil, err
 	}
 	r = &DhtRemoteNode{
 		address:        address,
@@ -128,18 +129,25 @@ func (d *DhtEngine) newRemoteNode(id string, hostPort string) (r *DhtRemoteNode)
 }
 
 // getRemodeNode returns the DhtRemoteNode with the provided address. Creates a new object if necessary.
-func (d *DhtEngine) getOrCreateRemoteNode(address string) (r *DhtRemoteNode) {
+func (d *DhtEngine) getOrCreateRemoteNode(address string) (r *DhtRemoteNode, err error) {
 	var ok bool
 	if r, ok = d.remoteNodes[address]; !ok {
-		r = d.newRemoteNode("", address)
+		r, err = d.newRemoteNode("", address)
+		if err != nil {
+			return nil, err
+		}
 		d.remoteNodes[address] = r
 	}
-	return r
+	return
 }
 
 func (d *DhtEngine) Ping(address string) {
 	// TODO: should translate to an IP first.
-	r := d.getOrCreateRemoteNode(address)
+	r, err := d.getOrCreateRemoteNode(address)
+	if err != nil {
+		log.Println("ping:", err)
+		return
+	}
 	log.Printf("DHT: ping => %+v\n", address)
 	t := r.newQuery("ping")
 
@@ -168,7 +176,11 @@ func (d *DhtEngine) getPeers(r *DhtRemoteNode, ih string) {
 }
 
 func (d *DhtEngine) announcePeer(address *net.UDPAddr, ih string, token string) {
-	r := d.getOrCreateRemoteNode(address.String())
+	r, err := d.getOrCreateRemoteNode(address.String())
+	if err != nil {
+		log.Println("announcePeer:", err)
+		return
+	}
 	ty := "announce_peer"
 	log.Printf("DHT: announce_peer => %v %x %x\n", address, ih, token)
 	transId := r.newQuery(ty)
@@ -199,7 +211,23 @@ func (d *DhtEngine) replyGetPeers(addr *net.UDPAddr, r responseType) {
 			addr.String(), ih, len(peers))
 		reply.R["values"] = peers
 	} else {
-		reply.R["nodes"] = []string{} // XXX closest nodes.
+		targets := &nodeDistances{ih, make([]*DhtRemoteNode, 0, len(d.remoteNodes)), map[string]string{}}
+		for _, r := range d.remoteNodes {
+			if !r.reachable {
+				continue
+			}
+			targets.nodes = append(targets.nodes, r)
+			sort.Sort(targets)
+		}
+		n := make([]string, 0, GET_PEERS_NUM_NODES_RESPONSE)
+		for i, r := range targets.nodes {
+			if i == GET_PEERS_NUM_NODES_RESPONSE {
+				break
+			}
+			n = append(n, dottedPortToBinary(r.address.String()))
+		}
+		log.Printf("replyGetPeers: Giving %d: %v", len(n), n)
+		reply.R["nodes"] = n
 	}
 	go sendMsg(d.port, addr, reply)
 
@@ -247,14 +275,17 @@ func (d *DhtEngine) DoDht() {
 			// - save it on our list of good nodes.
 			// - later, we'll implement bucketing, etc.
 			if _, ok := d.remoteNodes[helloNode.Id]; !ok {
-				_ = d.newRemoteNode(helloNode.Id, helloNode.Address)
-				d.Ping(helloNode.Address)
+				if _, err := d.newRemoteNode(helloNode.Id, helloNode.Address); err != nil {
+					log.Println("newRemoteNode:", err)
+				} else {
+					d.Ping(helloNode.Address)
+				}
 			}
 
 		case needPeers := <-d.peersRequest:
 			// torrent server is asking for more peers for a particular infoHash.  Ask the closest nodes for
 			// directions. The goroutine will write into the PeersNeededResults channel.
-			log.Println("DHT: torrent client asking for more peers. Calling GetPeers().")
+			log.Printf("DHT: torrent client asking more peers for %x. Calling GetPeers().", needPeers)
 			d.GetPeers(needPeers)
 		case p := <-socketChan:
 			if p.b[0] != 'd' {
@@ -355,7 +386,13 @@ func (d *DhtEngine) processGetPeerResults(node *DhtRemoteNode, resp responseType
 				log.Println("DHT: total dupes:", totalDupes.String())
 			} else {
 				log.Println("DHT: and it is actually new. Interesting. LEN:", len(d.infoHashPeers[query.ih]))
-				nr := d.newRemoteNode(id, address)
+				nr, err := d.newRemoteNode(id, address)
+				if err != nil {
+					log.Println("newRemoteNode", err)
+					// XXX Send an error to the host that
+					// gave us this address.
+					continue
+				}
 				d.remoteNodes[address] = nr
 				if len(d.infoHashPeers[query.ih]) < TARGET_NUM_PEERS {
 					d.GetPeers(query.ih)
