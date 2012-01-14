@@ -1,3 +1,5 @@
+// Stand-alone DHT node.
+
 package main
 
 import (
@@ -7,21 +9,22 @@ import (
 	"taipei"
 )
 
+// command line.
 const port = 63010
 
 func main() {
-	c, err := openConfig(port)
-	if err != nil {
-		log.Println("openConfig():", err)
-		return
+	c := openConfig(port)
+	if c.Id == "" {
+		// TODO: Create a new node config.
+		log.Fatal("Empty config file found.")
 	}
-	dht, err := taipei.NewDhtNode(c.Id, c.Port)
+	dht, err := taipei.NewDhtNode(c.Id, port)
 	if err != nil {
 		log.Println("DHT node creation error", err)
 		return
 	}
 	go dht.DoDht()
-	// Add back the hosts we already knew.
+	// Add back the hosts we already knew, if any.
 	for addr, id := range c.Remotes {
 		if len(id) != 20 {
 			dht.Ping(addr)
@@ -35,6 +38,6 @@ func main() {
 		tbl := dht.RoutingTable()
 		c.Remotes = tbl
 		saveConfig(*c)
-		time.Sleep(5*time.Second)
+		time.Sleep(5 * time.Second)
 	}
 }
