@@ -248,13 +248,13 @@ func (d *DhtEngine) replyFindNode(addr *net.UDPAddr, r responseType) {
 	node := r.A.Target
 	r0 := map[string]interface{}{"id": node}
 	reply := replyMessage{
-		// T: r.T, what happens to bencode when value is nil?
+		T: r.T,
 		Y: "r",
 		R: r0,
 	}
 
-	// XXX optimize.
 	// XXX we currently can't give out the peer contact. Probably requires processing announce_peer.
+	// XXX Also needs optimization.
 	targets := &nodeDistances{node, make([]*DhtRemoteNode, 0, len(d.remoteNodes)), map[string]string{}}
 	for _, r := range d.remoteNodes {
 		if r.reachable {
@@ -402,7 +402,7 @@ func (d *DhtEngine) DoDht() {
 // contains peers, send them to the Torrent engine, our client, using the
 // DhtEngine.PeersRequestResults channel. If it contains closest nodes, query
 // them if we still need it.
-// Also announce ourselves as a peer for that node.
+// Also announce ourselves as a peer for that node, unless we are in supernode mode.
 func (d *DhtEngine) processGetPeerResults(node *DhtRemoteNode, resp responseType) {
 	query, _ := node.pendingQueries[resp.T]
 	if d.activeInfoHashes[query.ih] {
