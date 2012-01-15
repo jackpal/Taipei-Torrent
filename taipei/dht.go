@@ -227,7 +227,7 @@ func (d *DhtEngine) replyGetPeers(addr *net.UDPAddr, r responseType) {
 			n = append(n, dottedPortToBinary(r.address.String()))
 			log.Printf("replyGetPeers: [%d] distance %x", i, targets.distances[r.id])
 		}
-		log.Printf("replyGetPeers: Nodes only. Giving %d: %v", len(n), n)
+		log.Printf("replyGetPeers: Nodes only. Giving %d", len(n))
 		reply.R["nodes"] = n
 	}
 	go sendMsg(d.port, addr, reply)
@@ -304,7 +304,6 @@ func (d *DhtEngine) DoDht() {
 				node, ok := d.remoteNodes[p.raddr.String()]
 				if !ok {
 					log.Println("DHT: Received reply from a host we don't know:", p.raddr)
-					log.Println("DHT: -> ignoring. Details:", r, err)
 					continue
 				}
 				// Fix the node ID.
@@ -377,15 +376,14 @@ func (d *DhtEngine) processGetPeerResults(node *DhtRemoteNode, resp responseType
 	if resp.R.Nodes != "" {
 		for id, address := range parseNodesString(resp.R.Nodes) {
 			// XXX
-			log.Printf("DHT: Got node reference: %x@%v from %x@%v.", id, address, node.id, node.address)
 			// If it's in our routing table already, ignore it.
 			if _, ok := d.remoteNodes[address]; ok {
 				totalDupes.Add(1)
-				d, _ := hashDistance(query.ih, node.id)
-				log.Printf("distance to receiver node: %x", d)
 				// XXX Gotta improve things so we stop receiving so many dupes. Waste.
 			} else {
 				// And it is actually new. Interesting.
+				dist, _ := hashDistance(query.ih, node.id)
+				log.Printf("DHT: Got new node reference: %x@%v from %x@%v. Distance: %x.", id, address, node.id, node.address, dist)
 				nr, err := d.newRemoteNode(id, address)
 				if err != nil {
 					log.Println("newRemoteNode", err)
