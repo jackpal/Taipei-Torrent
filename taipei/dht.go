@@ -208,9 +208,13 @@ func (d *DhtEngine) replyGetPeers(addr *net.UDPAddr, r responseType) {
 	}
 
 	if peers, ok := d.infoHashPeers[ih]; ok {
+		peerContacts := make([]string, 0, len(peers))
+		for p, _ := range peers {
+			peerContacts = append(peerContacts, p)
+		}
 		log.Printf("replyGetPeers: Giving peers! %v wanted %x, and we knew %d peers!",
-			addr.String(), ih, len(peers))
-		reply.R["values"] = peers
+			addr.String(), ih, len(peerContacts))
+		reply.R["values"] = peerContacts
 	} else {
 		targets := &nodeDistances{ih, make([]*DhtRemoteNode, 0, len(d.remoteNodes)), map[string]string{}}
 		for _, r := range d.remoteNodes {
@@ -248,32 +252,24 @@ func (d *DhtEngine) replyFindNode(addr *net.UDPAddr, r responseType) {
 	}
 
 	// XXX optimize.
-	for _, rn := range d.remoteNodes {
-		if rn.id == node {
-			log.Println("replyFindNode found peer:", rn.address.String())
-			reply.R["target"] = dottedPortToBinary(rn.address.String())
+	// XXX we currently can't give out the peer contact. Probably requires processing announce_peer.
+	targets := &nodeDistances{node, make([]*DhtRemoteNode, 0, len(d.remoteNodes)), map[string]string{}}
+	for _, r := range d.remoteNodes {
+		if r.reachable {
+			targets.nodes = append(targets.nodes, r)
 		}
 	}
-	if _, ok := reply.R["target"]; !ok {
-		targets := &nodeDistances{node, make([]*DhtRemoteNode, 0, len(d.remoteNodes)), map[string]string{}}
-		for _, r := range d.remoteNodes {
-			if r.reachable {
-				targets.nodes = append(targets.nodes, r)
-			}
+	sort.Sort(targets)
+	n := make([]string, 0, GET_PEERS_NUM_NODES_RESPONSE)
+	for i, r := range targets.nodes {
+		if i == GET_PEERS_NUM_NODES_RESPONSE {
+			break
 		}
-		sort.Sort(targets)
-		n := make([]string, 0, GET_PEERS_NUM_NODES_RESPONSE)
-		for i, r := range targets.nodes {
-			if i == GET_PEERS_NUM_NODES_RESPONSE {
-				break
-			}
-			n = append(n, r.id+dottedPortToBinary(r.address.String()))
-		}
-		log.Printf("replyFindNode: Nodes only. Giving %d", len(n))
-		reply.R["nodes"] = n
+		n = append(n, r.id+dottedPortToBinary(r.address.String()))
 	}
+	log.Printf("replyFindNode: Nodes only. Giving %d", len(n))
+	reply.R["nodes"] = n
 	go sendMsg(d.port, addr, reply)
-
 }
 
 func (d *DhtEngine) replyPing(addr *net.UDPAddr, response responseType) {
