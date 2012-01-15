@@ -334,7 +334,6 @@ func (d *DhtEngine) DoDht() {
 					log.Println("DHT: Unknown query id:", r.T)
 				}
 			case r.Y == "q":
-				log.Printf("DHT XXX query %q ==> %#v", p.b, r)
 				switch r.Q {
 				case "ping":
 					d.replyPing(p.raddr, r)
