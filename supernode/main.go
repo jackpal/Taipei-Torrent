@@ -3,9 +3,9 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"log"
-	"os"
 	"time"
 
 	"taipei"
@@ -14,12 +14,18 @@ import (
 // command line.
 const port = 63010
 
-func main() {
-	// From test.torrent.
-	infoHash := "\x66\xcb\x16\x1e\x27\xe5\xcd\x7c\x44\xab\x32\x38\x30\x67\x57\x68\xa2\x76\x01\x29"
+var infoHashFlag string
 
-	if len(os.Args) > 1 {
-		_, err := fmt.Sscanf(os.Args[1], "%x", &infoHash)
+func init() {
+
+	flag.StringVar(&infoHashFlag, "infoHash", "", "Infohash to query frequently.")
+}
+
+func main() {
+	var infoHash string
+
+	if infoHashFlag != "" {
+		_, err := fmt.Sscanf(infoHashFlag, "%x", &infoHash)
 		if err != nil {
 			log.Fatal("infoHash:", err.Error())
 		}
@@ -40,24 +46,29 @@ func main() {
 		return
 	}
 	go dht.DoDht()
-	// Add back the hosts we already knew, if any.
-	for addr, id := range c.Remotes {
-		if len(id) != 20 {
-			dht.Ping(addr)
-			continue
-		}
-		dht.RemoteNodeAcquaintance(&taipei.DhtNodeCandidate{string(id), addr})
-	}
-
 	go drainresults(dht)
+	reconnect(dht, c)
 
 	for {
-		dht.PeersRequest(infoHash)
+		if infoHash != "" {
+			dht.PeersRequest(infoHash)
+		}
 		// Assumes one result per request.
 		tbl := dht.RoutingTable()
 		c.Remotes = tbl
 		saveConfig(*c)
 		time.Sleep(5 * time.Second)
+	}
+}
+
+// Add back the hosts we already knew, if any.
+func reconnect(dht *taipei.DhtEngine, c *DhtConfig) {
+	for addr, id := range c.Remotes {
+		if len(id) != 20 {
+			dht.Ping(addr)
+		} else {
+			dht.RemoteNodeAcquaintance(&taipei.DhtNodeCandidate{string(id), addr})
+		}
 	}
 }
 
