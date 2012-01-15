@@ -12,7 +12,12 @@ import (
 )
 
 // command line.
-const port = 63010
+const (
+	// maybe use taipei.port instead.
+	port = 63010
+	// The network becames very quiet otherwise.
+	sendAnnouncements = true
+)
 
 var infoHashFlag string
 
@@ -52,7 +57,7 @@ func main() {
 
 	for {
 		if infoHash != "" {
-			dht.PeersRequest(infoHash, false)
+			dht.PeersRequest(infoHash, sendAnnouncements)
 		}
 		// Assumes one result per request.
 		tbl := dht.RoutingTable()
