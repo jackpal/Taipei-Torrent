@@ -124,7 +124,7 @@ func readResponse(p packetType) (response responseType, err error) {
 			log.Printf("DHT: !!! Recovering from panic() after bencode.Unmarshal %q, %v", string(p.b), x)
 		}
 	}()
-	log.Printf("DHT: DEBUG %v ==== %q ===", p.raddr, p.b)
+	// log.Printf("DHT: DEBUG %v ==== %q ===", p.raddr, p.b)
 	if e2 := bencode.Unmarshal(bytes.NewBuffer(p.b), &response); e2 == nil {
 		err = nil
 		return

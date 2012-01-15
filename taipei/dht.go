@@ -163,7 +163,7 @@ func (d *DhtEngine) Ping(address string) {
 }
 
 func (d *DhtEngine) getPeers(r *DhtRemoteNode, ih string) {
-	totalGetPeers.Add(1)
+	totalSentGetPeers.Add(1)
 	ty := "get_peers"
 	transId := r.newQuery(ty)
 	r.pendingQueries[transId].ih = ih
@@ -195,8 +195,9 @@ func (d *DhtEngine) announcePeer(address *net.UDPAddr, ih string, token string) 
 }
 
 func (d *DhtEngine) replyGetPeers(addr *net.UDPAddr, r responseType) {
+	totalRecvGetPeers.Add(1)
 	x, _ := hashDistance(r.A.InfoHash, d.peerID)
-	log.Printf("DHT XXXX get_peers. Host: %v, peerID: %x, InfoHash: %x, distance to me: %x", addr, r.A.Id, r.A.InfoHash, x)
+	log.Printf("DHT XXXX get_peers. Host: %v , peerID: %x , InfoHash: %x , distance to me: %x", addr, r.A.Id, r.A.InfoHash, x)
 
 	ih := r.A.InfoHash
 	r0 := map[string]interface{}{"id": ih, "token": r.A.Token}
@@ -207,26 +208,26 @@ func (d *DhtEngine) replyGetPeers(addr *net.UDPAddr, r responseType) {
 	}
 
 	if peers, ok := d.infoHashPeers[ih]; ok {
-		log.Printf("Excelent. %v wanted %x, and we knew %d peers!",
+		log.Printf("replyGetPeers: Giving peers! %v wanted %x, and we knew %d peers!",
 			addr.String(), ih, len(peers))
 		reply.R["values"] = peers
 	} else {
 		targets := &nodeDistances{ih, make([]*DhtRemoteNode, 0, len(d.remoteNodes)), map[string]string{}}
 		for _, r := range d.remoteNodes {
-			if !r.reachable {
-				continue
+			if r.reachable {
+				targets.nodes = append(targets.nodes, r)
 			}
-			targets.nodes = append(targets.nodes, r)
-			sort.Sort(targets)
 		}
+		sort.Sort(targets)
 		n := make([]string, 0, GET_PEERS_NUM_NODES_RESPONSE)
 		for i, r := range targets.nodes {
 			if i == GET_PEERS_NUM_NODES_RESPONSE {
 				break
 			}
 			n = append(n, dottedPortToBinary(r.address.String()))
+			log.Printf("replyGetPeers: [%d] distance %x", i, targets.distances[r.id])
 		}
-		log.Printf("replyGetPeers: Giving %d: %v", len(n), n)
+		log.Printf("replyGetPeers: Nodes only. Giving %d: %v", len(n), n)
 		reply.R["nodes"] = n
 	}
 	go sendMsg(d.port, addr, reply)
@@ -289,7 +290,7 @@ func (d *DhtEngine) DoDht() {
 			d.GetPeers(needPeers)
 		case p := <-socketChan:
 			if p.b[0] != 'd' {
-				log.Println("DHT: UDP packet of unknown protocol")
+				// UDP packet of unknown protocol.
 				continue
 			}
 			r, err := readResponse(p)
@@ -383,9 +384,8 @@ func (d *DhtEngine) processGetPeerResults(node *DhtRemoteNode, resp responseType
 				d, _ := hashDistance(query.ih, node.id)
 				log.Printf("distance to receiver node: %x", d)
 				// XXX Gotta improve things so we stop receiving so many dupes. Waste.
-				log.Println("DHT: total dupes:", totalDupes.String())
 			} else {
-				log.Println("DHT: and it is actually new. Interesting. LEN:", len(d.infoHashPeers[query.ih]))
+				// And it is actually new. Interesting.
 				nr, err := d.newRemoteNode(id, address)
 				if err != nil {
 					log.Println("newRemoteNode", err)
@@ -397,7 +397,7 @@ func (d *DhtEngine) processGetPeerResults(node *DhtRemoteNode, resp responseType
 				if len(d.infoHashPeers[query.ih]) < TARGET_NUM_PEERS {
 					d.GetPeers(query.ih)
 				} else {
-					log.Println("DHT: .. just saving in the routing table")
+					// just saving in the routing table")
 				}
 			}
 		}
@@ -528,10 +528,10 @@ func (d *DhtEngine) GetPeers(infoHash string) {
 		if !ok {
 			di, _ = hashDistance(r.id, ih)
 		}
-		log.Printf("target: %x, distance: %x", r.id, di)
+		log.Printf("send get_peers. target: %x, distance: %x", r.id, di)
 		d.getPeers(r, ih)
 	}
-	log.Println("DHT: totalGetPeers", totalGetPeers.String())
+	log.Println("DHT: totalSentGetPeers", totalSentGetPeers.String())
 }
 
 // Debugging information:
@@ -540,7 +540,8 @@ var nodesVar = expvar.NewMap("Nodes")
 var totalReachableNodes = expvar.NewInt("totalReachableNodes")
 var totalDupes = expvar.NewInt("totalDupes")
 var totalPeers = expvar.NewInt("totalPeers")
-var totalGetPeers = expvar.NewInt("totalGetPeers")
+var totalSentGetPeers = expvar.NewInt("totalSentGetPeers")
+var totalRecvGetPeers = expvar.NewInt("totalRecvGetPeers")
 
 func (d *DhtEngine) bootStrapNetwork() {
 	d.Ping(dhtRouter)
