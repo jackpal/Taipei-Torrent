@@ -80,10 +80,11 @@ func init() {
 // for torrent downloads without requiring a tracker. The client can only use the public (first letter uppercase)
 // channels for communicating with the DHT goroutines.
 type DhtEngine struct {
-	peerID        string
-	port          int
-	remoteNodes   map[string]*DhtRemoteNode // key == address 
-	infoHashPeers map[string]map[string]int // key1 == infoHash, key2 == address in binary form. value=ignored.
+	peerID           string
+	port             int
+	remoteNodes      map[string]*DhtRemoteNode // key == address 
+	infoHashPeers    map[string]map[string]int // key1 == infoHash, key2 == address in binary form. value=ignored.
+	activeInfoHashes map[string]bool           // infoHashes for which we are peers.
 
 	// Public channels:
 	remoteNodeAcquaintance chan *DhtNodeCandidate
@@ -100,6 +101,7 @@ func NewDhtNode(nodeId string, port int) (node *DhtEngine, err error) {
 		remoteNodeAcquaintance: make(chan *DhtNodeCandidate),
 		peersRequest:           make(chan string, 1), // buffer to avoid deadlock.
 		infoHashPeers:          make(map[string]map[string]int),
+		activeInfoHashes:       make(map[string]bool),
 	}
 	return
 }
@@ -283,8 +285,15 @@ func (d *DhtEngine) replyPing(addr *net.UDPAddr, response responseType) {
 }
 
 // PeersRequest tells the DHT to search for more peers for the infoHash
-// provided. Must be called as a goroutine.
-func (d *DhtEngine) PeersRequest(ih string) {
+// provided. active should be true if the connected peer is actively download
+// this infohash. False should be used for when the DHT node is just a probe
+// and shouldn't send announce_peer.
+// Must be called as a goroutine.
+func (d *DhtEngine) PeersRequest(ih string, active bool) {
+	// XXX race.
+	if active {
+		d.activeInfoHashes[ih] = true
+	}
 	// Signals the main DHT goroutine.
 	d.peersRequest <- ih
 }
@@ -389,13 +398,16 @@ func (d *DhtEngine) DoDht() {
 	}
 }
 
-// Process another node's response to a get_peers query. If the response contains peers, send them to the Torrent
-// engine, our client, using the DhtEngine.PeersRequestResults channel. If it contains closest nodes, query them if we
-// still need it.
+// Process another node's response to a get_peers query. If the response
+// contains peers, send them to the Torrent engine, our client, using the
+// DhtEngine.PeersRequestResults channel. If it contains closest nodes, query
+// them if we still need it.
 // Also announce ourselves as a peer for that node.
 func (d *DhtEngine) processGetPeerResults(node *DhtRemoteNode, resp responseType) {
 	query, _ := node.pendingQueries[resp.T]
-	d.announcePeer(node.address, query.ih, resp.R.Token)
+	if d.activeInfoHashes[query.ih] {
+		d.announcePeer(node.address, query.ih, resp.R.Token)
+	}
 	if resp.R.Values != nil {
 		peers := make([]string, 0)
 		for _, peerContact := range resp.R.Values {
@@ -444,7 +456,9 @@ func (d *DhtEngine) processGetPeerResults(node *DhtRemoteNode, resp responseType
 func (d *DhtEngine) RoutingTable() (tbl map[string][]byte) {
 	tbl = make(map[string][]byte)
 	for addr, r := range d.remoteNodes {
-		tbl[addr] = []byte(r.id)
+		if r.reachable {
+			tbl[addr] = []byte(r.id)
+		}
 	}
 	return
 }

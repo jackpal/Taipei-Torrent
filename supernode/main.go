@@ -23,6 +23,7 @@ func init() {
 
 func main() {
 	var infoHash string
+	flag.Parse()
 
 	if infoHashFlag != "" {
 		_, err := fmt.Sscanf(infoHashFlag, "%x", &infoHash)
@@ -51,7 +52,7 @@ func main() {
 
 	for {
 		if infoHash != "" {
-			dht.PeersRequest(infoHash)
+			dht.PeersRequest(infoHash, false)
 		}
 		// Assumes one result per request.
 		tbl := dht.RoutingTable()

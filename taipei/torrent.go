@@ -351,7 +351,7 @@ func (t *TorrentSession) DoTorrent() (err error) {
 	DhtPeersRequestResults := make(chan map[string][]string)
 	if useDHT {
 		DhtPeersRequestResults = t.dht.PeersRequestResults
-		go t.dht.PeersRequest(t.m.InfoHash)
+		go t.dht.PeersRequest(t.m.InfoHash, true)
 	}
 
 	t.fetchTrackerInfo("started")
@@ -437,7 +437,7 @@ func (t *TorrentSession) DoTorrent() (err error) {
 			log.Println("good, total", t.goodPieces, t.totalPieces)
 			if len(t.peers) < TARGET_NUM_PEERS && t.goodPieces < t.totalPieces {
 				if useDHT {
-					go t.dht.PeersRequest(t.m.InfoHash)
+					go t.dht.PeersRequest(t.m.InfoHash, true)
 				}
 				if !trackerLessMode {
 					if t.ti == nil || t.ti.Complete > 100 {
