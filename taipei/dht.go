@@ -224,10 +224,52 @@ func (d *DhtEngine) replyGetPeers(addr *net.UDPAddr, r responseType) {
 			if i == GET_PEERS_NUM_NODES_RESPONSE {
 				break
 			}
-			n = append(n, dottedPortToBinary(r.address.String()))
+			n = append(n, r.id+dottedPortToBinary(r.address.String()))
 			log.Printf("replyGetPeers: [%d] distance %x", i, targets.distances[r.id])
 		}
 		log.Printf("replyGetPeers: Nodes only. Giving %d", len(n))
+		reply.R["nodes"] = n
+	}
+	go sendMsg(d.port, addr, reply)
+
+}
+
+func (d *DhtEngine) replyFindNode(addr *net.UDPAddr, r responseType) {
+	totalRecvFindNode.Add(1)
+	x, _ := hashDistance(r.A.Target, d.peerID)
+	log.Printf("DHT XX find_node. Host: %v , peerID: %x , nodeID: %x , distance to me: %x", addr, r.A.Id, r.A.Target, x)
+
+	node := r.A.Target
+	r0 := map[string]interface{}{"id": node}
+	reply := replyMessage{
+		// T: r.T, what happens to bencode when value is nil?
+		Y: "r",
+		R: r0,
+	}
+
+	// XXX optimize.
+	for _, rn := range d.remoteNodes {
+		if rn.id == node {
+			log.Println("replyFindNode found peer:", rn.address.String())
+			reply.R["target"] = dottedPortToBinary(rn.address.String())
+		}
+	}
+	if _, ok := reply.R["target"]; !ok {
+		targets := &nodeDistances{node, make([]*DhtRemoteNode, 0, len(d.remoteNodes)), map[string]string{}}
+		for _, r := range d.remoteNodes {
+			if r.reachable {
+				targets.nodes = append(targets.nodes, r)
+			}
+		}
+		sort.Sort(targets)
+		n := make([]string, 0, GET_PEERS_NUM_NODES_RESPONSE)
+		for i, r := range targets.nodes {
+			if i == GET_PEERS_NUM_NODES_RESPONSE {
+				break
+			}
+			n = append(n, r.id+dottedPortToBinary(r.address.String()))
+		}
+		log.Printf("replyFindNode: Nodes only. Giving %d", len(n))
 		reply.R["nodes"] = n
 	}
 	go sendMsg(d.port, addr, reply)
@@ -339,6 +381,8 @@ func (d *DhtEngine) DoDht() {
 					d.replyPing(p.raddr, r)
 				case "get_peers":
 					d.replyGetPeers(p.raddr, r)
+				case "find_node":
+					d.replyFindNode(p.raddr, r)
 				default:
 					log.Println("DHT XXX non-implemented handler for type", r.Q)
 				}
@@ -539,6 +583,7 @@ var totalDupes = expvar.NewInt("totalDupes")
 var totalPeers = expvar.NewInt("totalPeers")
 var totalSentGetPeers = expvar.NewInt("totalSentGetPeers")
 var totalRecvGetPeers = expvar.NewInt("totalRecvGetPeers")
+var totalRecvFindNode = expvar.NewInt("totalRecvFindNode")
 
 func (d *DhtEngine) bootStrapNetwork() {
 	d.Ping(dhtRouter)
