@@ -229,7 +229,7 @@ func NewTorrentSession(torrent string) (ts *TorrentSession, err error) {
 	// TODO: Don't use DHT if torrent is private. 
 	if useDHT {
 		// TODO: UPnP UDP port mapping.
-		if t.dht, err = NewDhtNode(t.si.PeerId, listenPort); err != nil {
+		if t.dht, err = NewDhtNode(t.si.PeerId, listenPort, TARGET_NUM_PEERS); err != nil {
 			log.Println("DHT node creation error", err)
 			return
 		}

@@ -103,6 +103,7 @@ type DhtEngine struct {
 	remoteNodes      map[string]*DhtRemoteNode // key == address 
 	infoHashPeers    map[string]map[string]int // key1 == infoHash, key2 == address in binary form. value=ignored.
 	activeInfoHashes map[string]bool           // infoHashes for which we are peers.
+	targetNumPeers   int
 
 	// Public channels:
 	remoteNodeAcquaintance chan *DhtNodeCandidate
@@ -110,7 +111,7 @@ type DhtEngine struct {
 	PeersRequestResults    chan map[string][]string // key = infohash, v = slice of peers.
 }
 
-func NewDhtNode(nodeId string, port int) (node *DhtEngine, err error) {
+func NewDhtNode(nodeId string, port, targetNumPeers int) (node *DhtEngine, err error) {
 	node = &DhtEngine{
 		peerID:                 nodeId,
 		port:                   port,
@@ -120,6 +121,7 @@ func NewDhtNode(nodeId string, port int) (node *DhtEngine, err error) {
 		peersRequest:           make(chan string, 1), // buffer to avoid deadlock.
 		infoHashPeers:          make(map[string]map[string]int),
 		activeInfoHashes:       make(map[string]bool),
+		targetNumPeers:         targetNumPeers,
 	}
 	return
 }
@@ -545,7 +547,7 @@ func (d *DhtEngine) processGetPeerResults(node *DhtRemoteNode, resp responseType
 					continue
 				}
 				d.remoteNodes[address] = nr
-				if len(d.infoHashPeers[query.ih]) < TARGET_NUM_PEERS {
+				if len(d.infoHashPeers[query.ih]) < d.targetNumPeers {
 					d.GetPeers(query.ih)
 				} else {
 					// just saving in the routing table")
