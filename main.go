@@ -4,7 +4,8 @@ import (
 	"flag"
 	"log"
 	"os"
-	"taipei"
+
+	"github.com/jackpal/Taipei-Torrent/taipei"
 )
 
 var torrent string
@@ -28,7 +29,7 @@ func checkRequiredFlags() {
 }
 
 func main() {
-    registerFlags()
+	registerFlags()
 	flag.Parse()
 	checkRequiredFlags()
 	log.Println("Starting.")
