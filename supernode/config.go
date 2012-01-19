@@ -14,16 +14,38 @@ func init() {
 	configFilePrefix = mkdirConfig() + "/dht"
 }
 
+// mkdirConfig() creates a directory to load and save the configuration from.
+// Uses ~/.taipeitorrent if $HOME is set, otherwise falls back to
+// /var/tmp/taipeitorrent.
+func mkdirConfig() string {
+	dir := "/var/tmp/taipeitorrent"
+	env := os.Environ()
+	for _, e := range env {
+		if strings.HasPrefix(e, "HOME=") {
+			dir = strings.SplitN(e, "=", 2)[1] + "/.taipeitorrent"
+		}
+	}
+	if err := os.Mkdir(dir, 0750); err != nil {
+		log.Println(err)
+	}
+	if err := os.Chdir(dir); err != nil {
+		log.Fatal("chdir", err)
+	}
+	return dir
+}
+
 type DhtConfig struct {
 	Id      string
 	Port    int
 	Address string
-	Remotes map[string][]byte
+	Remotes map[string][]byte // Key: IP, Value: node ID.
 }
 
 func openConfig(port int) (cfg *DhtConfig) {
 	cfg = &DhtConfig{}
 
+	// If a node is running in port 30610, the config should be in
+	// ~/.taipeitorrent/dht-36010
 	p := fmt.Sprintf("%v-%v", configFilePrefix, port)
 	f, err := os.Open(p)
 	if err != nil {
@@ -31,7 +53,10 @@ func openConfig(port int) (cfg *DhtConfig) {
 		return cfg
 	}
 	defer f.Close()
-	err = json.NewDecoder(f).Decode(cfg)
+
+	if err = json.NewDecoder(f).Decode(cfg); err != nil {
+		log.Println(err)
+	}
 	return
 }
 
@@ -49,22 +74,4 @@ func saveConfig(s DhtConfig) {
 		log.Println(err)
 	}
 
-}
-
-func mkdirConfig() string {
-	home := "/var/tmp"
-	env := os.Environ()
-	for _, e := range env {
-		if strings.HasPrefix(e, "HOME=") {
-			home = strings.SplitN(e, "=", 2)[1]
-		}
-	}
-	dir := home + "/taipeitorrent"
-	if err := os.Mkdir(dir, 0750); err != nil {
-		log.Println(err)
-	}
-	if err := os.Chdir(dir); err != nil {
-		log.Fatal("chdir", err)
-	}
-	return dir
 }

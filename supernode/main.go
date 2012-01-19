@@ -1,4 +1,20 @@
 // Stand-alone DHT node.
+//
+// Creates a single DHT node on the specified port. If an infoHash is specified
+// in the commandline, start spamming the network asking for it. The more hosts
+// we contact, the more hosts will know about us which increases our
+// popularity. Well, that's the theory at least.
+//
+// Example usage:
+//
+// - Passive mode:
+// $ ./supernode
+//
+// - Aggressive mode:
+// $ ./supernode -infoHash=31176c3be58352326464f161c407320412bb952d
+//
+// Remember to open up any NAT ports yourself since our UPnP support doesn't
+// work very well.
 
 package main
 
@@ -11,18 +27,18 @@ import (
 	"taipei"
 )
 
-// command line.
 const (
-	// maybe use taipei.port instead.
+	// XXX maybe use taipei.port instead.
 	port = 63010
-	// The network becames very quiet otherwise.
+	// I tried avoiding this, since it would save some work/bandwidth and
+	// because it's somewhat hurtful to the network. But the network becames
+	// very quiet if we don't do it.
 	sendAnnouncements = true
 )
 
 var infoHashFlag string
 
 func init() {
-
 	flag.StringVar(&infoHashFlag, "infoHash", "", "Infohash to query frequently.")
 }
 
@@ -59,7 +75,6 @@ func main() {
 		if infoHash != "" {
 			dht.PeersRequest(infoHash, sendAnnouncements)
 		}
-		// Assumes one result per request.
 		tbl := dht.RoutingTable()
 		c.Remotes = tbl
 		saveConfig(*c)
@@ -78,8 +93,10 @@ func reconnect(dht *taipei.DhtEngine, c *DhtConfig) {
 	}
 }
 
+// drainresults loops, constantly reading any new peer information sent by the
+// DHT node and just ignoring them. We don't care about those :-P.
 func drainresults(dht *taipei.DhtEngine) {
 	for {
-		<-dht.PeersRequestResults // blocks.
+		<-dht.PeersRequestResults
 	}
 }
