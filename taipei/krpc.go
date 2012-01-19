@@ -3,7 +3,7 @@ package taipei
 
 import (
 	"bytes"
-	"jackpal/bencode"
+	"github.com/jackpal/Taipei-Torrent/bencode"
 	"log"
 	"net"
 	"strconv"
