@@ -65,6 +65,8 @@ import (
 	"net"
 	"sort"
 	"time"
+
+	"github.com/jackpal/Taipei-Torrent/bencode"
 )
 
 const (
@@ -443,7 +445,7 @@ func (d *DhtEngine) replyGetPeers(addr *net.UDPAddr, r responseType) {
 			if i == GET_PEERS_NUM_NODES_RESPONSE {
 				break
 			}
-			n = append(n, r.id+dottedPortToBinary(r.address.String()))
+			n = append(n, r.id+bencode.DottedPortToBinary(r.address.String()))
 			log.Printf("replyGetPeers: [%d] distance %x", i, targets.distances[r.id])
 		}
 		log.Printf("replyGetPeers: Nodes only. Giving %d", len(n))
@@ -480,7 +482,7 @@ func (d *DhtEngine) replyFindNode(addr *net.UDPAddr, r responseType) {
 		if i == GET_PEERS_NUM_NODES_RESPONSE {
 			break
 		}
-		n = append(n, r.id+dottedPortToBinary(r.address.String()))
+		n = append(n, r.id+bencode.DottedPortToBinary(r.address.String()))
 	}
 	log.Printf("replyFindNode: Nodes only. Giving %d", len(n))
 	reply.R["nodes"] = n

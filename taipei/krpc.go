@@ -3,11 +3,12 @@ package taipei
 
 import (
 	"bytes"
-	"github.com/jackpal/Taipei-Torrent/bencode"
 	"log"
 	"net"
 	"strconv"
 	"time"
+
+	"github.com/jackpal/Taipei-Torrent/bencode"
 )
 
 // Owned by the DHT engine.
@@ -51,7 +52,7 @@ func parseNodesString(nodes string) (parsed map[string]string) {
 	}
 	for i := 0; i < len(nodes); i += NODE_CONTACT_LEN {
 		id := nodes[i : i+NODE_ID_LEN]
-		address := binaryToDottedPort(nodes[i+NODE_ID_LEN : i+NODE_CONTACT_LEN])
+		address := bencode.BinaryToDottedPort(nodes[i+NODE_ID_LEN : i+NODE_CONTACT_LEN])
 		parsed[id] = address
 	}
 	//log.Printf("parsed: %+v", parsed)

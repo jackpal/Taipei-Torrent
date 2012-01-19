@@ -14,6 +14,8 @@ import (
 	"os"
 	"strconv"
 	"time"
+
+	"github.com/jackpal/Taipei-Torrent/bencode"
 )
 
 const (
@@ -56,23 +58,6 @@ func init() {
 func peerId() string {
 	sid := "-tt" + strconv.Itoa(os.Getpid()) + "_" + strconv.FormatInt(rand.Int63(), 10)
 	return sid[0:20]
-}
-
-func binaryToDottedPort(port string) string {
-	return fmt.Sprintf("%d.%d.%d.%d:%d", port[0], port[1], port[2], port[3],
-		(uint16(port[4])<<8)|uint16(port[5]))
-}
-
-// 97.98.99.100:25958 becames "abcdef".
-func dottedPortToBinary(b string) string {
-	a := make([]byte, 6, 6)
-	var c uint16
-
-	fmt.Sscanf(b, "%d.%d.%d.%d:%d", &a[0], &a[1], &a[2], &a[3], &c)
-	a[4] = uint8(c >> 8)
-	a[5] = uint8(c)
-
-	return string(a)
 }
 
 func chooseListenPort() (listenPort int, err error) {
@@ -369,7 +354,7 @@ func (t *TorrentSession) DoTorrent() (err error) {
 			// it's the case.
 			for _, peers := range dhtInfoHashPeers {
 				for _, peer := range peers {
-					peer = binaryToDottedPort(peer)
+					peer = bencode.BinaryToDottedPort(peer)
 					if _, ok := t.peers[peer]; !ok {
 						newPeerCount++
 						go connectToPeer(peer, conChan)
@@ -385,7 +370,7 @@ func (t *TorrentSession) DoTorrent() (err error) {
 				log.Println("Tracker gave us", len(peers)/6, "peers")
 				newPeerCount := 0
 				for i := 0; i < len(peers); i += 6 {
-					peer := binaryToDottedPort(peers[i : i+6])
+					peer := bencode.BinaryToDottedPort(peers[i : i+6])
 					if _, ok := t.peers[peer]; !ok {
 						newPeerCount++
 						go connectToPeer(peer, conChan)
