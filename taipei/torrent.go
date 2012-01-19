@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/jackpal/Taipei-Torrent/bencode"
+	"github.com/jackpal/Taipei-Torrent/dht"
 )
 
 const (
@@ -176,7 +177,7 @@ type TorrentSession struct {
 	goodPieces      int
 	activePieces    map[int]*ActivePiece
 	lastHeartBeat   time.Time
-	dht             *DhtEngine
+	dht             *dht.DhtEngine
 }
 
 func NewTorrentSession(torrent string) (ts *TorrentSession, err error) {
@@ -229,7 +230,7 @@ func NewTorrentSession(torrent string) (ts *TorrentSession, err error) {
 	// TODO: Don't use DHT if torrent is private. 
 	if useDHT {
 		// TODO: UPnP UDP port mapping.
-		if t.dht, err = NewDhtNode(t.si.PeerId, listenPort, TARGET_NUM_PEERS); err != nil {
+		if t.dht, err = dht.NewDhtNode(t.si.PeerId, listenPort, TARGET_NUM_PEERS); err != nil {
 			log.Println("DHT node creation error", err)
 			return
 		}
@@ -654,7 +655,7 @@ func (t *TorrentSession) DoMessage(p *peerState, message []byte) (err error) {
 		if useDHT {
 			// If 128, then it supports DHT.
 			if int(message[7])&0x01 == 0x01 {
-				candidate := &DhtNodeCandidate{Id: p.id, Address: p.address}
+				candidate := &dht.DhtNodeCandidate{Id: p.id, Address: p.address}
 				// It's OK if we know this node already. The DHT engine will
 				// ignore it accordingly.
 				go t.dht.RemoteNodeAcquaintance(candidate)
@@ -819,7 +820,7 @@ func (t *TorrentSession) DoMessage(p *peerState, message []byte) (err error) {
 			if len(message) != 3 {
 				return errors.New(fmt.Sprintf("Unexpected length for port message:", len(message)))
 			}
-			candidate := &DhtNodeCandidate{Id: p.id, Address: p.address}
+			candidate := &dht.DhtNodeCandidate{Id: p.id, Address: p.address}
 			go t.dht.RemoteNodeAcquaintance(candidate)
 		default:
 			return errors.New("Uknown message id")
