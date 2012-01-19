@@ -93,8 +93,8 @@ type responseType struct {
 	R getPeersResponse "r"
 	E []string         "e"
 	A answerType       "a"
-	// mainline extension for client identification.
-	//V string(?)	"v"
+	// Unsupported mainline extension for client identification.
+	// V string(?)	"v"
 }
 
 // sendMsg bencodes the data in 'query' and sends it to the remote node.
@@ -162,7 +162,7 @@ func listen(listenPort int) (socket *net.UDPConn, err error) {
 	}
 	if listener != nil {
 		socket = listener.(*net.UDPConn)
-		socket.SetTimeout(UDP_TIMEOUT)
+		socket.SetTimeout(UDP_TIMEOUT) // Unnecessary?
 	}
 	return
 }
@@ -183,14 +183,5 @@ func readFromSocket(socket *net.UDPConn, conChan chan packetType) {
 			continue
 		}
 		log.Println("DHT: readResponse error:", err)
-		// Happens if timeout is set.
-		//if e, ok := err.(*net.OpError); ok && e.Err == os.EAGAIN {
-		//	log.Println("DHT: EGAIN")
-		//	continue
-		//}
-		//if n == 0 {
-		//	log.Println("DHT: readResponse: got n == 0. Err:", err)
-		//	continue
-		//}
 	}
 }
