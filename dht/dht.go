@@ -289,7 +289,8 @@ func (d *DhtEngine) DoDht() {
 			d.GetPeers(needPeers)
 		case p := <-socketChan:
 			if p.b[0] != 'd' {
-				// UDP packet of unknown protocol.
+				// Malformed DHT packet. There are protocol extensions out
+				// there that we don't support or understand.
 				continue
 			}
 			r, err := readResponse(p)
@@ -303,6 +304,8 @@ func (d *DhtEngine) DoDht() {
 				node, ok := d.remoteNodes[p.raddr.String()]
 				if !ok {
 					log.Println("DHT: Received reply from a host we don't know:", p.raddr)
+					d.Ping(p.raddr.String())
+					// XXX: Add this guy to a list of dubious hosts.
 					continue
 				}
 				// Fix the node ID.
@@ -333,6 +336,10 @@ func (d *DhtEngine) DoDht() {
 					log.Println("DHT: Unknown query id:", r.T)
 				}
 			case r.Y == "q":
+				if _, ok := d.remoteNodes[p.raddr.String()]; !ok {
+					// Another candidate for the routing table. See if it's reachable.
+					d.Ping(p.raddr.String())
+				}
 				switch r.Q {
 				case "ping":
 					d.replyPing(p.raddr, r)
