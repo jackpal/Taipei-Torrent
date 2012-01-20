@@ -171,7 +171,7 @@ func (d *DhtEngine) Ping(address string) {
 func (d *DhtEngine) RoutingTable() (tbl map[string][]byte) {
 	tbl = make(map[string][]byte)
 	for addr, r := range d.remoteNodes {
-		if r.reachable and len(r.id) == 20 {
+		if r.reachable && len(r.id) == 20 {
 			tbl[addr] = []byte(r.id)
 		}
 	}
