@@ -105,6 +105,7 @@ type DhtEngine struct {
 	activeInfoHashes map[string]bool           // infoHashes for which we are peers.
 	targetNumPeers   int
 	conn             *net.UDPConn
+	Logger           Logger
 
 	// Public channels:
 	remoteNodeAcquaintance chan *DhtNodeCandidate
@@ -126,6 +127,13 @@ func NewDhtNode(nodeId string, port, targetNumPeers int) (node *DhtEngine, err e
 	}
 	return
 }
+
+// Logger allows the DHT client to attach hooks for certain RPCs so it can log
+// interesting events any way it wants.
+type Logger interface {
+	GetPeers(*net.UDPAddr, string, string)
+}
+
 
 type DhtNodeCandidate struct {
 	Id      string
@@ -425,7 +433,10 @@ func (d *DhtEngine) announcePeer(address *net.UDPAddr, ih string, token string) 
 func (d *DhtEngine) replyGetPeers(addr *net.UDPAddr, r responseType) {
 	totalRecvGetPeers.Add(1)
 	x, _ := hashDistance(r.A.InfoHash, d.peerID)
-	log.Printf("DHT XXXX get_peers. Host: %v , peerID: %x , InfoHash: %x , distance to me: %x", addr, r.A.Id, r.A.InfoHash, x)
+	log.Printf("DHT XXXX get_peers. Host: %v , nodeID: %x , InfoHash: %x , distance to me: %x", addr, r.A.Id, r.A.InfoHash, x)
+	if d.Logger != nil {
+		d.Logger.GetPeers(addr, r.A.Id, r.A.InfoHash)
+	}
 
 	ih := r.A.InfoHash
 	r0 := map[string]interface{}{"id": ih, "token": r.A.Token}
