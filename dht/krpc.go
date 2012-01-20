@@ -55,7 +55,6 @@ func parseNodesString(nodes string) (parsed map[string]string) {
 		address := bencode.BinaryToDottedPort(nodes[i+NODE_ID_LEN : i+NODE_CONTACT_LEN])
 		parsed[id] = address
 	}
-	//log.Printf("parsed: %+v", parsed)
 	return
 
 }
@@ -105,7 +104,7 @@ func sendMsg(conn *net.UDPConn, raddr *net.UDPAddr, query interface{}) {
 		return
 	}
 	if _, err := conn.WriteToUDP(b.Bytes(), raddr); err != nil {
-		log.Println("DHT: node write failed:", err)
+		// debug.Println("DHT: node write failed:", err)
 	}
 	return
 }
@@ -115,15 +114,14 @@ func readResponse(p packetType) (response responseType, err error) {
 	// The calls to bencode.Unmarshal() can be fragile.
 	defer func() {
 		if x := recover(); x != nil {
-			log.Printf("DHT: !!! Recovering from panic() after bencode.Unmarshal %q, %v", string(p.b), x)
+			// debug.Printf("DHT: !!! Recovering from panic() after bencode.Unmarshal %q, %v", string(p.b), x)
 		}
 	}()
-	// log.Printf("DHT: DEBUG %v ==== %q ===", p.raddr, p.b)
 	if e2 := bencode.Unmarshal(bytes.NewBuffer(p.b), &response); e2 == nil {
 		err = nil
 		return
 	} else {
-		log.Printf("DHT: unmarshal error, odd or partial data during UDP read? %v, err=%s", string(p.b), e2)
+		// debug.Printf("DHT: unmarshal error, odd or partial data during UDP read? %v, err=%s", string(p.b), e2)
 		return response, e2
 	}
 	return
@@ -149,10 +147,10 @@ type packetType struct {
 }
 
 func listen(listenPort int) (socket *net.UDPConn, err error) {
-	log.Printf("DHT: Listening for peers on port: %d\n", listenPort)
+	// debug.Printf("DHT: Listening for peers on port: %d\n", listenPort)
 	listener, err := net.ListenPacket("udp4", ":"+strconv.Itoa(listenPort))
 	if err != nil {
-		log.Println("DHT: Listen failed:", err)
+		// debug.Println("DHT: Listen failed:", err)
 	}
 	if listener != nil {
 		socket = listener.(*net.UDPConn)
@@ -167,13 +165,13 @@ func readFromSocket(socket *net.UDPConn, conChan chan packetType) {
 		n, addr, err := socket.ReadFromUDP(b)
 		b = b[0:n]
 		if n == MAX_UDP_PACKET_SIZE {
-			log.Printf("DHT: Warning. Received packet with len >= %d, some data may have been discarded.\n", MAX_UDP_PACKET_SIZE)
+			// debug.Printf("DHT: Warning. Received packet with len >= %d, some data may have been discarded.\n", MAX_UDP_PACKET_SIZE)
 		}
 		if n > 0 && err == nil {
 			p := packetType{b, addr}
 			conChan <- p
 			continue
 		}
-		log.Println("DHT: readResponse error:", err)
+		// debug.Println("DHT: readResponse error:", err)
 	}
 }

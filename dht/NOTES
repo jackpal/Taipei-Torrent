@@ -1,0 +1,10 @@
+Enable verbose logging:
+sed -i -e 's|\t// debug|\t debug|g' *go
+
+Disable:
+sed -i -e 's|\tdebug|\t// debug|g' *go
+
+This requires that log calls are in a single line.
+
+Also, you'll have to remove or add a few comments next to some of the log
+lines. The compilation errors will make it obvious.

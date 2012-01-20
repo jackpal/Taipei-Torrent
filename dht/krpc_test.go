@@ -27,11 +27,11 @@ func startDhtNode(t *testing.T) *DhtEngine {
 }
 
 func dumpStats() {
-	log.Println("=== Stats ===")
-	log.Println("totalReachableNodes", totalReachableNodes)
-	log.Println("totalDupes", totalDupes)
-	log.Println("totalPeers", totalPeers)
-	log.Println("totalGetPeers", totalGetPeers)
+	// debug.Println("=== Stats ===")
+	// debug.Println("totalReachableNodes", totalReachableNodes)
+	// debug.Println("totalDupes", totalDupes)
+	// debug.Println("totalPeers", totalPeers)
+	// debug.Println("totalGetPeers", totalGetPeers)
 }
 
 func TestNodeDistance(t *testing.T) {
@@ -51,9 +51,9 @@ func TestNodeDistance(t *testing.T) {
 
 // Requires Internet access.
 func TestDhtBigAndSlow(t *testing.T) {
-	log.Println("start node.")
+	// debug.Println("start node.")
 	node := startDhtNode(t)
-	log.Println("done start node.", node.port)
+	// debug.Println("done start node.", node.port)
 	realDHTNodes := map[string]string{
 		//"DHT_ROUTER": "router.bittorrent.com",
 		//"DHT_ROUTER": "cetico.org",
@@ -106,7 +106,7 @@ func TestDhtBigAndSlow(t *testing.T) {
 			t.Fatal("Could not find new torrent peers.")
 		}
 		for _, peer := range peers {
-			log.Printf("peer found: %+v\n", binaryToDottedPort(peer))
+			// debug.Printf("peer found: %+v\n", binaryToDottedPort(peer))
 		}
 	}
 

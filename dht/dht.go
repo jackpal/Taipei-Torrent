@@ -60,6 +60,8 @@ import (
 	"expvar"
 	"flag"
 	"fmt"
+	// Alias to ease disabling of debug logging.
+	// debug "log"
 	"log"
 	"math/rand"
 	"net"
@@ -163,10 +165,10 @@ func (d *DhtEngine) Ping(address string) {
 	// TODO: should translate to an IP first.
 	r, err := d.getOrCreateRemoteNode(address)
 	if err != nil {
-		log.Println("ping:", err)
+		// debug.Println("ping:", err)
 		return
 	}
-	log.Printf("DHT: ping => %+v\n", address)
+	// debug.Printf("DHT: ping => %+v\n", address)
 	t := r.newQuery("ping")
 
 	queryArguments := map[string]interface{}{"id": r.localNode.peerID}
@@ -211,11 +213,8 @@ func (d *DhtEngine) GetPeers(infoHash string) {
 		// Skip nodes with pending queries. First, we don't want to flood them, but most importantly they are
 		// probably unreachable. We just need to make sure we clean the pendingQueries map when appropriate.
 		if len(r.pendingQueries) > MAX_NODE_PENDING_QUERIES {
-			log.Println("DHT: Skipping because there are too many queries pending for this dude.")
-			log.Println("DHT: This shouldn't happen because we should have stopped trying already. Might be a BUG.")
-			for _, q := range r.pendingQueries {
-				log.Printf("DHT: %v=>%x\n", q.Type, q.ih)
-			}
+			// debug.Println("DHT: Skipping because there are too many queries pending for this dude.")
+			// debug.Println("DHT: This shouldn't happen because we should have stopped trying already. Might be a BUG.")
 			continue
 		}
 		// Skip if we are already asking them for this infoHash.
@@ -236,8 +235,7 @@ func (d *DhtEngine) GetPeers(infoHash string) {
 					// them again.  Most likely this will
 					// only generate dupes, but it's worth
 					// a try.
-					log.Printf("Re-sending get_peers. Last time: %v (%v ago) %v",
-						r.lastTime.String(), ago.Seconds(), ago > 10*time.Second)
+					// debug.Printf("Re-sending get_peers. Last time: %v (%v ago) %v", r.lastTime.String(), ago.Seconds(), ago > 10*time.Second)
 				}
 			}
 		}
@@ -245,20 +243,20 @@ func (d *DhtEngine) GetPeers(infoHash string) {
 			targets.nodes = append(targets.nodes, r)
 		}
 	}
-	log.Printf("DHT: Candidate nodes for asking: %d", len(targets.nodes))
-	log.Printf("DHT: Currently know %d nodes", len(d.remoteNodes))
+	// debug.Printf("DHT: Candidate nodes for asking: %d", len(targets.nodes))
+	// debug.Printf("DHT: Currently know %d nodes", len(d.remoteNodes))
 
 	sort.Sort(targets)
 	for i := 0; i < NUM_INCREMENTAL_NODE_QUERIES && i < len(targets.nodes); i++ {
 		r := targets.nodes[i]
-		di, ok := targets.distances[r.id]
-		if !ok {
-			di, _ = hashDistance(r.id, ih)
-		}
-		log.Printf("send get_peers. target: %x, distance: %x", r.id, di)
+		// di, ok := targets.distances[r.id]
+		// if !ok {
+		// 	di, _ = hashDistance(r.id, ih)
+		// }
+		// log.Printf("send get_peers. target: %x, distance: %x", r.id, di)
 		d.getPeers(r, ih)
 	}
-	log.Println("DHT: totalSentGetPeers", totalSentGetPeers.String())
+	// debug.Println("DHT: totalSentGetPeers", totalSentGetPeers.String())
 }
 
 // DoDht is the DHT node main loop and should be run as a goroutine by the torrent client.
@@ -273,7 +271,7 @@ func (d *DhtEngine) DoDht() {
 
 	d.bootStrapNetwork()
 
-	log.Println("DHT: Starting DHT node.")
+	// debug.Println("DHT: Starting DHT node.")
 	for {
 		select {
 		case helloNode := <-d.remoteNodeAcquaintance:
@@ -284,7 +282,7 @@ func (d *DhtEngine) DoDht() {
 			// - later, we'll implement bucketing, etc.
 			if _, ok := d.remoteNodes[helloNode.Id]; !ok {
 				if _, err := d.newRemoteNode(helloNode.Id, helloNode.Address); err != nil {
-					log.Println("newRemoteNode:", err)
+					// debug.Println("newRemoteNode:", err)
 				} else {
 					d.Ping(helloNode.Address)
 				}
@@ -293,7 +291,7 @@ func (d *DhtEngine) DoDht() {
 		case needPeers := <-d.peersRequest:
 			// torrent server is asking for more peers for a particular infoHash.  Ask the closest nodes for
 			// directions. The goroutine will write into the PeersNeededResults channel.
-			log.Printf("DHT: torrent client asking more peers for %x. Calling GetPeers().", needPeers)
+			// debug.Printf("DHT: torrent client asking more peers for %x. Calling GetPeers().", needPeers)
 			d.GetPeers(needPeers)
 		case p := <-socketChan:
 			if p.b[0] != 'd' {
@@ -311,7 +309,7 @@ func (d *DhtEngine) DoDht() {
 			case r.Y == "r":
 				node, ok := d.remoteNodes[p.raddr.String()]
 				if !ok {
-					log.Println("DHT: Received reply from a host we don't know:", p.raddr)
+					// debug.Println("DHT: Received reply from a host we don't know:", p.raddr)
 					d.Ping(p.raddr.String())
 					// XXX: Add this guy to a list of dubious hosts.
 					continue
@@ -335,13 +333,13 @@ func (d *DhtEngine) DoDht() {
 					case "get_peers":
 						d.processGetPeerResults(node, r)
 					default:
-						log.Println("DHT: Unknown query type:", query.Type, p.raddr)
+						// debug.Println("DHT: Unknown query type:", query.Type, p.raddr)
 					}
 					node.pastQueries[r.T] = query
 					delete(node.pendingQueries, r.T)
 				} else {
 					// XXX debugging.
-					log.Println("DHT: Unknown query id:", r.T)
+					// debug.Println("DHT: Unknown query id:", r.T)
 				}
 			case r.Y == "q":
 				if _, ok := d.remoteNodes[p.raddr.String()]; !ok {
@@ -356,10 +354,10 @@ func (d *DhtEngine) DoDht() {
 				case "find_node":
 					d.replyFindNode(p.raddr, r)
 				default:
-					log.Println("DHT XXX non-implemented handler for type", r.Q)
+					// debug.Println("DHT XXX non-implemented handler for type", r.Q)
 				}
 			default:
-				log.Printf("DHT: Bogus DHT query from %v.", p.raddr)
+				// debug.Printf("DHT: Bogus DHT query from %v.", p.raddr)
 			}
 		}
 	}
@@ -414,11 +412,11 @@ func (d *DhtEngine) getPeers(r *DhtRemoteNode, ih string) {
 func (d *DhtEngine) announcePeer(address *net.UDPAddr, ih string, token string) {
 	r, err := d.getOrCreateRemoteNode(address.String())
 	if err != nil {
-		log.Println("announcePeer:", err)
+		// debug.Println("announcePeer:", err)
 		return
 	}
 	ty := "announce_peer"
-	log.Printf("DHT: announce_peer => %v %x %x\n", address, ih, token)
+	// debug.Printf("DHT: announce_peer => %v %x %x\n", address, ih, token)
 	transId := r.newQuery(ty)
 	queryArguments := map[string]interface{}{
 		"id":        r.localNode.peerID,
@@ -432,8 +430,8 @@ func (d *DhtEngine) announcePeer(address *net.UDPAddr, ih string, token string) 
 
 func (d *DhtEngine) replyGetPeers(addr *net.UDPAddr, r responseType) {
 	totalRecvGetPeers.Add(1)
-	x, _ := hashDistance(r.A.InfoHash, d.peerID)
-	log.Printf("DHT XXXX get_peers. Host: %v , nodeID: %x , InfoHash: %x , distance to me: %x", addr, r.A.Id, r.A.InfoHash, x)
+	// x, _ := hashDistance(r.A.InfoHash, d.peerID)
+	// debug.Printf("DHT XXXX get_peers. Host: %v , nodeID: %x , InfoHash: %x , distance to me: %x", addr, r.A.Id, r.A.InfoHash, x)
 	if d.Logger != nil {
 		d.Logger.GetPeers(addr, r.A.Id, r.A.InfoHash)
 	}
@@ -451,8 +449,7 @@ func (d *DhtEngine) replyGetPeers(addr *net.UDPAddr, r responseType) {
 		for p, _ := range peers {
 			peerContacts = append(peerContacts, p)
 		}
-		log.Printf("replyGetPeers: Giving peers! %v wanted %x, and we knew %d peers!",
-			addr.String(), ih, len(peerContacts))
+		// debug.Printf("replyGetPeers: Giving peers! %v wanted %x, and we knew %d peers!", addr.String(), ih, len(peerContacts))
 		reply.R["values"] = peerContacts
 	} else {
 		targets := &nodeDistances{ih, make([]*DhtRemoteNode, 0, len(d.remoteNodes)), map[string]string{}}
@@ -468,9 +465,9 @@ func (d *DhtEngine) replyGetPeers(addr *net.UDPAddr, r responseType) {
 				break
 			}
 			n = append(n, r.id+bencode.DottedPortToBinary(r.address.String()))
-			log.Printf("replyGetPeers: [%d] distance %x", i, targets.distances[r.id])
+			// debug.Printf("replyGetPeers: [%d] distance %x", i, targets.distances[r.id])
 		}
-		log.Printf("replyGetPeers: Nodes only. Giving %d", len(n))
+		// debug.Printf("replyGetPeers: Nodes only. Giving %d", len(n))
 		reply.R["nodes"] = n
 	}
 	go sendMsg(d.conn, addr, reply)
@@ -479,8 +476,8 @@ func (d *DhtEngine) replyGetPeers(addr *net.UDPAddr, r responseType) {
 
 func (d *DhtEngine) replyFindNode(addr *net.UDPAddr, r responseType) {
 	totalRecvFindNode.Add(1)
-	x, _ := hashDistance(r.A.Target, d.peerID)
-	log.Printf("DHT XX find_node. Host: %v , peerID: %x , nodeID: %x , distance to me: %x", addr, r.A.Id, r.A.Target, x)
+	// x, _ := hashDistance(r.A.Target, d.peerID)
+	// debug.Printf("DHT XX find_node. Host: %v , peerID: %x , nodeID: %x , distance to me: %x", addr, r.A.Id, r.A.Target, x)
 
 	node := r.A.Target
 	r0 := map[string]interface{}{"id": node}
@@ -506,13 +503,13 @@ func (d *DhtEngine) replyFindNode(addr *net.UDPAddr, r responseType) {
 		}
 		n = append(n, r.id+bencode.DottedPortToBinary(r.address.String()))
 	}
-	log.Printf("replyFindNode: Nodes only. Giving %d", len(n))
+	// debug.Printf("replyFindNode: Nodes only. Giving %d", len(n))
 	reply.R["nodes"] = n
 	go sendMsg(d.conn, addr, reply)
 }
 
 func (d *DhtEngine) replyPing(addr *net.UDPAddr, response responseType) {
-	log.Printf("DHT: reply ping => %v\n", addr)
+	// debug.Printf("DHT: reply ping => %v\n", addr)
 	reply := replyMessage{
 		T: response.T,
 		Y: "r",
@@ -543,7 +540,7 @@ func (d *DhtEngine) processGetPeerResults(node *DhtRemoteNode, resp responseType
 		if len(peers) > 0 {
 			result := map[string][]string{query.ih: peers}
 			totalPeers.Add(int64(len(peers)))
-			log.Println("DHT: totalPeers:", totalPeers.String())
+			// debug.Println("DHT: totalPeers:", totalPeers.String())
 			d.PeersRequestResults <- result
 		}
 	}
@@ -556,12 +553,11 @@ func (d *DhtEngine) processGetPeerResults(node *DhtRemoteNode, resp responseType
 				// XXX Gotta improve things so we stop receiving so many dupes. Waste.
 			} else {
 				// And it is actually new. Interesting.
-				dist, _ := hashDistance(query.ih, node.id)
-				log.Printf("DHT: Got new node reference: %x@%v from %x@%v. Distance: %x.",
-					id, address, node.id, node.address, dist)
+				// dist, _ := hashDistance(query.ih, node.id)
+				// debug.Printf("DHT: Got new node reference: %x@%v from %x@%v. Distance: %x.", id, address, node.id, node.address, dist)
 				nr, err := d.newRemoteNode(id, address)
 				if err != nil {
-					log.Println("newRemoteNode", err)
+					// debug.Println("newRemoteNode", err)
 					// XXX Send an error to the host that
 					// gave us this address.
 					continue
@@ -612,7 +608,7 @@ func (n *nodeDistances) distance(i int) string {
 		var err error
 		ret, err = hashDistance(n.infoHash, nid)
 		if err != nil {
-			log.Println("hashDistance err:", err)
+			// debug.Println("hashDistance err:", err)
 			ret = "\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff"
 		}
 		n.distances[nid] = ret
