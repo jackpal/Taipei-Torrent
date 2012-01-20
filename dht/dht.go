@@ -104,6 +104,7 @@ type DhtEngine struct {
 	infoHashPeers    map[string]map[string]int // key1 == infoHash, key2 == address in binary form. value=ignored.
 	activeInfoHashes map[string]bool           // infoHashes for which we are peers.
 	targetNumPeers   int
+	conn             *net.UDPConn
 
 	// Public channels:
 	remoteNodeAcquaintance chan *DhtNodeCandidate
@@ -162,7 +163,7 @@ func (d *DhtEngine) Ping(address string) {
 
 	queryArguments := map[string]interface{}{"id": r.localNode.peerID}
 	query := queryMessage{t, "q", "ping", queryArguments}
-	go sendMsg(d.port, r.address, query)
+	go sendMsg(d.conn, r.address, query)
 }
 
 // RoutingTable outputs the routing table. Needed for persisting the table
@@ -259,6 +260,7 @@ func (d *DhtEngine) DoDht() {
 	if err != nil {
 		return
 	}
+	d.conn = socket
 	go readFromSocket(socket, socketChan)
 
 	d.bootStrapNetwork()
@@ -391,7 +393,7 @@ func (d *DhtEngine) getPeers(r *DhtRemoteNode, ih string) {
 		"info_hash": ih,
 	}
 	query := queryMessage{transId, "q", ty, queryArguments}
-	go sendMsg(d.port, r.address, query)
+	go sendMsg(d.conn, r.address, query)
 }
 
 func (d *DhtEngine) announcePeer(address *net.UDPAddr, ih string, token string) {
@@ -410,7 +412,7 @@ func (d *DhtEngine) announcePeer(address *net.UDPAddr, ih string, token string) 
 		"token":     token,
 	}
 	query := queryMessage{transId, "q", ty, queryArguments}
-	go sendMsg(d.port, address, query)
+	go sendMsg(d.conn, address, query)
 }
 
 func (d *DhtEngine) replyGetPeers(addr *net.UDPAddr, r responseType) {
@@ -453,7 +455,7 @@ func (d *DhtEngine) replyGetPeers(addr *net.UDPAddr, r responseType) {
 		log.Printf("replyGetPeers: Nodes only. Giving %d", len(n))
 		reply.R["nodes"] = n
 	}
-	go sendMsg(d.port, addr, reply)
+	go sendMsg(d.conn, addr, reply)
 
 }
 
@@ -488,7 +490,7 @@ func (d *DhtEngine) replyFindNode(addr *net.UDPAddr, r responseType) {
 	}
 	log.Printf("replyFindNode: Nodes only. Giving %d", len(n))
 	reply.R["nodes"] = n
-	go sendMsg(d.port, addr, reply)
+	go sendMsg(d.conn, addr, reply)
 }
 
 func (d *DhtEngine) replyPing(addr *net.UDPAddr, response responseType) {
@@ -498,7 +500,7 @@ func (d *DhtEngine) replyPing(addr *net.UDPAddr, response responseType) {
 		Y: "r",
 		R: map[string]interface{}{"id": d.peerID},
 	}
-	go sendMsg(d.port, addr, reply)
+	go sendMsg(d.conn, addr, reply)
 }
 
 // Process another node's response to a get_peers query. If the response

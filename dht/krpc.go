@@ -99,20 +99,13 @@ type responseType struct {
 }
 
 // sendMsg bencodes the data in 'query' and sends it to the remote node.
-func sendMsg(lport int, raddr *net.UDPAddr, query interface{}) {
+func sendMsg(conn *net.UDPConn, raddr *net.UDPAddr, query interface{}) {
 	var b bytes.Buffer
 	if err := bencode.Marshal(&b, query); err != nil {
 		return
 	}
-	laddr := &net.UDPAddr{Port: lport}
-	conn, err := net.DialUDP("udp", laddr, raddr)
-	if conn == nil || err != nil {
-		return
-	}
-	defer conn.Close()
-	_, err = conn.Write(b.Bytes())
-	if err != nil {
-		log.Println("DHT: node write failed", err)
+	if _, err := conn.WriteToUDP(b.Bytes(), raddr); err != nil {
+		log.Println("DHT: node write failed:", err)
 	}
 	return
 }
@@ -163,14 +156,12 @@ func listen(listenPort int) (socket *net.UDPConn, err error) {
 	}
 	if listener != nil {
 		socket = listener.(*net.UDPConn)
-		socket.SetTimeout(UDP_TIMEOUT) // Unnecessary?
 	}
 	return
 }
 
 // Read from UDP socket, writes slice of byte into channel.
 func readFromSocket(socket *net.UDPConn, conChan chan packetType) {
-	socket.SetReadTimeout(0)
 	for {
 		b := make([]byte, MAX_UDP_PACKET_SIZE)
 		n, addr, err := socket.ReadFromUDP(b)
