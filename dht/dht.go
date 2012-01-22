@@ -136,7 +136,6 @@ type Logger interface {
 	GetPeers(*net.UDPAddr, string, string)
 }
 
-
 type DhtNodeCandidate struct {
 	Id      string
 	Address string
@@ -202,13 +201,19 @@ func (d *DhtEngine) RoutingTable() (tbl map[string][]byte) {
 //
 // XXX called by client. Unsafe.
 func (d *DhtEngine) GetPeers(infoHash string) {
-	ih := infoHash
+	closest := d.closestNodes(infoHash)
+	for _, r := range closest {
+		d.getPeers(r, infoHash)
+	}
+}
+
+func (d *DhtEngine) closestNodes(ih string) []*DhtRemoteNode {
 	if d.remoteNodes == nil {
 		log.Println("DHT: Error: no remote nodes are known yet.")
-		return
+		return nil
 	}
 	// XXX: I shouldn't recalculate the distances after every GetPeers.
-	targets := &nodeDistances{infoHash, make([]*DhtRemoteNode, 0, len(d.remoteNodes)), map[string]string{}}
+	targets := &nodeDistances{ih, make([]*DhtRemoteNode, 0, len(d.remoteNodes)), map[string]string{}}
 	for _, r := range d.remoteNodes {
 		// Skip nodes with pending queries. First, we don't want to flood them, but most importantly they are
 		// probably unreachable. We just need to make sure we clean the pendingQueries map when appropriate.
@@ -220,13 +225,13 @@ func (d *DhtEngine) GetPeers(infoHash string) {
 		// Skip if we are already asking them for this infoHash.
 		skip := false
 		for _, q := range r.pendingQueries {
-			if q.Type == "get_peers" && q.ih == infoHash {
+			if q.Type == "get_peers" && q.ih == ih {
 				skip = true
 			}
 		}
 		// Skip if we asked for this infoHash recently.
 		for _, q := range r.pastQueries {
-			if q.Type == "get_peers" && q.ih == infoHash {
+			if q.Type == "get_peers" && q.ih == ih {
 				ago := time.Now().Sub(r.lastTime)
 				if ago < MIN_SECONDS_NODE_REPEAT_QUERY {
 					skip = true
@@ -246,16 +251,18 @@ func (d *DhtEngine) GetPeers(infoHash string) {
 	// debug.Printf("DHT: Candidate nodes for asking: %d", len(targets.nodes))
 	// debug.Printf("DHT: Currently know %d nodes", len(d.remoteNodes))
 
+	closest := make([]*DhtRemoteNode, 0, NUM_INCREMENTAL_NODE_QUERIES)
+
 	sort.Sort(targets)
 	for i := 0; i < NUM_INCREMENTAL_NODE_QUERIES && i < len(targets.nodes); i++ {
-		r := targets.nodes[i]
+		closest = append(closest, targets.nodes[i])
 		// di, ok := targets.distances[r.id]
 		// if !ok {
 		// 	di, _ = hashDistance(r.id, ih)
 		// }
 		// log.Printf("send get_peers. target: %x, distance: %x", r.id, di)
-		d.getPeers(r, ih)
 	}
+	return closest
 	// debug.Println("DHT: totalSentGetPeers", totalSentGetPeers.String())
 }
 
