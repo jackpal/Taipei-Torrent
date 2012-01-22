@@ -39,10 +39,9 @@ func BenchmarkFindClosest(b *testing.B) {
 			log.Fatalf("Missing results")
 		}
 	}
-	b.StopTimer()
 }
 
 // Results for nictuku's machine:
 //
 // #1
-// ok  	github.com/jackpal/Taipei-Torrent/dht	4.764s 
+// BenchmarkFindClosest	       5	 497554400 ns/op
