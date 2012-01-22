@@ -17,8 +17,8 @@ func BenchmarkFindClosest(b *testing.B) {
 		log.Fatal(err)
 	}
 
-	// Add 10k nodes to the remote nodes slice.
-	for i := 0; i < 10000; i++ {
+	// Add 100k nodes to the remote nodes slice.
+	for i := 0; i < 100000; i++ {
 
 		rId := make([]byte, 4)
 		if _, err := rand.Read(rId); err != nil {
@@ -44,4 +44,4 @@ func BenchmarkFindClosest(b *testing.B) {
 // Results for nictuku's machine:
 //
 // #1
-// BenchmarkFindClosest	       5	 497554400 ns/op
+// BenchmarkFindClosest	       1	7020661000 ns/op
