@@ -40,7 +40,7 @@ Development Roadmap
 + Add a way of quitting other than typing control-C
 
 Build Instructions
-  bash make.bash
+  go build
 
 BUGS
 - Need to understand why some peers are sending 16K "port" messages.

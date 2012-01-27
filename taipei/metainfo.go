@@ -6,12 +6,13 @@ import (
 	"errors"
 	"io"
 	"io/ioutil"
-	"jackpal/bencode"
 	"log"
 	"net/http"
 	"os"
 	"strings"
 	"time"
+
+	"github.com/jackpal/Taipei-Torrent/bencode"
 )
 
 type FileDict struct {
