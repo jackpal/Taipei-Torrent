@@ -41,6 +41,9 @@ Development Roadmap
 
 Build Instructions
   go build
+  
+Usage Instructions
+  ./Taipei-Torrent -torrent mydownload.torrent
 
 BUGS
 - Need to understand why some peers are sending 16K "port" messages.
