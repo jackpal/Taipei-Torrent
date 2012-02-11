@@ -160,7 +160,7 @@ func getServiceURL(rootURL string) (url string, err error) {
 		return
 	}
 	var root Root
-	err = xml.Unmarshal(r.Body, &root)
+	err = xml.NewDecoder(r.Body).Decode(&root)
 	if err != nil {
 		return
 	}
