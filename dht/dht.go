@@ -58,14 +58,14 @@ package dht
 import (
 	"expvar"
 	"flag"
-	// Alias to ease disabling of debug logging.
-	// debug "log"
+	"fmt"
 	"log"
 	"math/rand"
 	"net"
 	"sort"
 	"time"
 
+	l4g "code.google.com/p/log4go"
 	"github.com/jackpal/Taipei-Torrent/bencode"
 )
 
@@ -163,10 +163,10 @@ func (d *DhtEngine) Ping(address string) {
 	// TODO: should translate to an IP first.
 	r, err := d.getOrCreateRemoteNode(address)
 	if err != nil {
-		// debug.Println("ping:", err)
+		l4g.Info("ping:", err)
 		return
 	}
-	// debug.Printf("DHT: ping => %+v\n", address)
+	l4g.Debug("DHT: ping => %+v\n", address)
 	t := r.newQuery("ping")
 
 	queryArguments := map[string]interface{}{"id": r.localNode.peerID}
@@ -218,7 +218,7 @@ func (d *DhtEngine) DoDht() {
 
 	d.bootStrapNetwork()
 
-	// debug.Println("DHT: Starting DHT node.")
+	l4g.Info("DHT: Starting DHT node.")
 	for {
 		select {
 		case helloNode := <-d.remoteNodeAcquaintance:
@@ -229,7 +229,7 @@ func (d *DhtEngine) DoDht() {
 			// - later, we'll implement bucketing, etc.
 			if _, ok := d.remoteNodes[helloNode.Id]; !ok {
 				if _, err := d.newRemoteNode(helloNode.Id, helloNode.Address); err != nil {
-					// debug.Println("newRemoteNode:", err)
+					l4g.Warn("newRemoteNode error:", err)
 				} else {
 					d.Ping(helloNode.Address)
 				}
@@ -238,7 +238,7 @@ func (d *DhtEngine) DoDht() {
 		case needPeers := <-d.peersRequest:
 			// torrent server is asking for more peers for a particular infoHash.  Ask the closest nodes for
 			// directions. The goroutine will write into the PeersNeededResults channel.
-			// debug.Printf("DHT: torrent client asking more peers for %x. Calling GetPeers().", needPeers)
+			l4g.Trace("DHT: torrent client asking more peers for %x. Calling GetPeers().", needPeers)
 			d.GetPeers(needPeers)
 		case p := <-socketChan:
 			if p.b[0] != 'd' {
@@ -256,7 +256,7 @@ func (d *DhtEngine) DoDht() {
 			case r.Y == "r":
 				node, ok := d.remoteNodes[p.raddr.String()]
 				if !ok {
-					// debug.Println("DHT: Received reply from a host we don't know:", p.raddr)
+					l4g.Info("DHT: Received reply from a host we don't know:", p.raddr)
 					d.Ping(p.raddr.String())
 					// XXX: Add this guy to a list of dubious hosts.
 					continue
@@ -280,13 +280,12 @@ func (d *DhtEngine) DoDht() {
 					case "get_peers":
 						d.processGetPeerResults(node, r)
 					default:
-						// debug.Println("DHT: Unknown query type:", query.Type, p.raddr)
+						l4g.Info("DHT: Unknown query type:", query.Type, p.raddr)
 					}
 					node.pastQueries[r.T] = query
 					delete(node.pendingQueries, r.T)
 				} else {
-					// XXX debugging.
-					// debug.Println("DHT: Unknown query id:", r.T)
+					l4g.Info("DHT: Unknown query id:", r.T)
 				}
 			case r.Y == "q":
 				if _, ok := d.remoteNodes[p.raddr.String()]; !ok {
@@ -301,10 +300,10 @@ func (d *DhtEngine) DoDht() {
 				case "find_node":
 					d.replyFindNode(p.raddr, r)
 				default:
-					// debug.Println("DHT XXX non-implemented handler for type", r.Q)
+					l4g.Warn("DHT: non-implemented handler for type", r.Q)
 				}
 			default:
-				// debug.Printf("DHT: Bogus DHT query from %v.", p.raddr)
+				l4g.Info("DHT: Bogus DHT query from %v.", p.raddr)
 			}
 		}
 	}
@@ -358,11 +357,11 @@ func (d *DhtEngine) getPeers(r *DhtRemoteNode, ih string) {
 func (d *DhtEngine) announcePeer(address *net.UDPAddr, ih string, token string) {
 	r, err := d.getOrCreateRemoteNode(address.String())
 	if err != nil {
-		// debug.Println("announcePeer:", err)
+		l4g.Trace("announcePeer:", err)
 		return
 	}
 	ty := "announce_peer"
-	// debug.Printf("DHT: announce_peer => %v %x %x\n", address, ih, token)
+	l4g.Trace("DHT: announce_peer => %v %x %x\n", address, ih, token)
 	transId := r.newQuery(ty)
 	queryArguments := map[string]interface{}{
 		"id":        r.localNode.peerID,
@@ -376,8 +375,11 @@ func (d *DhtEngine) announcePeer(address *net.UDPAddr, ih string, token string) 
 
 func (d *DhtEngine) replyGetPeers(addr *net.UDPAddr, r responseType) {
 	totalRecvGetPeers.Add(1)
-	// x, _ := hashDistance(r.A.InfoHash, d.peerID)
-	// debug.Printf("DHT XXXX get_peers. Host: %v , nodeID: %x , InfoHash: %x , distance to me: %x", addr, r.A.Id, r.A.InfoHash, x)
+	l4g.Trace(func() string {
+		x, _ := hashDistance(r.A.InfoHash, d.peerID)
+		return fmt.Sprintf("DHT get_peers. Host: %v , nodeID: %x , InfoHash: %x , distance to me: %x", addr, r.A.Id, r.A.InfoHash, x)
+	})
+
 	if d.Logger != nil {
 		d.Logger.GetPeers(addr, r.A.Id, r.A.InfoHash)
 	}
@@ -395,7 +397,7 @@ func (d *DhtEngine) replyGetPeers(addr *net.UDPAddr, r responseType) {
 		for p, _ := range peers {
 			peerContacts = append(peerContacts, p)
 		}
-		// debug.Printf("replyGetPeers: Giving peers! %v wanted %x, and we knew %d peers!", addr.String(), ih, len(peerContacts))
+		l4g.Trace("replyGetPeers: Giving peers! %v wanted %x, and we knew %d peers!", addr.String(), ih, len(peerContacts))
 		reply.R["values"] = peerContacts
 	} else {
 		nodes := make([]*DhtRemoteNode, 0, len(d.remoteNodes))
@@ -409,9 +411,8 @@ func (d *DhtEngine) replyGetPeers(addr *net.UDPAddr, r responseType) {
 		n := make([]string, 0, GET_PEERS_NUM_NODES_RESPONSE)
 		for _, r := range d.routingTable.closestNodes(ih) {
 			n = append(n, r.id+bencode.DottedPortToBinary(r.address.String()))
-			// debug.Printf("replyGetPeers: [%d] distance %x", i, targets.distances[r.id])
 		}
-		// debug.Printf("replyGetPeers: Nodes only. Giving %d", len(n))
+		l4g.Trace("replyGetPeers: Nodes only. Giving %d", len(n))
 		reply.R["nodes"] = n
 	}
 	go sendMsg(d.conn, addr, reply)
@@ -420,8 +421,10 @@ func (d *DhtEngine) replyGetPeers(addr *net.UDPAddr, r responseType) {
 
 func (d *DhtEngine) replyFindNode(addr *net.UDPAddr, r responseType) {
 	totalRecvFindNode.Add(1)
-	// x, _ := hashDistance(r.A.Target, d.peerID)
-	// debug.Printf("DHT XX find_node. Host: %v , peerID: %x , nodeID: %x , distance to me: %x", addr, r.A.Id, r.A.Target, x)
+	l4g.Trace(func() string {
+		x, _ := hashDistance(r.A.Target, d.peerID)
+		return fmt.Sprintf("DHT find_node. Host: %v , peerID: %x , nodeID: %x , distance to me: %x", addr, r.A.Id, r.A.Target, x)
+	})
 
 	node := r.A.Target
 	r0 := map[string]interface{}{"id": node}
@@ -447,13 +450,13 @@ func (d *DhtEngine) replyFindNode(addr *net.UDPAddr, r responseType) {
 		}
 		n = append(n, r.id+bencode.DottedPortToBinary(r.address.String()))
 	}
-	// debug.Printf("replyFindNode: Nodes only. Giving %d", len(n))
+	l4g.Trace("replyFindNode: Nodes only. Giving %d", len(n))
 	reply.R["nodes"] = n
 	go sendMsg(d.conn, addr, reply)
 }
 
 func (d *DhtEngine) replyPing(addr *net.UDPAddr, response responseType) {
-	// debug.Printf("DHT: reply ping => %v\n", addr)
+	l4g.Trace("DHT: reply ping => %v\n", addr)
 	reply := replyMessage{
 		T: response.T,
 		Y: "r",
@@ -485,7 +488,7 @@ func (d *DhtEngine) processGetPeerResults(node *DhtRemoteNode, resp responseType
 		if len(peers) > 0 {
 			result := map[string][]string{query.ih: peers}
 			totalPeers.Add(int64(len(peers)))
-			// debug.Println("DHT: totalPeers:", totalPeers.String())
+			l4g.Info("DHT: processGetPeerResults, totalPeers:", totalPeers.String())
 			d.PeersRequestResults <- result
 		}
 	}
@@ -498,8 +501,10 @@ func (d *DhtEngine) processGetPeerResults(node *DhtRemoteNode, resp responseType
 				// XXX Gotta improve things so we stop receiving so many dupes. Waste.
 			} else {
 				// And it is actually new. Interesting.
-				// dist, _ := hashDistance(query.ih, node.id)
-				// debug.Printf("DHT: Got new node reference: %x@%v from %x@%v. Distance: %x.", id, address, node.id, node.address, dist)
+				l4g.Trace(func() string {
+					x, _ := hashDistance(query.ih, node.id)
+					return fmt.Sprintf("DHT: Got new node reference: %x@%v from %x@%v. Distance: %x.", id, address, node.id, node.address, x)
+				})
 				if _, err := d.newRemoteNode(id, address); err == nil {
 					if len(d.infoHashPeers[query.ih]) < d.targetNumPeers {
 						d.GetPeers(query.ih)

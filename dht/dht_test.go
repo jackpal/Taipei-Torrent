@@ -92,4 +92,3 @@ func TestNodeDistance(t *testing.T) {
 //
 // #4 moved to buckets, but using only one.
 // BenchmarkFindClosest	       1	1170809000 ns/op
-

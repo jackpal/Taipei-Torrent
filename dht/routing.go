@@ -152,5 +152,3 @@ func xorcmp(xor1, xor2, ref string) bool {
 	// Identical infohashes.
 	return false
 }
-
-
