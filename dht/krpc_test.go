@@ -5,7 +5,6 @@ import (
 	"math/rand"
 	"net"
 	"os"
-	"sort"
 	"testing"
 	"time"
 )
@@ -32,21 +31,6 @@ func dumpStats() {
 	// debug.Println("totalDupes", totalDupes)
 	// debug.Println("totalPeers", totalPeers)
 	// debug.Println("totalGetPeers", totalGetPeers)
-}
-
-func TestNodeDistance(t *testing.T) {
-	var zeroDistance = "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
-
-	var nd = &nodeDistances{"mnopqrstuvwxyz123456", []*DhtRemoteNode{
-		{id: "00000000000000000000", address: nil},
-		{id: "mnopqrstuvwxyz123456", address: nil}, // zeroDistance.
-		{id: "FFFFFFFFFFFFFFFFFFFF", address: nil}}, map[string]string{}}
-
-	sort.Sort(nd)
-	n := nd.nodes[0]
-	if nd.distances[n.id] != zeroDistance {
-		t.Errorf("Distance to closest node: wanted %x, got %x", zeroDistance, nd.distances[n.id])
-	}
 }
 
 // Requires Internet access.
