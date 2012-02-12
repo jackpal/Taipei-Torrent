@@ -35,9 +35,11 @@ func BenchmarkFindClosest(b *testing.B) {
 	}
 	b.StartTimer()
 	for i := 0; i < b.N; i++ {
-		f := closestNodes(string(i)+"xxxxxxxxxxxxxxxxxxx", node.nodes, NUM_INCREMENTAL_NODE_QUERIES)
-		if len(f) != NUM_INCREMENTAL_NODE_QUERIES {
-			log.Fatalf("Missing results. Wanted %d, got %d", NUM_INCREMENTAL_NODE_QUERIES, len(f))
+		f := node.routingTable.closestNodes(string(i) + "xxxxxxxxxxxxxxxxxxx")
+		// This assumes the bucket is full, which is not always the case if it
+		// was recently split. Currently we have a single bucket.
+		if len(f) != bucketLen {
+			log.Fatalf("Missing results. Wanted %d, got %d", bucketLen, len(f))
 		}
 	}
 }
@@ -77,13 +79,17 @@ func TestNodeDistance(t *testing.T) {
 	}
 }
 
-// Results for nictuku's machine:
+// Results for nictuku's machine.
 //
 // #1
-// BenchmarkFindClosest	       1	7,020,661,000 ns/op
+// BenchmarkFindClosest	       1	7020661000 ns/op
 //
 // #2 not-checked in attempt to use a trie. Not even correct.
-// BenchmarkFindClosest	       1	1,072,682,000 ns/op
+// BenchmarkFindClosest	       1	1072682000 ns/op
 //
 // #3 only compare bytes that we need. 
-// BenchmarkFindClosest	       1	1,116,333,000 ns/op
+// BenchmarkFindClosest	       1	1116333000 ns/op
+//
+// #4 moved to buckets, but using only one.
+// BenchmarkFindClosest	       1	1170809000 ns/op
+
