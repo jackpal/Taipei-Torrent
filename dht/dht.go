@@ -213,7 +213,7 @@ func (d *DhtEngine) GetPeers(infoHash string) {
 
 func closestNodes(ih string, nodes []*DhtRemoteNode, max int) []*DhtRemoteNode {
 	if len(ih) != 20 {
-		panic("Programming error, bogus infohash: len(%v)=%d", ih, len(ih))
+		log.Fatalf("Programming error, bogus infohash: len(%v)=%d", ih, len(ih))
 	}
 
 	closest := make([]*DhtRemoteNode, 0, max)
@@ -231,7 +231,7 @@ func closestNodes(ih string, nodes []*DhtRemoteNode, max int) []*DhtRemoteNode {
 			continue
 		}
 		if len(r.id) != 20 {
-			panic("Programming error, bogus infohash: len(%v)=%d", ih, len(ih))
+			log.Fatalf("Programming error, bogus infohash: len(%v)=%d", r.id, len(r.id))
 		}
 
 		if len(r.pendingQueries) > MAX_NODE_PENDING_QUERIES {
@@ -533,6 +533,7 @@ func (d *DhtEngine) replyPing(addr *net.UDPAddr, response responseType) {
 // them if we still need it.
 // Also announce ourselves as a peer for that node, unless we are in supernode mode.
 func (d *DhtEngine) processGetPeerResults(node *DhtRemoteNode, resp responseType) {
+	totalRecvGetPeersReply.Add(1)
 	query, _ := node.pendingQueries[resp.T]
 	if d.activeInfoHashes[query.ih] {
 		d.announcePeer(node.address, query.ih, resp.R.Token)
@@ -612,6 +613,13 @@ func (n *nodeDistances) Swap(i, j int) {
 }
 
 func xorcmp(xor1, xor2, ref string) bool {
+	// If xor1 or xor2 have bogus lengths, move them to the last position.
+	if len(xor1) != 20 {
+		return false // Causes a swap, moving it to last.
+	}
+	if len(xor2) != 20 {
+		return true
+	}
 	// Inspired by dht.c from Juliusz Chroboczek.
 	for i := 0; i < 20; i++ {
 		if xor1[i] == xor2[i] {
@@ -631,6 +639,7 @@ var totalDupes = expvar.NewInt("totalDupes")
 var totalPeers = expvar.NewInt("totalPeers")
 var totalSentGetPeers = expvar.NewInt("totalSentGetPeers")
 var totalRecvGetPeers = expvar.NewInt("totalRecvGetPeers")
+var totalRecvGetPeersReply = expvar.NewInt("totalRecvGetPeersReply")
 var totalRecvFindNode = expvar.NewInt("totalRecvFindNode")
 
 func (d *DhtEngine) bootStrapNetwork() {

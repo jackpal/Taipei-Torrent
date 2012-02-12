@@ -51,7 +51,9 @@ func TestNodeDistance(t *testing.T) {
 		{id: "mnopqrstuvwxyz12345\x01", address: nil}, // zeroDistance.
 		{id: "mnopqrstuvwxyz12345\x02", address: nil},
 		{id: zeros, address: nil},
-		{id: "WEEEEEEEEEEEEEEEEEEE", address: nil}}}
+		{id: "bogus", address: nil},
+		{id: "WEEEEEEEEEEEEEEEEEEE", address: nil},
+		{id: "boguslast"}}}
 
 	want := []string{
 		"mnopqrstuvwxyz12345\x01",
@@ -59,7 +61,9 @@ func TestNodeDistance(t *testing.T) {
 		"mnopqrstuvwxyz12345\x02",
 		"FOOOOOOOOOOOOOOOOOOO",
 		"WEEEEEEEEEEEEEEEEEEE",
-		zeros}
+		zeros,
+		"bogus",
+		"boguslast"}
 
 	sort.Sort(nd)
 
