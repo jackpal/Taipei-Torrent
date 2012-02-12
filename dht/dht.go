@@ -212,6 +212,10 @@ func (d *DhtEngine) GetPeers(infoHash string) {
 }
 
 func closestNodes(ih string, nodes []*DhtRemoteNode, max int) []*DhtRemoteNode {
+	if len(ih) != 20 {
+		panic("Programming error, bogus infohash: len(%v)=%d", ih, len(ih))
+	}
+
 	closest := make([]*DhtRemoteNode, 0, max)
 
 	distances := &nodeDistances{ih, nodes}
@@ -225,6 +229,9 @@ func closestNodes(ih string, nodes []*DhtRemoteNode, max int) []*DhtRemoteNode {
 		r := distances.nodes[i]
 		if !r.reachable {
 			continue
+		}
+		if len(r.id) != 20 {
+			panic("Programming error, bogus infohash: len(%v)=%d", ih, len(ih))
 		}
 
 		if len(r.pendingQueries) > MAX_NODE_PENDING_QUERIES {
@@ -457,8 +464,11 @@ func (d *DhtEngine) replyGetPeers(addr *net.UDPAddr, r responseType) {
 		reply.R["values"] = peerContacts
 	} else {
 		nodes := make([]*DhtRemoteNode, 0, len(d.remoteNodes))
+		// XXX Better way to do this.
 		for _, r := range d.remoteNodes {
-			nodes = append(nodes, r)
+			if len(r.id) == 20 {
+				nodes = append(nodes, r)
+			}
 		}
 
 		n := make([]string, 0, GET_PEERS_NUM_NODES_RESPONSE)
