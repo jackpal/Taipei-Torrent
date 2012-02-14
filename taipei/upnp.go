@@ -12,6 +12,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 )
 
 type upnpNAT struct {
@@ -36,7 +37,7 @@ func Discover() (nat NAT, err error) {
 	socket := conn.(*net.UDPConn)
 	defer socket.Close()
 
-	err = socket.SetReadTimeout(3 * 1000 * 1000 * 1000)
+	err = socket.SetDeadline(time.Now().Add(3*time.Second))
 	if err != nil {
 		return
 	}
@@ -159,7 +160,7 @@ func getServiceURL(rootURL string) (url string, err error) {
 		return
 	}
 	var root Root
-	err = xml.Unmarshal(r.Body, &root)
+	err = xml.NewDecoder(r.Body).Decode(&root)
 	if err != nil {
 		return
 	}
@@ -264,7 +265,7 @@ func (n *upnpNAT) AddPortMapping(protocol string, externalPort, internalPort int
 	}
 
 	// TODO: check response to see if the port was forwarded
-	// log.Stderr(message, response)
+	// log.Println(message, response)
 	_ = response
 	return
 }
@@ -283,7 +284,7 @@ func (n *upnpNAT) DeletePortMapping(protocol string, externalPort int) (err erro
 	}
 
 	// TODO: check response to see if the port was deleted
-	// log.Stderr(message, response)
+	// log.Println(message, response)
 	_ = response
 	return
 }
