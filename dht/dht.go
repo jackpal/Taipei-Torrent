@@ -68,7 +68,7 @@ import (
 	"sort"
 	"time"
 
-	"github.com/jackpal/Taipei-Torrent/bencode"
+	"github.com/nictuku/Taipei-Torrent/bencode"
 )
 
 const (
@@ -105,6 +105,7 @@ type DhtEngine struct {
 
 	remoteNodes map[string]*DhtRemoteNode // key == address
 	nodes       []*DhtRemoteNode
+	tree        *nTree
 
 	infoHashPeers    map[string]map[string]int // key1 == infoHash, key2 == address in binary form. value=ignored.
 	activeInfoHashes map[string]bool           // infoHashes for which we are peers.
@@ -124,6 +125,7 @@ func NewDhtNode(nodeId string, port, targetNumPeers int) (node *DhtEngine, err e
 		port:                   port,
 		remoteNodes:            make(map[string]*DhtRemoteNode),
 		nodes:                  make([]*DhtRemoteNode, 0, 100), // It can grow up to targetNumPeers.
+		tree:                   &nTree{},
 		PeersRequestResults:    make(chan map[string][]string, 1),
 		remoteNodeAcquaintance: make(chan *DhtNodeCandidate),
 		peersRequest:           make(chan string, 1), // buffer to avoid deadlock.
@@ -205,33 +207,32 @@ func (d *DhtEngine) RoutingTable() (tbl map[string][]byte) {
 //
 // XXX called by client. Unsafe.
 func (d *DhtEngine) GetPeers(infoHash string) {
-	closest := closestNodes(infoHash, d.nodes, NUM_INCREMENTAL_NODE_QUERIES)
+	closest := closestNodes(infoHash, d.tree, NUM_INCREMENTAL_NODE_QUERIES)
 	for _, r := range closest {
 		d.getPeers(r, infoHash)
 	}
 }
 
-func closestNodes(ih string, nodes []*DhtRemoteNode, max int) []*DhtRemoteNode {
+func closestNodes(ih string, nodes *nTree, max int) []*DhtRemoteNode {
 	if len(ih) != 20 {
-		log.Fatalf("Programming error, bogus infohash: len(%v)=%d", ih, len(ih))
+		log.Panic("Programming error, bogus infohash: len(%v)=%d", ih, len(ih))
 	}
 
 	closest := make([]*DhtRemoteNode, 0, max)
 
-	distances := &nodeDistances{ih, nodes}
-
 	// XXX Shouldn't do this every time.
-	sort.Sort(distances)
+	// sort.Sort(distances)
+	foo := nodes.lookupClosest(ih)
 
-	for i := 0; len(closest) < max && i < len(distances.nodes); i++ {
+	for i := 0; len(closest) < max && i < len(foo); i++ {
 		// Skip nodes with pending queries. First, we don't want to flood them, but most importantly they are
 		// probably unreachable. We just need to make sure we clean the pendingQueries map when appropriate.
-		r := distances.nodes[i]
+		r := foo[i]
 		if !r.reachable {
 			continue
 		}
 		if len(r.id) != 20 {
-			log.Fatalf("Programming error, bogus infohash: len(%v)=%d", r.id, len(r.id))
+			log.Panic("Programming error, bogus infohash: len(%v)=%d", r.id, len(r.id))
 		}
 
 		if len(r.pendingQueries) > MAX_NODE_PENDING_QUERIES {
@@ -329,6 +330,7 @@ func (d *DhtEngine) DoDht() {
 				// Fix the node ID.
 				if node.id == "" {
 					node.id = r.R.Id
+					d.tree.insert(node)
 				}
 				if query, ok := node.pendingQueries[r.T]; ok {
 					if !node.reachable {
@@ -391,6 +393,7 @@ func (d *DhtEngine) newRemoteNode(id string, hostPort string) (r *DhtRemoteNode,
 	}
 	d.remoteNodes[hostPort] = r
 	d.nodes = append(d.nodes, r)
+	d.tree.insert(r)
 
 	nodesVar.Add(hostPort, 1)
 	return
@@ -463,16 +466,8 @@ func (d *DhtEngine) replyGetPeers(addr *net.UDPAddr, r responseType) {
 		// debug.Printf("replyGetPeers: Giving peers! %v wanted %x, and we knew %d peers!", addr.String(), ih, len(peerContacts))
 		reply.R["values"] = peerContacts
 	} else {
-		nodes := make([]*DhtRemoteNode, 0, len(d.remoteNodes))
-		// XXX Better way to do this.
-		for _, r := range d.remoteNodes {
-			if len(r.id) == 20 {
-				nodes = append(nodes, r)
-			}
-		}
-
 		n := make([]string, 0, GET_PEERS_NUM_NODES_RESPONSE)
-		for _, r := range closestNodes(ih, nodes, GET_PEERS_NUM_NODES_RESPONSE) {
+		for _, r := range closestNodes(ih, d.tree, GET_PEERS_NUM_NODES_RESPONSE) {
 			n = append(n, r.id+bencode.DottedPortToBinary(r.address.String()))
 			// debug.Printf("replyGetPeers: [%d] distance %x", i, targets.distances[r.id])
 		}

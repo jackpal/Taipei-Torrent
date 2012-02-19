@@ -2,9 +2,8 @@ package dht
 
 import (
 	"crypto/rand"
+	"fmt"
 	"log"
-	"reflect"
-	"sort"
 	"testing"
 )
 
@@ -35,46 +34,55 @@ func BenchmarkFindClosest(b *testing.B) {
 	}
 	b.StartTimer()
 	for i := 0; i < b.N; i++ {
-		f := closestNodes(string(i)+"xxxxxxxxxxxxxxxxxxx", node.nodes, NUM_INCREMENTAL_NODE_QUERIES)
+		f := closestNodes(fmt.Sprintf("x%10v", i)+"xxxxxxxxx", node.tree, NUM_INCREMENTAL_NODE_QUERIES)
 		if len(f) != NUM_INCREMENTAL_NODE_QUERIES {
 			log.Fatalf("Missing results. Wanted %d, got %d", NUM_INCREMENTAL_NODE_QUERIES, len(f))
 		}
 	}
 }
 
+type testData struct {
+	query string
+	want  int // just the size.
+}
+
 func TestNodeDistance(t *testing.T) {
 	zeros := "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
 
-	nd := &nodeDistances{"mnopqrstuvwxyz12345\x01", []*DhtRemoteNode{
+	tree := &nTree{}
+
+	nodes := []*DhtRemoteNode{
 		{id: "FOOOOOOOOOOOOOOOOOOO", address: nil},
+		{id: "FOOOOOOOOOOOOOOOOOO4", address: nil},
+		{id: "FOOOOOOOOOOOOOOOO500", address: nil},
+		{id: "FOOOOOOOOOOOOOOOOO70", address: nil},
+		{id: "FOOOOOOOOOOOOOOOOO80", address: nil},
+		{id: "FOOOOOOOOOOOOOOOOO90", address: nil},
 		{id: "mnopqrstuvwxyz12345\x00", address: nil},
-		{id: "mnopqrstuvwxyz12345\x01", address: nil}, // zeroDistance.
+		{id: "mnopqrstuvwxyz12345\x01", address: nil},
 		{id: "mnopqrstuvwxyz12345\x02", address: nil},
 		{id: zeros, address: nil},
 		{id: "bogus", address: nil},
 		{id: "WEEEEEEEEEEEEEEEEEEE", address: nil},
-		{id: "boguslast"}}}
-
-	want := []string{
-		"mnopqrstuvwxyz12345\x01",
-		"mnopqrstuvwxyz12345\x00",
-		"mnopqrstuvwxyz12345\x02",
-		"FOOOOOOOOOOOOOOOOOOO",
-		"WEEEEEEEEEEEEEEEEEEE",
-		zeros,
-		"bogus",
-		"boguslast"}
-
-	sort.Sort(nd)
-
-	ids := make([]string, 0, len(nd.nodes))
-	for i := 0; i < len(nd.nodes); i++ {
-		ids = append(ids, nd.nodes[i].id)
+	}
+	for _, r := range nodes {
+		tree.insert(r)
 	}
 
-	if !reflect.DeepEqual(ids, want) {
-		t.Errorf("wanted %#v, got %#v", want, ids)
+	tests := []testData{
+		{"FOOOOOOOOOOOOOOOOOOO", 1},
+		{"FOOOOOOOOOOOOOOOOOO1", 8},
+		{"FOOOOOOOOOOOOOOOOO10", 8},
+		{"FOOOOOOOOOOOOOOOOOO1", 8},
 	}
+
+	for _, r := range tests {
+		result := tree.lookupClosest(r.query)
+		if len(result) != r.want {
+			t.Errorf("wanted len=%d, got len=%d", len(result), r.want)
+		}
+	}
+
 }
 
 // Results for nictuku's machine:
@@ -87,3 +95,6 @@ func TestNodeDistance(t *testing.T) {
 //
 // #3 only compare bytes that we need. 
 // BenchmarkFindClosest	       1	1,116,333,000 ns/op
+//
+// #4 using my new nTree (and a faster computer)
+// BenchmarkFindClosest	  500000	      5064 ns/op
