@@ -9,17 +9,20 @@ type nTree struct {
 	value               *DhtRemoteNode
 }
 
+const (
+	idLen = 20
+	// Each query returns up to this number of nodes.
+	kNodes = 8
+)
+
 func (n *nTree) insert(newNode *DhtRemoteNode) {
 	id := newNode.id
-	if len(id) != 20 {
-		// Ignore nodes of unknown id.
-		// They have to be re-added later.
+	if len(id) != idLen {
 		return
 	}
-
-	next := n
 	var bit uint
 	var chr byte
+	next := n
 	for i := 0; i < len(id); i++ {
 		chr = id[i]
 		for bit = 0; bit < 8; bit++ {
@@ -37,14 +40,14 @@ func (n *nTree) insert(newNode *DhtRemoteNode) {
 		}
 	}
 	if next.value != nil && next.value.id == id {
-		// not replacing dupe node.
+		// There's already a node with this id. Keep.
 		return
 	}
 	next.value = newNode
 }
 
 func (n *nTree) lookupClosest(id string) []*DhtRemoteNode {
-	// Find value, or neighbors up to GET_PEERS_NUM_NODES_RESPONSE.
+	// Find value, or neighbors up to kNodes.
 	next := n
 	var bit uint
 	var chr byte
@@ -65,31 +68,28 @@ func (n *nTree) lookupClosest(id string) []*DhtRemoteNode {
 			}
 		}
 	}
-	log.Println("found exact match for", id)
+	// Found exact match.
+	// XXX: This is not correct. We actually want to return kNodes for this too.
 	return []*DhtRemoteNode{next.value}
 }
 
 func (n *nTree) reverse() []*DhtRemoteNode {
-	ret := make([]*DhtRemoteNode, 0, GET_PEERS_NUM_NODES_RESPONSE)
+	ret := make([]*DhtRemoteNode, 0, kNodes)
 	var back *nTree
 	node := n
 
 	for {
-		if node.value != nil {
-			panic("value should never be set somewhere above the tree")
-		}
-		if len(ret) >= GET_PEERS_NUM_NODES_RESPONSE {
+		if len(ret) >= kNodes {
 			return ret
 		}
-		// Don't go down the same path we came from.
+		// Don't go down the same branch we came from.
 		if node.right != nil && node.right != back {
 			ret = node.right.everything(ret)
-		}
-		if node.left != nil && node.left != back {
+		} else if node.left != nil && node.left != back {
 			ret = node.left.everything(ret)
 		}
 		if node.parent == nil {
-			// Reached top of the reverse.
+			// Reached top of the tree.
 			break
 		}
 		back = node
@@ -98,25 +98,28 @@ func (n *nTree) reverse() []*DhtRemoteNode {
 	return ret // Partial results :-(.
 }
 
-// recursive.
+// evertyhing traverses the whole tree and collects up to
+// kNodes values, without any ordering guarantees.
 func (n *nTree) everything(ret []*DhtRemoteNode) []*DhtRemoteNode {
 	if n.value != nil {
-		return append(ret, n.value)
-	}
-	if len(ret) >= GET_PEERS_NUM_NODES_RESPONSE {
+		if n.value.reachable {
+			return append(ret, n.value)
+		}
+		log.Printf("Node %x not reachable. Ignoring.", n.value.id)
 		return ret
+	}
+	if len(ret) >= kNodes {
+		goto RET
 	}
 	if n.right != nil {
 		ret = n.right.everything(ret)
 	}
-	if len(ret) >= GET_PEERS_NUM_NODES_RESPONSE {
-		return ret
-	}
 	if n.left != nil {
 		ret = n.left.everything(ret)
 	}
-	if len(ret) > GET_PEERS_NUM_NODES_RESPONSE {
-		return ret[0:GET_PEERS_NUM_NODES_RESPONSE]
+RET:
+	if len(ret) > kNodes {
+		ret = ret[0:kNodes]
 	}
 	return ret
 }
