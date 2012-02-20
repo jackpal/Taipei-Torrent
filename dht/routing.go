@@ -1,9 +1,5 @@
 package dht
 
-import (
-	"log"
-)
-
 type nTree struct {
 	left, right, parent *nTree
 	value               *DhtRemoteNode
@@ -46,7 +42,7 @@ func (n *nTree) insert(newNode *DhtRemoteNode) {
 	next.value = newNode
 }
 
-func (n *nTree) lookupClosest(id string) []*DhtRemoteNode {
+func (n *nTree) lookupClosest(id string) (match *DhtRemoteNode, fallback []*DhtRemoteNode) {
 	// Find value, or neighbors up to kNodes.
 	next := n
 	var bit uint
@@ -57,26 +53,29 @@ func (n *nTree) lookupClosest(id string) []*DhtRemoteNode {
 			if chr>>bit&1 == 1 {
 				if next.right == nil {
 					// Reached bottom of the match tree. Start going backwards.
-					return next.left.reverse()
+					return nil, next.left.reverse()
 				}
 				next = next.right
 			} else {
 				if next.left == nil {
-					return next.right.reverse()
+					return nil, next.right.reverse()
 				}
 				next = next.left
 			}
 		}
 	}
 	// Found exact match.
-	// XXX: This is not correct. We actually want to return kNodes for this too.
-	return []*DhtRemoteNode{next.value}
+	return next.value, nil
 }
 
 func (n *nTree) reverse() []*DhtRemoteNode {
 	ret := make([]*DhtRemoteNode, 0, kNodes)
 	var back *nTree
 	node := n
+
+	if node == nil {
+		return ret
+	}
 
 	for {
 		if len(ret) >= kNodes {
@@ -105,7 +104,6 @@ func (n *nTree) everything(ret []*DhtRemoteNode) []*DhtRemoteNode {
 		if n.value.reachable {
 			return append(ret, n.value)
 		}
-		log.Printf("Node %x not reachable. Ignoring.", n.value.id)
 		return ret
 	}
 	if len(ret) >= kNodes {

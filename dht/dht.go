@@ -65,7 +65,6 @@ import (
 	"log"
 	"math/rand"
 	"net"
-	"sort"
 	"time"
 
 	"github.com/nictuku/Taipei-Torrent/bencode"
@@ -220,21 +219,15 @@ func closestNodes(ih string, nodes *nTree, max int) []*DhtRemoteNode {
 
 	closest := make([]*DhtRemoteNode, 0, max)
 
-	// XXX Shouldn't do this every time.
-	// sort.Sort(distances)
-	foo := nodes.lookupClosest(ih)
+	match, neighbors := nodes.lookupClosest(ih)
+	if match != nil {
+		return []*DhtRemoteNode{match}
+	}
 
-	for i := 0; len(closest) < max && i < len(foo); i++ {
+	for i := 0; len(closest) < max && i < len(neighbors); i++ {
 		// Skip nodes with pending queries. First, we don't want to flood them, but most importantly they are
 		// probably unreachable. We just need to make sure we clean the pendingQueries map when appropriate.
-		r := foo[i]
-		if !r.reachable {
-			continue
-		}
-		if len(r.id) != 20 {
-			log.Panic("Programming error, bogus infohash: len(%v)=%d", r.id, len(r.id))
-		}
-
+		r := neighbors[i]
 		if len(r.pendingQueries) > MAX_NODE_PENDING_QUERIES {
 			// debug.Println("DHT: Skipping because there are too many queries pending for this dude.")
 			// debug.Println("DHT: This shouldn't happen because we should have stopped trying already. Might be a BUG.")
@@ -268,6 +261,7 @@ func closestNodes(ih string, nodes *nTree, max int) []*DhtRemoteNode {
 	}
 	// debug.Printf("DHT: Candidate nodes for asking: %d", len(targets.nodes))
 	// debug.Printf("DHT: Currently know %d nodes", len(d.remoteNodes))
+	// debug.Printf("DHT: closestNodes %d nodes", len(closest))
 	return closest
 	// debug.Println("DHT: totalSentGetPeers", totalSentGetPeers.String())
 }
@@ -492,16 +486,9 @@ func (d *DhtEngine) replyFindNode(addr *net.UDPAddr, r responseType) {
 	}
 
 	// XXX we currently can't give out the peer contact. Probably requires processing announce_peer.
-	targets := &nodeDistances{node, make([]*DhtRemoteNode, 0, len(d.remoteNodes))}
-	for _, r := range d.remoteNodes {
-		if r.reachable {
-			targets.nodes = append(targets.nodes, r)
-		}
-	}
-	// XXX Slow. Don't run this every time.
-	sort.Sort(targets)
+	_, neighbors := d.tree.lookupClosest(node)
 	n := make([]string, 0, GET_PEERS_NUM_NODES_RESPONSE)
-	for i, r := range targets.nodes {
+	for i, r := range neighbors {
 		if i == GET_PEERS_NUM_NODES_RESPONSE {
 			break
 		}
@@ -585,26 +572,6 @@ func hashDistance(id1 string, id2 string) (distance string, err error) {
 		distance = string(d)
 	}
 	return
-}
-
-// Implements sort.Interface to find the closest nodes for a particular
-// infoHash.
-type nodeDistances struct {
-	infoHash string
-	nodes    []*DhtRemoteNode
-}
-
-func (n *nodeDistances) Len() int {
-	return len(n.nodes)
-}
-func (n *nodeDistances) Less(i, j int) bool {
-	xor1 := n.nodes[i].id
-	xor2 := n.nodes[j].id
-	return xorcmp(xor1, xor2, n.infoHash)
-}
-
-func (n *nodeDistances) Swap(i, j int) {
-	n.nodes[i], n.nodes[j] = n.nodes[j], n.nodes[i]
 }
 
 func xorcmp(xor1, xor2, ref string) bool {
