@@ -214,10 +214,7 @@ func closestNodes(ih string, nodes *nTree, max int) []*DhtRemoteNode {
 
 	closest := make([]*DhtRemoteNode, 0, max)
 
-	match, neighbors := nodes.lookupClosest(ih)
-	if match != nil {
-		return []*DhtRemoteNode{match}
-	}
+	neighbors := nodes.lookupNeighbors(ih)
 
 	for i := 0; len(closest) < max && i < len(neighbors); i++ {
 		// Skip nodes with pending queries. First, we don't want to flood them, but most importantly they are
@@ -409,6 +406,10 @@ func (d *DhtEngine) getPeers(r *DhtRemoteNode, ih string) {
 		"info_hash": ih,
 	}
 	query := queryMessage{transId, "q", ty, queryArguments}
+	l4g.Trace(func() string {
+		x, _ := hashDistance(r.id, ih)
+		return fmt.Sprintf("DHT sending get_peers. nodeID: %x , InfoHash: %x , distance: %x", r.id, ih, x)
+	})
 	go sendMsg(d.conn, r.address, query)
 }
 
@@ -485,7 +486,8 @@ func (d *DhtEngine) replyFindNode(addr *net.UDPAddr, r responseType) {
 	}
 
 	// XXX we currently can't give out the peer contact. Probably requires processing announce_peer.
-	_, neighbors := d.tree.lookupClosest(node)
+	// XXX If there was a total match, that guy is the last.
+	neighbors := d.tree.lookupNeighbors(node)
 	n := make([]string, 0, GET_PEERS_NUM_NODES_RESPONSE)
 	for i, r := range neighbors {
 		if i == GET_PEERS_NUM_NODES_RESPONSE {

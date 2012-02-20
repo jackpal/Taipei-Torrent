@@ -47,7 +47,7 @@ func (n *nTree) insert(newNode *DhtRemoteNode) {
 	next.value = newNode
 }
 
-func (n *nTree) lookupClosest(id string) (match *DhtRemoteNode, fallback []*DhtRemoteNode) {
+func (n *nTree) lookupNeighbors(id string) []*DhtRemoteNode {
 	// Find value, or neighbors up to kNodes.
 	next := n
 	var bit uint
@@ -58,19 +58,21 @@ func (n *nTree) lookupClosest(id string) (match *DhtRemoteNode, fallback []*DhtR
 			if chr>>bit&1 == 1 {
 				if next.right == nil {
 					// Reached bottom of the match tree. Start going backwards.
-					return nil, next.left.reverse()
+					return next.left.reverse()
 				}
 				next = next.right
 			} else {
 				if next.left == nil {
-					return nil, next.right.reverse()
+					return next.right.reverse()
 				}
 				next = next.left
 			}
 		}
 	}
-	// Found exact match.
-	return next.value, nil
+	// Found exact match. Lookup neighbors anyway.
+
+	neighbors := next.reverse()
+	return append(neighbors, next.value)
 }
 
 func (n *nTree) reverse() []*DhtRemoteNode {

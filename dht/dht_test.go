@@ -71,14 +71,14 @@ func TestNodeDistance(t *testing.T) {
 	}
 
 	tests := []testData{
-		{"FOOOOOOOOOOOOOOOOOOO", 0}, // exact match.
+		{"FOOOOOOOOOOOOOOOOOOO", 1}, // exact match.
 		{"FOOOOOOOOOOOOOOOOOO1", 8},
 		{"FOOOOOOOOOOOOOOOOO10", 8},
 		{"FOOOOOOOOOOOOOOOOOO1", 8},
 	}
 
 	for _, r := range tests {
-		_, neighbors := tree.lookupClosest(r.query)
+		neighbors := tree.lookupNeighbors(r.query)
 		if len(neighbors) != r.want {
 			t.Errorf("wanted len=%d, got len=%d", r.want, len(neighbors))
 		}
