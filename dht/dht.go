@@ -383,7 +383,8 @@ func (d *DhtEngine) newRemoteNode(id string, hostPort string) (r *DhtRemoteNode,
 	d.nodes = append(d.nodes, r)
 	d.tree.insert(r)
 
-	nodesVar.Add(hostPort, 1)
+	nodesVar.Add(fmt.Sprintf("%x", id), 1)
+	addressVar.Add(hostPort, 1)
 	return
 
 }
@@ -560,6 +561,7 @@ func (d *DhtEngine) processGetPeerResults(node *DhtRemoteNode, resp responseType
 // Debugging information:
 // Which nodes we contacted.
 var nodesVar = expvar.NewMap("Nodes")
+var addressVar = expvar.NewMap("Addresses")
 var totalReachableNodes = expvar.NewInt("totalReachableNodes")
 var totalDupes = expvar.NewInt("totalDupes")
 var totalPeers = expvar.NewInt("totalPeers")
