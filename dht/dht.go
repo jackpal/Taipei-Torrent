@@ -56,7 +56,6 @@
 package dht
 
 import (
-	"errors"
 	"expvar"
 	"flag"
 	"fmt"
@@ -165,7 +164,7 @@ func (d *DhtEngine) Ping(address string) {
 	// TODO: should translate to an IP first.
 	r, err := d.getOrCreateRemoteNode(address)
 	if err != nil {
-		l4g.Info("ping:", err)
+		l4g.Info("ping: %v", err)
 		return
 	}
 	l4g.Debug("DHT: ping => %+v\n", address)
@@ -556,42 +555,6 @@ func (d *DhtEngine) processGetPeerResults(node *DhtRemoteNode, resp responseType
 			}
 		}
 	}
-}
-
-// Calculates the distance between two hashes. In DHT/Kademlia, "distance" is
-// the XOR of the torrent infohash and the peer node ID.
-// This is slower than necessary. Should only be used for displaying friendly messages.
-func hashDistance(id1 string, id2 string) (distance string, err error) {
-	d := make([]byte, 20)
-	if len(id1) != 20 || len(id2) != 20 {
-		err = errors.New(
-			fmt.Sprintf("idDistance unexpected id length(s): %d %d", len(id1), len(id2)))
-	} else {
-		for i := 0; i < 20; i++ {
-			d[i] = id1[i] ^ id2[i]
-		}
-		distance = string(d)
-	}
-	return
-}
-
-func xorcmp(xor1, xor2, ref string) bool {
-	// If xor1 or xor2 have bogus lengths, move them to the last position.
-	if len(xor1) != 20 {
-		return false // Causes a swap, moving it to last.
-	}
-	if len(xor2) != 20 {
-		return true
-	}
-	// Inspired by dht.c from Juliusz Chroboczek.
-	for i := 0; i < 20; i++ {
-		if xor1[i] == xor2[i] {
-			continue
-		}
-		return xor1[i]^ref[i] < xor2[i]^ref[i]
-	}
-	// Identical infohashes.
-	return false
 }
 
 // Debugging information:

@@ -1,12 +1,12 @@
 package dht
 
 import (
-	// debug "log"
 	"math/rand"
 	"net"
-	"os"
 	"testing"
 	"time"
+
+	l4g "code.google.com/p/log4go"
 )
 
 type pingTest struct {
@@ -26,18 +26,18 @@ func startDhtNode(t *testing.T) *DhtEngine {
 }
 
 func dumpStats() {
-	// debug.Println("=== Stats ===")
-	// debug.Println("totalReachableNodes", totalReachableNodes)
-	// debug.Println("totalDupes", totalDupes)
-	// debug.Println("totalPeers", totalPeers)
-	// debug.Println("totalGetPeers", totalGetPeers)
+	l4g.Info("=== Stats ===")
+	l4g.Info("totalReachableNodes: %d", totalReachableNodes)
+	l4g.Info("totalDupes: %d", totalDupes)
+	l4g.Info("totalPeers: %d", totalPeers)
+	l4g.Info("totalSentGetPeers: %d", totalSentGetPeers)
 }
 
 // Requires Internet access.
 func TestDhtBigAndSlow(t *testing.T) {
-	// debug.Println("start node.")
+	l4g.Info("start node.")
 	node := startDhtNode(t)
-	// debug.Println("done start node.", node.port)
+	l4g.Info("done start node %v", node.port)
 	realDHTNodes := map[string]string{
 		//"DHT_ROUTER": "router.bittorrent.com",
 		//"DHT_ROUTER": "cetico.org",
@@ -76,12 +76,14 @@ func TestDhtBigAndSlow(t *testing.T) {
 		timeout <- true
 	}()
 	var infoHashPeers map[string][]string
+	l4g.Info("Waiting1")
 	select {
 	case infoHashPeers = <-node.PeersRequestResults:
+		t.Logf("Found peers: %q", infoHashPeers[infoHash])
 	case <-timeout:
 		t.Fatal("could not find new torrent peers: timeout")
 	}
-	t.Logf("%d new torrent peers obtained.", len(infoHashPeers))
+	t.Logf("%d new torrent peers obtained.", len(infoHashPeers[infoHash]))
 	for ih, peers := range infoHashPeers {
 		if infoHash != ih {
 			t.Fatal("Unexpected infohash returned")
@@ -93,9 +95,7 @@ func TestDhtBigAndSlow(t *testing.T) {
 		// 	debug.Printf("peer found: %+v\n", bencode.BinaryToDottedPort(peer))
 		// }
 	}
-
 	dumpStats()
-	os.Exit(0)
 }
 
 func init() {
