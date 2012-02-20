@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/jackpal/Taipei-Torrent/bencode"
+	"github.com/nictuku/Taipei-Torrent/bencode"
 )
 
 // Owned by the DHT engine.

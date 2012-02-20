@@ -90,7 +90,7 @@ func TestDhtBigAndSlow(t *testing.T) {
 			t.Fatal("Could not find new torrent peers.")
 		}
 		// for _, peer := range peers {
-		// debug.Printf("peer found: %+v\n", binaryToDottedPort(peer))
+		// 	debug.Printf("peer found: %+v\n", bencode.BinaryToDottedPort(peer))
 		// }
 	}
 

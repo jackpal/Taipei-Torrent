@@ -2,9 +2,8 @@ package dht
 
 import (
 	"crypto/rand"
+	"fmt"
 	"log"
-	"reflect"
-	"sort"
 	"testing"
 )
 
@@ -35,50 +34,60 @@ func BenchmarkFindClosest(b *testing.B) {
 	}
 	b.StartTimer()
 	for i := 0; i < b.N; i++ {
-		f := node.routingTable.closestNodes(string(i) + "xxxxxxxxxxxxxxxxxxx")
-		// This assumes the bucket is full, which is not always the case if it
-		// was recently split. Currently we have a single bucket.
-		if len(f) != bucketLen {
-			log.Fatalf("Missing results. Wanted %d, got %d", bucketLen, len(f))
+		f := closestNodes(fmt.Sprintf("x%10v", i)+"xxxxxxxxx", node.tree, GET_PEERS_NUM_NODES_RESPONSE)
+		if len(f) != GET_PEERS_NUM_NODES_RESPONSE {
+			log.Fatalf("Missing results. Wanted %d, got %d", GET_PEERS_NUM_NODES_RESPONSE, len(f))
 		}
 	}
+}
+
+type testData struct {
+	query string
+	want  int // just the size.
 }
 
 func TestNodeDistance(t *testing.T) {
 	zeros := "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
 
-	nd := &nodeDistances{"mnopqrstuvwxyz12345\x01", []*DhtRemoteNode{
+	tree := &nTree{}
+
+	nodes := []*DhtRemoteNode{
 		{id: "FOOOOOOOOOOOOOOOOOOO", address: nil},
+		{id: "FOOOOOOOOOOOOOOOOOO4", address: nil},
+		{id: "FOOOOOOOOOOOOOOOO500", address: nil},
+		{id: "FOOOOOOOOOOOOOOOOO70", address: nil},
+		{id: "FOOOOOOOOOOOOOOOOO80", address: nil},
+		{id: "FOOOOOOOOOOOOOOOOO90", address: nil},
 		{id: "mnopqrstuvwxyz12345\x00", address: nil},
-		{id: "mnopqrstuvwxyz12345\x01", address: nil}, // zeroDistance.
+		{id: "mnopqrstuvwxyz12345\x01", address: nil},
 		{id: "mnopqrstuvwxyz12345\x02", address: nil},
 		{id: zeros, address: nil},
 		{id: "bogus", address: nil},
 		{id: "WEEEEEEEEEEEEEEEEEEE", address: nil},
-		{id: "boguslast"}}}
-
-	want := []string{
-		"mnopqrstuvwxyz12345\x01",
-		"mnopqrstuvwxyz12345\x00",
-		"mnopqrstuvwxyz12345\x02",
-		"FOOOOOOOOOOOOOOOOOOO",
-		"WEEEEEEEEEEEEEEEEEEE",
-		zeros,
-		"bogus",
-		"boguslast"}
-
-	sort.Sort(nd)
-
-	ids := make([]string, 0, len(nd.nodes))
-	for i := 0; i < len(nd.nodes); i++ {
-		ids = append(ids, nd.nodes[i].id)
+	}
+	for _, r := range nodes {
+		r.reachable = true
+		tree.insert(r)
 	}
 
-	if !reflect.DeepEqual(ids, want) {
-		t.Errorf("wanted %#v, got %#v", want, ids)
+	tests := []testData{
+		{"FOOOOOOOOOOOOOOOOOOO", 0}, // exact match.
+		{"FOOOOOOOOOOOOOOOOOO1", 8},
+		{"FOOOOOOOOOOOOOOOOO10", 8},
+		{"FOOOOOOOOOOOOOOOOOO1", 8},
 	}
+
+	for _, r := range tests {
+		_, neighbors := tree.lookupClosest(r.query)
+		if len(neighbors) != r.want {
+			t.Errorf("wanted len=%d, got len=%d", r.want, len(neighbors))
+		}
+	}
+
 }
 
+// $ go test -v -bench='BenchmarkFindClosest' -run=NONE
+//
 // Results for nictuku's machine.
 //
 // #1
@@ -92,3 +101,6 @@ func TestNodeDistance(t *testing.T) {
 //
 // #4 moved to buckets, but using only one.
 // BenchmarkFindClosest	       1	1170809000 ns/op
+//
+// #5 using my new nTree
+// BenchmarkFindClosest	  100000	     27194 ns/op
