@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"fmt"
 	"log"
+	"sort"
 	"testing"
 )
 
@@ -78,9 +79,18 @@ func TestNodeDistance(t *testing.T) {
 	}
 
 	for _, r := range tests {
+		log.Printf("query: %v", r.query)
 		_, neighbors := tree.lookupClosest(r.query)
+		distances := make([]string, 0, len(tests))
 		if len(neighbors) != r.want {
 			t.Errorf("wanted len=%d, got len=%d", r.want, len(neighbors))
+		}
+		for _, x := range neighbors {
+			d := hashDistance(r.query, x.id)
+			distances = append(distances, d)
+		}
+		if !sort.StringsAreSorted(distances) {
+			t.Errorf("Resulting distances for %v are not sorted", r.query)
 		}
 	}
 

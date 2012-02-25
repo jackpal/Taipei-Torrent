@@ -1,10 +1,5 @@
 package dht
 
-import (
-	"errors"
-	"fmt"
-)
-
 type nTree struct {
 	left, right, parent *nTree
 	value               *DhtRemoteNode
@@ -130,11 +125,10 @@ RET:
 // Calculates the distance between two hashes. In DHT/Kademlia, "distance" is
 // the XOR of the torrent infohash and the peer node ID.
 // This is slower than necessary. Should only be used for displaying friendly messages.
-func hashDistance(id1 string, id2 string) (distance string, err error) {
+func hashDistance(id1 string, id2 string) (distance string) {
 	d := make([]byte, 20)
 	if len(id1) != 20 || len(id2) != 20 {
-		err = errors.New(
-			fmt.Sprintf("idDistance unexpected id length(s): %d %d", len(id1), len(id2)))
+		return ""
 	} else {
 		for i := 0; i < 20; i++ {
 			d[i] = id1[i] ^ id2[i]
