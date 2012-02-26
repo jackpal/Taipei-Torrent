@@ -209,12 +209,13 @@ func (d *DhtEngine) GetPeers(infoHash string) {
 
 func closestNodes(ih string, nodes *nTree, max int) []*DhtRemoteNode {
 	if len(ih) != 20 {
-		log.Panic("Programming error, bogus infohash: len(%v)=%d", ih, len(ih))
+		log.Panicf("Programming error, bogus infohash: len(%v)=%d", ih, len(ih))
 	}
 
 	closest := make([]*DhtRemoteNode, 0, max)
 
 	neighbors := nodes.lookupNeighbors(ih)
+	l4g.Trace("DHT: candidate nodes for %x BEFORE filtering: %d", ih, len(neighbors))
 
 	for i := 0; len(closest) < max && i < len(neighbors); i++ {
 		// Skip nodes with pending queries. First, we don't want to flood them, but most importantly they are
@@ -253,7 +254,7 @@ func closestNodes(ih string, nodes *nTree, max int) []*DhtRemoteNode {
 	}
 	// debug.Printf("DHT: Candidate nodes for asking: %d", len(targets.nodes))
 	// debug.Printf("DHT: Currently know %d nodes", len(d.remoteNodes))
-	// debug.Printf("DHT: closestNodes %d nodes", len(closest))
+	l4g.Trace("DHT: candidate nodes for %x AFTER filtering: %d", ih, len(closest))
 	return closest
 	// debug.Println("DHT: totalSentGetPeers", totalSentGetPeers.String())
 }
@@ -338,7 +339,7 @@ func (d *DhtEngine) DoDht() {
 					node.pastQueries[r.T] = query
 					delete(node.pendingQueries, r.T)
 				} else {
-					l4g.Info("DHT: Unknown query id:", r.T)
+					l4g.Info("DHT: Unknown query id: %v", r.T)
 				}
 			case r.Y == "q":
 				if _, ok := d.remoteNodes[p.raddr.String()]; !ok {
