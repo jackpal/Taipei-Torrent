@@ -407,7 +407,7 @@ func (d *DhtEngine) getPeers(r *DhtRemoteNode, ih string) {
 	}
 	query := queryMessage{transId, "q", ty, queryArguments}
 	l4g.Trace(func() string {
-		x, _ := hashDistance(r.id, ih)
+		x := hashDistance(r.id, ih)
 		return fmt.Sprintf("DHT sending get_peers. nodeID: %x , InfoHash: %x , distance: %x", r.id, ih, x)
 	})
 	go sendMsg(d.conn, r.address, query)
@@ -435,7 +435,7 @@ func (d *DhtEngine) announcePeer(address *net.UDPAddr, ih string, token string) 
 func (d *DhtEngine) replyGetPeers(addr *net.UDPAddr, r responseType) {
 	totalRecvGetPeers.Add(1)
 	l4g.Trace(func() string {
-		x, _ := hashDistance(r.A.InfoHash, d.peerID)
+		x := hashDistance(r.A.InfoHash, d.peerID)
 		return fmt.Sprintf("DHT get_peers. Host: %v , nodeID: %x , InfoHash: %x , distance to me: %x", addr, r.A.Id, r.A.InfoHash, x)
 	})
 
@@ -473,7 +473,7 @@ func (d *DhtEngine) replyGetPeers(addr *net.UDPAddr, r responseType) {
 func (d *DhtEngine) replyFindNode(addr *net.UDPAddr, r responseType) {
 	totalRecvFindNode.Add(1)
 	l4g.Trace(func() string {
-		x, _ := hashDistance(r.A.Target, d.peerID)
+		x := hashDistance(r.A.Target, d.peerID)
 		return fmt.Sprintf("DHT find_node. Host: %v , peerID: %x , nodeID: %x , distance to me: %x", addr, r.A.Id, r.A.Target, x)
 	})
 
@@ -533,7 +533,7 @@ func (d *DhtEngine) processGetPeerResults(node *DhtRemoteNode, resp responseType
 		if len(peers) > 0 {
 			result := map[string][]string{query.ih: peers}
 			totalPeers.Add(int64(len(peers)))
-			l4g.Info("DHT: processGetPeerResults, totalPeers:", totalPeers.String())
+			l4g.Info("DHT: processGetPeerResults, totalPeers: %v", totalPeers.String())
 			d.PeersRequestResults <- result
 		}
 	}
@@ -547,7 +547,7 @@ func (d *DhtEngine) processGetPeerResults(node *DhtRemoteNode, resp responseType
 			} else {
 				// And it is actually new. Interesting.
 				l4g.Trace(func() string {
-					x, _ := hashDistance(query.ih, node.id)
+					x := hashDistance(query.ih, node.id)
 					return fmt.Sprintf("DHT: Got new node reference: %x@%v from %x@%v. Distance: %x.", id, address, node.id, node.address, x)
 				})
 				if _, err := d.newRemoteNode(id, address); err == nil {
