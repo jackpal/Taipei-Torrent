@@ -578,6 +578,8 @@ func (d *DhtEngine) bootStrapNetwork() {
 }
 
 func init() {
+	l4g.Global.AddFilter("stdout", l4g.WARNING, l4g.NewConsoleLogWriter())
+
 	//	DhtStats.engines = make([]*DhtEngine, 1, 10)
 	//	expvar.Publish("dhtengine", expvar.StringFunc(dhtstats))
 	//	expvar.NewMap("nodes")
