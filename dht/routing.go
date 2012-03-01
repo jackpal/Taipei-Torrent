@@ -1,38 +1,33 @@
 package dht
 
 type nTree struct {
-	left, right, parent *nTree
-	value               *DhtRemoteNode
+	zero, one *nTree
+	value     *DhtRemoteNode
 }
 
 const (
-	idLen = 20
 	// Each query returns up to this number of nodes.
 	kNodes = 8
 )
 
 func (n *nTree) insert(newNode *DhtRemoteNode) {
 	id := newNode.id
-	if len(id) != idLen {
-		return
-	}
-	var bit uint
-	var chr byte
+	var bit uint8
+	var chr uint8
 	next := n
-	for i := 0; i < len(id); i++ {
-		chr = id[i]
-		for bit = 0; bit < 8; bit++ {
-			if chr>>bit&1 == 1 {
-				if next.right == nil {
-					next.right = &nTree{parent: next}
-				}
-				next = next.right
-			} else {
-				if next.left == nil {
-					next.left = &nTree{parent: next}
-				}
-				next = next.left
+	for i := 0; i < len(id)*8; i++ {
+		chr = byte(id[i/8])
+		bit = byte(i % 8)
+		if (chr<<bit)&128 != 0 {
+			if next.one == nil {
+				next.one = &nTree{}
 			}
+			next = next.one
+		} else {
+			if next.zero == nil {
+				next.zero = &nTree{}
+			}
+			next = next.zero
 		}
 	}
 	if next.value != nil && next.value.id == id {
@@ -44,98 +39,56 @@ func (n *nTree) insert(newNode *DhtRemoteNode) {
 
 func (n *nTree) lookupNeighbors(id string) []*DhtRemoteNode {
 	// Find value, or neighbors up to kNodes.
-	next := n
-	var bit uint
-	var chr byte
-	for i := 0; i < len(id); i++ {
-		chr = id[i]
-		for bit = 0; bit < 8; bit++ {
-			if chr>>bit&1 == 1 {
-				if next.right == nil {
-					// Reached bottom of the match tree. Start going backwards.
-					return next.left.reverse()
-				}
-				next = next.right
-			} else {
-				if next.left == nil {
-					return next.right.reverse()
-				}
-				next = next.left
-			}
-		}
-	}
-	// Found exact match. Lookup neighbors anyway.
-
-	neighbors := next.reverse()
-	return append(neighbors, next.value)
-}
-
-func (n *nTree) reverse() []*DhtRemoteNode {
 	ret := make([]*DhtRemoteNode, 0, kNodes)
-	var back *nTree
-	node := n
-
-	if node == nil {
-		return ret
+	if n == nil {
+		return nil
 	}
-
-	for {
-		if len(ret) >= kNodes {
-			return ret
-		}
-		// Don't go down the same branch we came from.
-		if node.right != nil && node.right != back {
-			ret = node.right.everything(ret)
-		} else if node.left != nil && node.left != back {
-			ret = node.left.everything(ret)
-		}
-		if node.parent == nil {
-			// Reached top of the tree.
-			break
-		}
-		back = node
-		node = node.parent
-	}
-	return ret // Partial results :-(.
+	return n.traverse(id, 0, ret)
 }
 
-// evertyhing traverses the whole tree and collects up to
-// kNodes values, without any ordering guarantees.
-func (n *nTree) everything(ret []*DhtRemoteNode) []*DhtRemoteNode {
-	if n.value != nil {
-		if n.value.reachable {
-			return append(ret, n.value)
-		}
+func (n *nTree) traverse(id string, i int, ret []*DhtRemoteNode) []*DhtRemoteNode {
+	if n == nil {
 		return ret
+	}
+	if n.value != nil {
+		return append(ret, n.value)
 	}
 	if len(ret) >= kNodes {
-		goto RET
+		return ret
 	}
-	if n.right != nil {
-		ret = n.right.everything(ret)
+
+	chr := byte(id[i/8])
+	bit := byte(i % 8)
+
+	// This is not needed, but it's clearer.
+	var left, right *nTree
+
+	if (chr<<bit)&128 != 0 {
+		left = n.one
+		right = n.zero
+	} else {
+		left = n.zero
+		right = n.one
 	}
-	if n.left != nil {
-		ret = n.left.everything(ret)
+	ret = left.traverse(id, i+1, ret)
+	if len(ret) >= kNodes {
+		return ret
 	}
-RET:
-	if len(ret) > kNodes {
-		ret = ret[0:kNodes]
-	}
-	return ret
+	return right.traverse(id, i+1, ret)
 }
 
 // Calculates the distance between two hashes. In DHT/Kademlia, "distance" is
 // the XOR of the torrent infohash and the peer node ID.
 // This is slower than necessary. Should only be used for displaying friendly messages.
 func hashDistance(id1 string, id2 string) (distance string) {
-	d := make([]byte, 20)
-	if len(id1) != 20 || len(id2) != 20 {
+	d := make([]byte, len(id1))
+	if len(id1) != len(id2) {
 		return ""
 	} else {
-		for i := 0; i < 20; i++ {
+		for i := 0; i < len(id1); i++ {
 			d[i] = id1[i] ^ id2[i]
 		}
-		distance = string(d)
+		return string(d)
 	}
-	return
+	return ""
 }

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"sort"
+	"strings"
 	"testing"
 )
 
@@ -48,23 +49,21 @@ type testData struct {
 }
 
 func TestNodeDistance(t *testing.T) {
-	zeros := "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
 
 	tree := &nTree{}
 
 	nodes := []*DhtRemoteNode{
-		{id: "FOOOOOOOOOOOOOOOOOOO", address: nil},
-		{id: "FOOOOOOOOOOOOOOOOOO4", address: nil},
-		{id: "FOOOOOOOOOOOOOOOO500", address: nil},
-		{id: "FOOOOOOOOOOOOOOOOO70", address: nil},
-		{id: "FOOOOOOOOOOOOOOOOO80", address: nil},
-		{id: "FOOOOOOOOOOOOOOOOO90", address: nil},
-		{id: "mnopqrstuvwxyz12345\x00", address: nil},
-		{id: "mnopqrstuvwxyz12345\x01", address: nil},
-		{id: "mnopqrstuvwxyz12345\x02", address: nil},
-		{id: zeros, address: nil},
-		{id: "bogus", address: nil},
-		{id: "WEEEEEEEEEEEEEEEEEEE", address: nil},
+		{id: "\x00"},
+		{id: "\x01"},
+		{id: "\x02"},
+		{id: "\x03"},
+		{id: "\x04"},
+		{id: "\x05"},
+		{id: "\x06"},
+		{id: "\x07"},
+		{id: "\x08"},
+		{id: "\x09"},
+		{id: "\x10"},
 	}
 	for _, r := range nodes {
 		r.reachable = true
@@ -72,25 +71,36 @@ func TestNodeDistance(t *testing.T) {
 	}
 
 	tests := []testData{
-		{"FOOOOOOOOOOOOOOOOOOO", 1}, // exact match.
-		{"FOOOOOOOOOOOOOOOOOO1", 8},
-		{"FOOOOOOOOOOOOOOOOO10", 8},
-		{"FOOOOOOOOOOOOOOOOOO1", 8},
+		{"\x04", 8},
+		{"\x07", 8},
 	}
 
 	for _, r := range tests {
-		log.Printf("query: %v", r.query)
 		distances := make([]string, 0, len(tests))
 		neighbors := tree.lookupNeighbors(r.query)
 		if len(neighbors) != r.want {
-			t.Errorf("wanted len=%d, got len=%d", r.want, len(neighbors))
+			t.Errorf("id: %x, wanted len=%d, got len=%d", r.query, r.want, len(neighbors))
+			t.Errorf("Details: %#v", neighbors)
 		}
+
 		for _, x := range neighbors {
 			d := hashDistance(r.query, x.id)
+			var b []string
+			for _, c := range d {
+				if c != 0 {
+					b = append(b, fmt.Sprintf("%08b", c))
+				} else {
+					b = append(b, "00000000")
+				}
+			}
+			d = strings.Join(b, ".")
 			distances = append(distances, d)
 		}
 		if !sort.StringsAreSorted(distances) {
-			t.Errorf("Resulting distances for %v are not sorted", r.query)
+			t.Errorf("Resulting distances for %x are not sorted", r.query)
+			for i, d := range distances {
+				t.Errorf("id: %x, d: %v", neighbors[i].id, d)
+			}
 		}
 	}
 
@@ -112,5 +122,8 @@ func TestNodeDistance(t *testing.T) {
 // #4 moved to buckets, but using only one.
 // BenchmarkFindClosest	       1	1170809000 ns/op
 //
-// #5 using my new nTree
+// #5 using my new nTree (not yet correct)
 // BenchmarkFindClosest	  100000	     27194 ns/op
+//
+// #6 recursive nTree (correct)
+// BenchmarkFindClosest	  200000	     10585 ns/op
