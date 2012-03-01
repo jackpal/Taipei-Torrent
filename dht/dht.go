@@ -212,50 +212,9 @@ func closestNodes(ih string, nodes *nTree, max int) []*DhtRemoteNode {
 		log.Panicf("Programming error, bogus infohash: len(%v)=%d", ih, len(ih))
 	}
 
-	closest := make([]*DhtRemoteNode, 0, max)
-
 	neighbors := nodes.lookupNeighbors(ih)
-	l4g.Trace("DHT: candidate nodes for %x BEFORE filtering: %d", ih, len(neighbors))
-
-	for i := 0; len(closest) < max && i < len(neighbors); i++ {
-		// Skip nodes with pending queries. First, we don't want to flood them, but most importantly they are
-		// probably unreachable. We just need to make sure we clean the pendingQueries map when appropriate.
-		r := neighbors[i]
-		if len(r.pendingQueries) > MAX_NODE_PENDING_QUERIES {
-			// debug.Println("DHT: Skipping because there are too many queries pending for this dude.")
-			// debug.Println("DHT: This shouldn't happen because we should have stopped trying already. Might be a BUG.")
-			continue
-		}
-		// Skip if we are already asking them for this infoHash.
-		skip := false
-		for _, q := range r.pendingQueries {
-			if q.Type == "get_peers" && q.ih == ih {
-				skip = true
-			}
-		}
-		// Skip if we asked for this infoHash recently.
-		for _, q := range r.pastQueries {
-			if q.Type == "get_peers" && q.ih == ih {
-				ago := time.Now().Sub(r.lastTime)
-				if ago < MIN_SECONDS_NODE_REPEAT_QUERY {
-					skip = true
-				} else {
-					// This is an act of desperation. Query
-					// them again.  Most likely this will
-					// only generate dupes, but it's worth
-					// a try.
-					// debug.Printf("Re-sending get_peers. Last time: %v (%v ago) %v", r.lastTime.String(), ago.Seconds(), ago > 10*time.Second)
-				}
-			}
-		}
-		if !skip {
-			closest = append(closest, r)
-		}
-	}
-	// debug.Printf("DHT: Candidate nodes for asking: %d", len(targets.nodes))
-	// debug.Printf("DHT: Currently know %d nodes", len(d.remoteNodes))
-	l4g.Trace("DHT: candidate nodes for %x AFTER filtering: %d", ih, len(closest))
-	return closest
+	l4g.Trace("DHT: candidate nodes for %x found: %d", ih, len(neighbors))
+	return neighbors
 	// debug.Println("DHT: totalSentGetPeers", totalSentGetPeers.String())
 }
 
@@ -579,8 +538,4 @@ func (d *DhtEngine) bootStrapNetwork() {
 
 func init() {
 	l4g.Global.AddFilter("stdout", l4g.WARNING, l4g.NewConsoleLogWriter())
-
-	//	DhtStats.engines = make([]*DhtEngine, 1, 10)
-	//	expvar.Publish("dhtengine", expvar.StringFunc(dhtstats))
-	//	expvar.NewMap("nodes")
 }

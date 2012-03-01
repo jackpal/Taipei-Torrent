@@ -1,5 +1,9 @@
 package dht
 
+import (
+	"time"
+)
+
 type nTree struct {
 	zero, one *nTree
 	value     *DhtRemoteNode
@@ -40,7 +44,7 @@ func (n *nTree) insert(newNode *DhtRemoteNode) {
 func (n *nTree) lookupNeighbors(id string) []*DhtRemoteNode {
 	// Find value, or neighbors up to kNodes.
 	ret := make([]*DhtRemoteNode, 0, kNodes)
-	if n == nil {
+	if n == nil || id == "" {
 		return nil
 	}
 	return n.traverse(id, 0, ret)
@@ -50,8 +54,11 @@ func (n *nTree) traverse(id string, i int, ret []*DhtRemoteNode) []*DhtRemoteNod
 	if n == nil {
 		return ret
 	}
-	if n.value != nil {
+	if n.value != nil && n.filter(id) {
 		return append(ret, n.value)
+	}
+	if i >= len(id)*8 {
+		return ret
 	}
 	if len(ret) >= kNodes {
 		return ret
@@ -75,6 +82,40 @@ func (n *nTree) traverse(id string, i int, ret []*DhtRemoteNode) []*DhtRemoteNod
 		return ret
 	}
 	return right.traverse(id, i+1, ret)
+}
+
+func (n *nTree) filter(ih string) bool {
+	if n.value == nil || n.value.id == "" {
+		return false
+	}
+	r := n.value
+
+	if len(r.pendingQueries) > MAX_NODE_PENDING_QUERIES {
+		// debug.Println("DHT: Skipping because there are too many queries pending for this dude.")
+		// debug.Println("DHT: This shouldn't happen because we should have stopped trying already. Might be a BUG.")
+		return false
+	}
+	for _, q := range r.pendingQueries {
+		if q.Type == "get_peers" && q.ih == ih {
+			return false
+		}
+	}
+	// Skip if we asked for this infoHash recently.
+	for _, q := range r.pastQueries {
+		if q.Type == "get_peers" && q.ih == ih {
+			ago := time.Now().Sub(r.lastTime)
+			if ago < MIN_SECONDS_NODE_REPEAT_QUERY {
+				return false
+			} else {
+				// This is an act of desperation. Query
+				// them again.  Most likely this will
+				// only generate dupes, but it's worth
+				// a try.
+				// debug.Printf("Re-sending get_peers. Last time: %v (%v ago) %v", r.lastTime.String(), ago.Seconds(), ago > 10*time.Second)
+			}
+		}
+	}
+	return true
 }
 
 // Calculates the distance between two hashes. In DHT/Kademlia, "distance" is
