@@ -394,7 +394,7 @@ func (d *DhtEngine) announcePeer(address *net.UDPAddr, ih string, token string) 
 
 func (d *DhtEngine) replyGetPeers(addr *net.UDPAddr, r responseType) {
 	totalRecvGetPeers.Add(1)
-	l4g.Trace(func() string {
+	l4g.Info(func() string {
 		x := hashDistance(r.A.InfoHash, d.peerID)
 		return fmt.Sprintf("DHT get_peers. Host: %v , nodeID: %x , InfoHash: %x , distance to me: %x", addr, r.A.Id, r.A.InfoHash, x)
 	})
