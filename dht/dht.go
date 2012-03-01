@@ -537,5 +537,5 @@ func (d *DhtEngine) bootStrapNetwork() {
 }
 
 func init() {
-	l4g.Global.AddFilter("stdout", l4g.WARNING, l4g.NewConsoleLogWriter())
+	l4g.Global.AddFilter("stdout", l4g.INFO, l4g.NewConsoleLogWriter())
 }
