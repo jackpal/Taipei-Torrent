@@ -83,11 +83,16 @@ const (
 	GET_PEERS_NUM_NODES_RESPONSE = 8
 )
 
-var dhtRouter string
+var (
+	dhtRouter string
+	maxNodes  int
+)
 
 func init() {
 	flag.StringVar(&dhtRouter, "dhtRouter", "67.215.242.138:6881",
 		"IP:Port address of the DHT router used to bootstrap the DHT network.")
+	flag.IntVar(&maxNodes, "maxNodes", 1000,
+		"Maximum number of nodes to store in the routing table, in memory.")
 }
 
 // DhtEngine should be created by NewDhtNode(). It provides DHT features to a torrent client, such as finding new peers
@@ -238,11 +243,10 @@ func (d *DhtEngine) DoDht() {
 			// - see if we know it already, skip accordingly.
 			// - ping it and see if it's reachable. Ignore otherwise.
 			// - save it on our list of good nodes.
-			// - later, we'll implement bucketing, etc.
 			if _, ok := d.remoteNodes[helloNode.Id]; !ok {
 				if _, err := d.newRemoteNode(helloNode.Id, helloNode.Address); err != nil {
 					l4g.Warn("newRemoteNode error:", err)
-				} else {
+				} else if len(d.nodes) < maxNodes {
 					d.Ping(helloNode.Address)
 				}
 			}
