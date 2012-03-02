@@ -8,6 +8,7 @@ FAQ:
 ----
 
 Q: Why call it Taipei Torrent?
+
 A: I started writing it while visiting Taipei, Taiwan
 
 Q: What is the license?
@@ -47,5 +48,5 @@ Usage Instructions
 Related Projects
 ----------------
 
-https://github.com/nictuku/Taipei-Torrent nictuku has an actively developed
+https://github.com/nictuku/Taipei-Torrent an actively developed
 fork that includes support for Distributed Hash Tables.
