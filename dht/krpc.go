@@ -37,8 +37,7 @@ const (
 	NODE_ID_LEN         = 20
 	NODE_CONTACT_LEN    = 26
 	PEER_CONTACT_LEN    = 6
-	MAX_UDP_PACKET_SIZE = 65535
-	UDP_TIMEOUT         = 2e9 // two seconds
+	MAX_UDP_PACKET_SIZE = 4096
 )
 
 // The 'nodes' response is a string with fixed length contacts concatenated arbitrarily.
