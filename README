@@ -17,14 +17,6 @@ The code in the http subdirectory is controlled by the standard Go Authors licen
 The code in the rest of Taipei Torrent is controlled by the LICENSE file in the
 top level.
 
-Q: Why do you have your own copy of the http package?
-
-A: The UPnP client needs additional APIs that aren't supported by the standard http
-package. I proposed the additional APIs as extensions to the standard http package,
-but they were rejected because the http package is being redesigned. So for now I'm
-using my own patched copy of the http package. When the standard http package has been
-enhanced to support the features that UPnP needs I'll get rid of this patched version.
-
 Current Status
 
 Works, at least for some torrents.
@@ -41,7 +33,7 @@ Development Roadmap
 
 Build Instructions
   go build
-  
+
 Usage Instructions
   ./Taipei-Torrent -torrent mydownload.torrent
 
