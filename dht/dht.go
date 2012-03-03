@@ -90,7 +90,7 @@ type DhtEngine struct {
 
 	infoHashPeers    map[string]map[string]int // key1 == infoHash, key2 == address in binary form. value=ignored.
 	activeInfoHashes map[string]bool           // infoHashes for which we are peers.
-	targetNumPeers   int
+	numTargetPeers   int
 	conn             *net.UDPConn
 	Logger           Logger
 
@@ -100,7 +100,7 @@ type DhtEngine struct {
 	PeersRequestResults    chan map[string][]string // key = infohash, v = slice of peers.
 }
 
-func NewDhtNode(nodeId string, port, targetNumPeers int) (node *DhtEngine, err error) {
+func NewDhtNode(nodeId string, port, numTargetPeers int) (node *DhtEngine, err error) {
 	node = &DhtEngine{
 		peerID:                 nodeId,
 		port:                   port,
@@ -111,7 +111,7 @@ func NewDhtNode(nodeId string, port, targetNumPeers int) (node *DhtEngine, err e
 		peersRequest:           make(chan string, 1), // buffer to avoid deadlock.
 		infoHashPeers:          make(map[string]map[string]int),
 		activeInfoHashes:       make(map[string]bool),
-		targetNumPeers:         targetNumPeers,
+		numTargetPeers:         numTargetPeers,
 	}
 	return
 }
@@ -257,6 +257,7 @@ func (d *DhtEngine) DoDht() {
 					switch query.Type {
 					case "ping", "announce_peer":
 						// served its purpose, nothing else to be done.
+						l4g.Trace("DHT: Received ping reply")
 					case "get_peers":
 						d.processGetPeerResults(node, r)
 					default:
@@ -305,7 +306,9 @@ func (d *DhtEngine) newRemoteNode(id string, hostPort string) (r *DhtRemoteNode,
 		pastQueries:    map[string]*queryType{},
 	}
 	d.remoteNodes[hostPort] = r
-	d.tree.insert(r)
+	if id != "" {
+		d.tree.insert(r)
+	}
 	totalNodes.Add(1)
 	return
 
@@ -473,7 +476,7 @@ func (d *DhtEngine) processGetPeerResults(node *DhtRemoteNode, resp responseType
 					return fmt.Sprintf("DHT: Got new node reference: %x@%v from %x@%v. Distance: %x.", id, address, node.id, node.address, x)
 				})
 				if _, err := d.newRemoteNode(id, address); err == nil {
-					if len(d.infoHashPeers[query.ih]) < d.targetNumPeers {
+					if len(d.infoHashPeers[query.ih]) < d.numTargetPeers {
 						d.GetPeers(query.ih)
 					}
 				}
