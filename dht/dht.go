@@ -66,19 +66,6 @@ import (
 	"github.com/nictuku/Taipei-Torrent/bencode"
 )
 
-const (
-	// If we have less than so peers for a particular node, be
-	// aggressive about collecting new ones. Otherwise, wait for the
-	// torrent client to ask us. (currently does not consider reachability).
-	// MIN_INFOHASH_PEERS = 15
-
-	// Consider a node stale if it has more than this number of oustanding queries from us.
-	MAX_NODE_PENDING_QUERIES = 5
-
-	// Ask the same infoHash to a node after a long time.
-	MIN_SECONDS_NODE_REPEAT_QUERY = 30 * time.Minute
-)
-
 var (
 	dhtRouter string
 	maxNodes  int

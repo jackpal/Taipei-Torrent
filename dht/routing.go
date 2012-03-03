@@ -12,6 +12,11 @@ type nTree struct {
 const (
 	// Each query returns up to this number of nodes.
 	kNodes = 8
+	// Ask the same infoHash to a node after a long time.
+	getPeersRetryPeriod = 30 * time.Minute
+	// Consider a node stale if it has more than this number of oustanding
+	// queries from us.
+	maxNodePendingQueries = 5
 )
 
 func (n *nTree) insert(newNode *DhtRemoteNode) {
@@ -90,7 +95,7 @@ func (n *nTree) filter(ih string) bool {
 	}
 	r := n.value
 
-	if len(r.pendingQueries) > MAX_NODE_PENDING_QUERIES {
+	if len(r.pendingQueries) > maxNodePendingQueries {
 		// debug.Println("DHT: Skipping because there are too many queries pending for this dude.")
 		// debug.Println("DHT: This shouldn't happen because we should have stopped trying already. Might be a BUG.")
 		return false
@@ -104,7 +109,7 @@ func (n *nTree) filter(ih string) bool {
 	for _, q := range r.pastQueries {
 		if q.Type == "get_peers" && q.ih == ih {
 			ago := time.Now().Sub(r.lastTime)
-			if ago < MIN_SECONDS_NODE_REPEAT_QUERY {
+			if ago < getPeersRetryPeriod {
 				return false
 			} else {
 				// This is an act of desperation. Query
