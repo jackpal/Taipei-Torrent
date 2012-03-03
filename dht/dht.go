@@ -234,7 +234,9 @@ func (d *DhtEngine) DoDht() {
 				node, ok := d.remoteNodes[p.raddr.String()]
 				if !ok {
 					l4g.Info("DHT: Received reply from a host we don't know:", p.raddr)
-					d.Ping(p.raddr.String())
+					if len(d.remoteNodes) < maxNodes {
+						d.Ping(p.raddr.String())
+					}
 					// XXX: Add this guy to a list of dubious hosts.
 					continue
 				}
@@ -268,7 +270,9 @@ func (d *DhtEngine) DoDht() {
 			case r.Y == "q":
 				if _, ok := d.remoteNodes[p.raddr.String()]; !ok {
 					// Another candidate for the routing table. See if it's reachable.
-					d.Ping(p.raddr.String())
+					if len(d.remoteNodes) < maxNodes {
+						d.Ping(p.raddr.String())
+					}
 				}
 				switch r.Q {
 				case "ping":
