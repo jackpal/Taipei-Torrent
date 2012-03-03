@@ -233,7 +233,7 @@ func (d *DhtEngine) DoDht() {
 			case r.Y == "r":
 				node, ok := d.remoteNodes[p.raddr.String()]
 				if !ok {
-					l4g.Info("DHT: Received reply from a host we don't know:", p.raddr)
+					l4g.Info("DHT: Received reply from a host we don't know: %v", p.raddr)
 					if len(d.remoteNodes) < maxNodes {
 						d.Ping(p.raddr.String())
 					}
