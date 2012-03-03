@@ -2,7 +2,6 @@
 //
 // Status:
 //  - able to get peers from the network
-//  - uses a very simple and slow routing table
 //  - almost never removes nodes from the routing table.
 //  - does not proactively ping nodes to see if they are reachable.
 //  - has only soft limits for memory growth.
@@ -41,7 +40,6 @@
 //     http://www.bittorrent.org/beps/bep_0005.html
 //
 
-// TODO: Create a proper routing table with buckets, per the protocol.
 // TODO: Save routing table on disk to be preserved between instances.
 // TODO: Cleanup bad nodes from time to time.
 
@@ -79,8 +77,6 @@ const (
 
 	// Ask the same infoHash to a node after a long time.
 	MIN_SECONDS_NODE_REPEAT_QUERY = 30 * time.Minute
-
-	GET_PEERS_NUM_NODES_RESPONSE = 8
 )
 
 var (
@@ -195,20 +191,10 @@ func (d *DhtEngine) RoutingTable() (tbl map[string][]byte) {
 // finish quickly.
 // XXX called by client. Unsafe.
 func (d *DhtEngine) GetPeers(infoHash string) {
-	closest := closestNodes(infoHash, d.tree, GET_PEERS_NUM_NODES_RESPONSE)
+	closest := d.tree.lookup(infoHash)
 	for _, r := range closest {
 		d.getPeers(r, infoHash)
 	}
-}
-
-func closestNodes(ih string, nodes *nTree, max int) []*DhtRemoteNode {
-	if len(ih) != 20 {
-		log.Panicf("Programming error, bogus infohash: len(%v)=%d", ih, len(ih))
-	}
-
-	neighbors := nodes.lookupNeighbors(ih)
-	l4g.Trace("DHT: candidate nodes for %x found: %d", ih, len(neighbors))
-	return neighbors
 }
 
 // DoDht is the DHT node main loop and should be run as a goroutine by the torrent client.
@@ -407,8 +393,8 @@ func (d *DhtEngine) replyGetPeers(addr *net.UDPAddr, r responseType) {
 		l4g.Trace("replyGetPeers: Giving peers! %v wanted %x, and we knew %d peers!", addr.String(), ih, len(peerContacts))
 		reply.R["values"] = peerContacts
 	} else {
-		n := make([]string, 0, GET_PEERS_NUM_NODES_RESPONSE)
-		for _, r := range closestNodes(ih, d.tree, GET_PEERS_NUM_NODES_RESPONSE) {
+		n := make([]string, 0, kNodes)
+		for _, r := range d.tree.lookup(ih) {
 			n = append(n, r.id+bencode.DottedPortToBinary(r.address.String()))
 		}
 		l4g.Trace("replyGetPeers: Nodes only. Giving %d", len(n))
@@ -435,12 +421,9 @@ func (d *DhtEngine) replyFindNode(addr *net.UDPAddr, r responseType) {
 
 	// XXX we currently can't give out the peer contact. Probably requires processing announce_peer.
 	// XXX If there was a total match, that guy is the last.
-	neighbors := d.tree.lookupNeighbors(node)
-	n := make([]string, 0, GET_PEERS_NUM_NODES_RESPONSE)
-	for i, r := range neighbors {
-		if i == GET_PEERS_NUM_NODES_RESPONSE {
-			break
-		}
+	neighbors := d.tree.lookup(node)
+	n := make([]string, 0, kNodes)
+	for _, r := range neighbors {
 		n = append(n, r.id+bencode.DottedPortToBinary(r.address.String()))
 	}
 	l4g.Trace("replyFindNode: Nodes only. Giving %d", len(n))

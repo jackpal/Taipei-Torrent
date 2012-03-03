@@ -36,9 +36,9 @@ func BenchmarkFindClosest(b *testing.B) {
 	}
 	b.StartTimer()
 	for i := 0; i < b.N; i++ {
-		f := closestNodes(fmt.Sprintf("x%10v", i)+"xxxxxxxxx", node.tree, GET_PEERS_NUM_NODES_RESPONSE)
-		if len(f) != GET_PEERS_NUM_NODES_RESPONSE {
-			log.Fatalf("Missing results. Wanted %d, got %d", GET_PEERS_NUM_NODES_RESPONSE, len(f))
+		f := node.tree.lookup(fmt.Sprintf("x%10v", i) + "xxxxxxxxx")
+		if len(f) != kNodes {
+			log.Fatalf("Missing results. Wanted %d, got %d", kNodes, len(f))
 		}
 	}
 }
@@ -77,7 +77,7 @@ func TestNodeDistance(t *testing.T) {
 
 	for _, r := range tests {
 		distances := make([]string, 0, len(tests))
-		neighbors := tree.lookupNeighbors(r.query)
+		neighbors := tree.lookup(r.query)
 		if len(neighbors) != r.want {
 			t.Errorf("id: %x, wanted len=%d, got len=%d", r.query, r.want, len(neighbors))
 			t.Errorf("Details: %#v", neighbors)
@@ -127,3 +127,6 @@ func TestNodeDistance(t *testing.T) {
 //
 // #6 recursive nTree (correct)
 // BenchmarkFindClosest	  200000	     10585 ns/op
+//
+// #7 removed an unnecessary wrapper function.
+// BenchmarkFindClosest	  200000	      9691 ns/op

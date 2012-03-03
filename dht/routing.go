@@ -41,7 +41,7 @@ func (n *nTree) insert(newNode *DhtRemoteNode) {
 	next.value = newNode
 }
 
-func (n *nTree) lookupNeighbors(id string) []*DhtRemoteNode {
+func (n *nTree) lookup(id string) []*DhtRemoteNode {
 	// Find value, or neighbors up to kNodes.
 	ret := make([]*DhtRemoteNode, 0, kNodes)
 	if n == nil || id == "" {

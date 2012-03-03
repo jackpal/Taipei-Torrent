@@ -59,7 +59,7 @@ func TestDhtBigAndSlow(t *testing.T) {
 		candidate := &DhtNodeCandidate{Id: id, Address: addr}
 		go node.RemoteNodeAcquaintance(candidate)
 	}
-	time.Sleep(1.5 * UDP_TIMEOUT)
+	time.Sleep(2 * time.Second)
 	for _, address := range realDHTNodes {
 		if _, ok := node.remoteNodes[address]; !ok {
 			t.Fatalf("External DHT node not reachable: %s", address)
