@@ -36,7 +36,7 @@ func BenchmarkFindClosest(b *testing.B) {
 	}
 	b.StartTimer()
 	for i := 0; i < b.N; i++ {
-		f := node.tree.lookup(fmt.Sprintf("x%10v", i) + "xxxxxxxxx")
+		f := node.tree.lookupFiltered(fmt.Sprintf("x%10v", i) + "xxxxxxxxx")
 		if len(f) != kNodes {
 			log.Fatalf("Missing results. Wanted %d, got %d", kNodes, len(f))
 		}

@@ -47,19 +47,25 @@ func (n *nTree) insert(newNode *DhtRemoteNode) {
 }
 
 func (n *nTree) lookup(id string) []*DhtRemoteNode {
-	// Find value, or neighbors up to kNodes.
 	ret := make([]*DhtRemoteNode, 0, kNodes)
 	if n == nil || id == "" {
 		return nil
 	}
-	return n.traverse(id, 0, ret)
+	return n.traverse(id, 0, ret, false)
 }
 
-func (n *nTree) traverse(id string, i int, ret []*DhtRemoteNode) []*DhtRemoteNode {
+func (n *nTree) lookupFiltered(id string) []*DhtRemoteNode {
+	ret := make([]*DhtRemoteNode, 0, kNodes)
+	if n == nil || id == "" {
+		return nil
+	}
+	return n.traverse(id, 0, ret, true)
+}
+func (n *nTree) traverse(id string, i int, ret []*DhtRemoteNode, filter bool) []*DhtRemoteNode {
 	if n == nil {
 		return ret
 	}
-	if n.value != nil && n.filter(id) {
+	if n.value != nil && (!filter || n.filter(id)) {
 		return append(ret, n.value)
 	}
 	if i >= len(id)*8 {
@@ -82,11 +88,11 @@ func (n *nTree) traverse(id string, i int, ret []*DhtRemoteNode) []*DhtRemoteNod
 		left = n.zero
 		right = n.one
 	}
-	ret = left.traverse(id, i+1, ret)
+	ret = left.traverse(id, i+1, ret, filter)
 	if len(ret) >= kNodes {
 		return ret
 	}
-	return right.traverse(id, i+1, ret)
+	return right.traverse(id, i+1, ret, filter)
 }
 
 func (n *nTree) filter(ih string) bool {

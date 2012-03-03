@@ -178,7 +178,7 @@ func (d *DhtEngine) RoutingTable() (tbl map[string][]byte) {
 // finish quickly.
 // XXX called by client. Unsafe.
 func (d *DhtEngine) GetPeers(infoHash string) {
-	closest := d.tree.lookup(infoHash)
+	closest := d.tree.lookupFiltered(infoHash)
 	for _, r := range closest {
 		d.getPeers(r, infoHash)
 	}
@@ -381,7 +381,7 @@ func (d *DhtEngine) replyGetPeers(addr *net.UDPAddr, r responseType) {
 		reply.R["values"] = peerContacts
 	} else {
 		n := make([]string, 0, kNodes)
-		for _, r := range d.tree.lookup(ih) {
+		for _, r := range d.tree.lookupFiltered(ih) {
 			n = append(n, r.id+bencode.DottedPortToBinary(r.address.String()))
 		}
 		l4g.Trace("replyGetPeers: Nodes only. Giving %d", len(n))
