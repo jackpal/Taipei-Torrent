@@ -282,8 +282,11 @@ func (d *DhtEngine) DoDht() {
 					d.replyGetPeers(p.raddr, r)
 				case "find_node":
 					d.replyFindNode(p.raddr, r)
+				// When implementing a handler for
+				// announce_peer, remember to change the
+				// get_peers reply tokens to be meaningful.
 				default:
-					l4g.Warn("DHT: non-implemented handler for type", r.Q)
+					l4g.Warn("DHT: non-implemented handler for type %v", r.Q)
 				}
 			default:
 				l4g.Info("DHT: Bogus DHT query from %v.", p.raddr)
@@ -372,7 +375,7 @@ func (d *DhtEngine) replyGetPeers(addr *net.UDPAddr, r responseType) {
 	}
 
 	ih := r.A.InfoHash
-	r0 := map[string]interface{}{"id": ih, "token": r.A.Token}
+	r0 := map[string]interface{}{"id": ih, "token": "blabla"}
 	reply := replyMessage{
 		T: r.T,
 		Y: "r",
