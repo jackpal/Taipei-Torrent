@@ -192,16 +192,7 @@ func (d *DhtEngine) RoutingTable() (tbl map[string][]byte) {
 }
 
 // Asks for more peers for a torrent. Runs on the main dht goroutine so it must
-// finish quickly. Currently this does not implement the official DHT routing
-// table from the spec, but my own stupid thing :-P.
-//
-// The basic principle is to store as many node addresses as possible, even if
-// their hash is distant from other nodes we asked.
-//
-// It's very slow, but I dont need the performance right now.  .. although it
-// runs in the same goroutine, so it must be fast, or I should
-// move this to another routine. Or live with it.
-//
+// finish quickly.
 // XXX called by client. Unsafe.
 func (d *DhtEngine) GetPeers(infoHash string) {
 	closest := closestNodes(infoHash, d.tree, GET_PEERS_NUM_NODES_RESPONSE)
@@ -218,7 +209,6 @@ func closestNodes(ih string, nodes *nTree, max int) []*DhtRemoteNode {
 	neighbors := nodes.lookupNeighbors(ih)
 	l4g.Trace("DHT: candidate nodes for %x found: %d", ih, len(neighbors))
 	return neighbors
-	// debug.Println("DHT: totalSentGetPeers", totalSentGetPeers.String())
 }
 
 // DoDht is the DHT node main loop and should be run as a goroutine by the torrent client.
