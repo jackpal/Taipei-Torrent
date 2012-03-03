@@ -21,7 +21,6 @@ type DhtRemoteNode struct {
 	lastQueryID     int
 	pendingQueries  map[string]*queryType // key: transaction ID
 	pastQueries     map[string]*queryType // key: transaction ID
-	localNode       *DhtEngine
 	reachable       bool
 	lastTime        time.Time
 	ActiveDownloads []string // List of infohashes we know this peer is downloading.

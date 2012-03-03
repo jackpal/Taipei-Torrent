@@ -103,7 +103,6 @@ type DhtEngine struct {
 	port   int
 
 	remoteNodes map[string]*DhtRemoteNode // key == address
-	nodes       []*DhtRemoteNode
 	tree        *nTree
 
 	infoHashPeers    map[string]map[string]int // key1 == infoHash, key2 == address in binary form. value=ignored.
@@ -123,7 +122,6 @@ func NewDhtNode(nodeId string, port, targetNumPeers int) (node *DhtEngine, err e
 		peerID:                 nodeId,
 		port:                   port,
 		remoteNodes:            make(map[string]*DhtRemoteNode),
-		nodes:                  make([]*DhtRemoteNode, 0, 100), // It can grow up to targetNumPeers.
 		tree:                   &nTree{},
 		PeersRequestResults:    make(chan map[string][]string, 1),
 		remoteNodeAcquaintance: make(chan *DhtNodeCandidate),
@@ -169,13 +167,13 @@ func (d *DhtEngine) Ping(address string) {
 	// TODO: should translate to an IP first.
 	r, err := d.getOrCreateRemoteNode(address)
 	if err != nil {
-		l4g.Info("ping: %v", err)
+		l4g.Info("ping error: %v", err)
 		return
 	}
 	l4g.Debug("DHT: ping => %+v\n", address)
 	t := r.newQuery("ping")
 
-	queryArguments := map[string]interface{}{"id": r.localNode.peerID}
+	queryArguments := map[string]interface{}{"id": d.peerID}
 	query := queryMessage{t, "q", "ping", queryArguments}
 	go sendMsg(d.conn, r.address, query)
 }
@@ -246,7 +244,7 @@ func (d *DhtEngine) DoDht() {
 			if _, ok := d.remoteNodes[helloNode.Id]; !ok {
 				if _, err := d.newRemoteNode(helloNode.Id, helloNode.Address); err != nil {
 					l4g.Warn("newRemoteNode error:", err)
-				} else if len(d.nodes) < maxNodes {
+				} else if len(d.remoteNodes) < maxNodes {
 					d.Ping(helloNode.Address)
 				}
 			}
@@ -335,17 +333,13 @@ func (d *DhtEngine) newRemoteNode(id string, hostPort string) (r *DhtRemoteNode,
 		address:        address,
 		lastQueryID:    rand.Intn(255) + 1, // Doesn't have to be crypto safe.
 		id:             id,
-		localNode:      d,
 		reachable:      false,
 		pendingQueries: map[string]*queryType{},
 		pastQueries:    map[string]*queryType{},
 	}
 	d.remoteNodes[hostPort] = r
-	d.nodes = append(d.nodes, r)
 	d.tree.insert(r)
-
-	nodesVar.Add(fmt.Sprintf("%x", id), 1)
-	addressVar.Add(hostPort, 1)
+	totalNodes.Add(1)
 	return
 
 }
@@ -366,7 +360,7 @@ func (d *DhtEngine) getPeers(r *DhtRemoteNode, ih string) {
 	transId := r.newQuery(ty)
 	r.pendingQueries[transId].ih = ih
 	queryArguments := map[string]interface{}{
-		"id":        r.localNode.peerID,
+		"id":        d.peerID,
 		"info_hash": ih,
 	}
 	query := queryMessage{transId, "q", ty, queryArguments}
@@ -387,7 +381,7 @@ func (d *DhtEngine) announcePeer(address *net.UDPAddr, ih string, token string) 
 	l4g.Trace("DHT: announce_peer => %v %x %x\n", address, ih, token)
 	transId := r.newQuery(ty)
 	queryArguments := map[string]interface{}{
-		"id":        r.localNode.peerID,
+		"id":        d.peerID,
 		"info_hash": ih,
 		"port":      d.port,
 		"token":     token,
@@ -526,8 +520,7 @@ func (d *DhtEngine) processGetPeerResults(node *DhtRemoteNode, resp responseType
 
 // Debugging information:
 // Which nodes we contacted.
-var nodesVar = expvar.NewMap("Nodes")
-var addressVar = expvar.NewMap("Addresses")
+var totalNodes = expvar.NewInt("totalNodes")
 var totalReachableNodes = expvar.NewInt("totalReachableNodes")
 var totalDupes = expvar.NewInt("totalDupes")
 var totalPeers = expvar.NewInt("totalPeers")
