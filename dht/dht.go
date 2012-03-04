@@ -60,6 +60,7 @@ import (
 	"log"
 	"math/rand"
 	"net"
+	"strings"
 	"time"
 
 	l4g "code.google.com/p/log4go"
@@ -424,7 +425,7 @@ func (d *DhtEngine) replyFindNode(addr *net.UDPAddr, r responseType) {
 		n = append(n, r.id+bencode.DottedPortToBinary(r.address.String()))
 	}
 	l4g.Trace("replyFindNode: Nodes only. Giving %d", len(n))
-	reply.R["nodes"] = n
+	reply.R["nodes"] = strings.Join(n, "")
 	go sendMsg(d.conn, addr, reply)
 }
 
