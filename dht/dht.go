@@ -72,7 +72,7 @@ var (
 )
 
 func init() {
-	flag.StringVar(&dhtRouter, "dhtRouter", "67.215.242.138:6881",
+	flag.StringVar(&dhtRouter, "dhtRouter", "108.163.172.74:6881",
 		"IP:Port address of the DHT router used to bootstrap the DHT network.")
 	flag.IntVar(&maxNodes, "maxNodes", 1000,
 		"Maximum number of nodes to store in the routing table, in memory.")
