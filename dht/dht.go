@@ -389,14 +389,14 @@ func (d *DhtEngine) replyGetPeers(addr *net.UDPAddr, r responseType) {
 			peerContacts = append(peerContacts, p)
 		}
 		l4g.Trace("replyGetPeers: Giving peers! %v wanted %x, and we knew %d peers!", addr.String(), ih, len(peerContacts))
-		reply.R["values"] = strings.Join(peerContacts, "")
+		reply.R["values"] = peerContacts
 	} else {
 		n := make([]string, 0, kNodes)
 		for _, r := range d.tree.lookupFiltered(ih) {
 			n = append(n, r.id+bencode.DottedPortToBinary(r.address.String()))
 		}
 		l4g.Trace("replyGetPeers: Nodes only. Giving %d", len(n))
-		reply.R["nodes"] = n
+		reply.R["nodes"] = strings.Join(n, "")
 	}
 	go sendMsg(d.conn, addr, reply)
 
