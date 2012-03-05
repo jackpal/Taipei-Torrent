@@ -68,8 +68,9 @@ import (
 )
 
 var (
-	dhtRouter string
-	maxNodes  int
+	dhtRouter     string
+	maxNodes      int
+	cleanupPeriod time.Duration
 )
 
 func init() {
@@ -77,6 +78,8 @@ func init() {
 		"IP:Port address of the DHT router used to bootstrap the DHT network.")
 	flag.IntVar(&maxNodes, "maxNodes", 1000,
 		"Maximum number of nodes to store in the routing table, in memory.")
+	flag.DurationVar(&cleanupPeriod, "cleanupPeriod", 10*time.Minute,
+		"How often to ping nodes in the network to see if they are reachable.")
 }
 
 // DhtEngine should be created by NewDhtNode(). It provides DHT features to a torrent client, such as finding new peers
@@ -196,6 +199,7 @@ func (d *DhtEngine) DoDht() {
 	go readFromSocket(socket, socketChan)
 
 	d.bootStrapNetwork()
+	cleanupTicker := time.Tick(cleanupPeriod)
 
 	l4g.Info("DHT: Starting DHT node.")
 	for {
@@ -220,6 +224,8 @@ func (d *DhtEngine) DoDht() {
 			d.GetPeers(needPeers)
 		case p := <-socketChan:
 			d.processPacket(p)
+		case <-cleanupTicker:
+			d.routingTableCleanup()
 		}
 	}
 }
@@ -298,6 +304,45 @@ func (d *DhtEngine) processPacket(p packetType) {
 	default:
 		l4g.Info("DHT: Bogus DHT query from %v.", p.raddr)
 	}
+}
+
+func (d *DhtEngine) routingTableCleanup() {
+	t0 := time.Now()
+	for _, n := range d.remoteNodes {
+		if n.reachable {
+			if len(n.pendingQueries) == 0 {
+				continue
+			}
+			if time.Since(n.lastTime) > cleanupPeriod*2 {
+				l4g.Trace("DHT: Old dude seen %v ago. Deleting.", time.Since(n.lastTime))
+				d.kill(n)
+				continue
+			}
+			if time.Since(n.lastTime).Nanoseconds() < cleanupPeriod.Nanoseconds()/2 {
+				// Seen recently. Don't need to ping.
+				continue
+			}
+
+		} else {
+			// Not reachable.
+			if len(n.pendingQueries) > 2 {
+				// Didn't reply to 2 consecutive queries.
+				l4g.Trace("DHT: Node never replied to ping. Deleting. %v", n.address)
+				d.kill(n)
+				continue
+			}
+		}
+		d.Ping(n.address.String())
+	}
+	duration := time.Since(t0)
+	// If this pauses the server for too long I may have to segment the cleanup.
+	l4g.Info("DHT: Routing table cleanup took %v", duration)
+}
+
+func (d *DhtEngine) kill(n *DhtRemoteNode) {
+	delete(d.remoteNodes, n.address.String())
+	d.tree.cut(n.id, 0)
+	totalKilledNodes.Add(1)
 }
 
 func (d *DhtEngine) newRemoteNode(id string, hostPort string) (r *DhtRemoteNode, err error) {
@@ -496,6 +541,7 @@ func (d *DhtEngine) processGetPeerResults(node *DhtRemoteNode, resp responseType
 // Debugging information:
 // Which nodes we contacted.
 var totalNodes = expvar.NewInt("totalNodes")
+var totalKilledNodes = expvar.NewInt("totalKilledNodes")
 var totalReachableNodes = expvar.NewInt("totalReachableNodes")
 var totalDupes = expvar.NewInt("totalDupes")
 var totalPeers = expvar.NewInt("totalPeers")
