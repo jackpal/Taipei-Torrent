@@ -61,12 +61,15 @@ func (n *nTree) lookupFiltered(id string) []*DhtRemoteNode {
 	}
 	return n.traverse(id, 0, ret, true)
 }
+
 func (n *nTree) traverse(id string, i int, ret []*DhtRemoteNode, filter bool) []*DhtRemoteNode {
 	if n == nil {
 		return ret
 	}
-	if n.value != nil && (!filter || n.filter(id)) {
-		return append(ret, n.value)
+	if n.value != nil {
+		if !filter || n.filter(id) {
+			return append(ret, n.value)
+		}
 	}
 	if i >= len(id)*8 {
 		return ret
@@ -80,7 +83,6 @@ func (n *nTree) traverse(id string, i int, ret []*DhtRemoteNode, filter bool) []
 
 	// This is not needed, but it's clearer.
 	var left, right *nTree
-
 	if (chr<<bit)&128 != 0 {
 		left = n.one
 		right = n.zero
@@ -88,11 +90,43 @@ func (n *nTree) traverse(id string, i int, ret []*DhtRemoteNode, filter bool) []
 		left = n.zero
 		right = n.one
 	}
+
 	ret = left.traverse(id, i+1, ret, filter)
 	if len(ret) >= kNodes {
 		return ret
 	}
 	return right.traverse(id, i+1, ret, filter)
+}
+
+// cut goes down the tree and deletes the children nodes if all their leaves
+// became empty.
+func (n *nTree) cut(id string, i int) (cutMe bool) {
+	if n == nil {
+		return true
+	}
+	if i >= len(id)*8 {
+		return true
+	}
+	chr := byte(id[i/8])
+	bit := byte(i % 8)
+
+	if (chr<<bit)&128 != 0 {
+		if n.one.cut(id, i+1) {
+			n.one = nil
+			if n.zero == nil {
+				return true
+			}
+		}
+	} else {
+		if n.zero.cut(id, i+1) {
+			n.zero = nil
+			if n.one == nil {
+				return true
+			}
+		}
+	}
+
+	return false
 }
 
 func (n *nTree) filter(ih string) bool {
@@ -130,8 +164,8 @@ func (n *nTree) filter(ih string) bool {
 }
 
 // Calculates the distance between two hashes. In DHT/Kademlia, "distance" is
-// the XOR of the torrent infohash and the peer node ID.
-// This is slower than necessary. Should only be used for displaying friendly messages.
+// the XOR of the torrent infohash and the peer node ID.  This is slower than
+// necessary. Should only be used for displaying friendly messages.
 func hashDistance(id1 string, id2 string) (distance string) {
 	d := make([]byte, len(id1))
 	if len(id1) != len(id2) {

@@ -48,23 +48,50 @@ type testData struct {
 	want  int // just the size.
 }
 
+var nodes = []*DhtRemoteNode{
+	{id: "\x00"},
+	{id: "\x01"},
+	{id: "\x02"},
+	{id: "\x03"},
+	{id: "\x04"},
+	{id: "\x05"},
+	{id: "\x06"},
+	{id: "\x07"},
+	{id: "\x08"},
+	{id: "\x09"},
+	{id: "\x10"},
+}
+
+func TestNodeDelete(t *testing.T) {
+	tree := &nTree{}
+
+	for _, r := range nodes[:4] {
+		tree.insert(r)
+	}
+	for i, r := range []string{"\x00", "\x01"} {
+		// t.Logf("cutting: %x", r)
+		tree.cut(r, 0)
+		neighbors := tree.lookup(r)
+		if len(neighbors) == 0 {
+			t.Errorf("Deleted too many nodes.")
+		}
+		if len(neighbors) != 3-i {
+			t.Errorf("Too many nodes left in the tree: got %d, wanted %d", len(neighbors), 3-i)
+		}
+		if r == neighbors[0].id {
+			t.Errorf("Node didnt get deleted as expected: %x", r)
+		}
+		// for _, x := range neighbors {
+		// 	t.Logf("%x", x.id)
+		// }
+	}
+
+}
+
 func TestNodeDistance(t *testing.T) {
 
 	tree := &nTree{}
 
-	nodes := []*DhtRemoteNode{
-		{id: "\x00"},
-		{id: "\x01"},
-		{id: "\x02"},
-		{id: "\x03"},
-		{id: "\x04"},
-		{id: "\x05"},
-		{id: "\x06"},
-		{id: "\x07"},
-		{id: "\x08"},
-		{id: "\x09"},
-		{id: "\x10"},
-	}
 	for _, r := range nodes {
 		r.reachable = true
 		tree.insert(r)
