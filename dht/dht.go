@@ -219,80 +219,84 @@ func (d *DhtEngine) DoDht() {
 			l4g.Trace("DHT: torrent client asking more peers for %x. Calling GetPeers().", needPeers)
 			d.GetPeers(needPeers)
 		case p := <-socketChan:
-			if p.b[0] != 'd' {
-				// Malformed DHT packet. There are protocol extensions out
-				// there that we don't support or understand.
-				continue
+			d.processPacket(p)
+		}
+	}
+}
+
+func (d *DhtEngine) processPacket(p packetType) {
+	if p.b[0] != 'd' {
+		// Malformed DHT packet. There are protocol extensions out
+		// there that we don't support or understand.
+		return
+	}
+	r, err := readResponse(p)
+	if err != nil {
+		log.Printf("DHT: readResponse Error: %v, %q", err, string(p.b))
+		return
+	}
+	switch {
+	// Response.
+	case r.Y == "r":
+		node, ok := d.remoteNodes[p.raddr.String()]
+		if !ok {
+			l4g.Info("DHT: Received reply from a host we don't know: %v", p.raddr)
+			if len(d.remoteNodes) < maxNodes {
+				d.Ping(p.raddr.String())
 			}
-			r, err := readResponse(p)
-			if err != nil {
-				log.Printf("DHT: readResponse Error: %v, %q", err, string(p.b))
-				continue
+			// XXX: Add this guy to a list of dubious hosts.
+			return
+		}
+		// Fix the node ID.
+		if node.id == "" {
+			node.id = r.R.Id
+			d.tree.insert(node)
+		}
+		if query, ok := node.pendingQueries[r.T]; ok {
+			if !node.reachable {
+				node.reachable = true
+				totalReachableNodes.Add(1)
 			}
-			switch {
-			// Response.
-			case r.Y == "r":
-				node, ok := d.remoteNodes[p.raddr.String()]
-				if !ok {
-					l4g.Info("DHT: Received reply from a host we don't know: %v", p.raddr)
-					if len(d.remoteNodes) < maxNodes {
-						d.Ping(p.raddr.String())
-					}
-					// XXX: Add this guy to a list of dubious hosts.
-					continue
-				}
-				// Fix the node ID.
-				if node.id == "" {
-					node.id = r.R.Id
-					d.tree.insert(node)
-				}
-				if query, ok := node.pendingQueries[r.T]; ok {
-					if !node.reachable {
-						node.reachable = true
-						totalReachableNodes.Add(1)
-					}
-					node.lastTime = time.Now()
-					if _, ok := d.infoHashPeers[query.ih]; !ok {
-						d.infoHashPeers[query.ih] = map[string]int{}
-					}
-					switch query.Type {
-					case "ping", "announce_peer":
-						// served its purpose, nothing else to be done.
-						l4g.Trace("DHT: Received ping reply")
-					case "get_peers":
-						d.processGetPeerResults(node, r)
-					default:
-						l4g.Info("DHT: Unknown query type:", query.Type, p.raddr)
-					}
-					node.pastQueries[r.T] = query
-					delete(node.pendingQueries, r.T)
-				} else {
-					l4g.Info("DHT: Unknown query id: %v", r.T)
-				}
-			case r.Y == "q":
-				if _, ok := d.remoteNodes[p.raddr.String()]; !ok {
-					// Another candidate for the routing table. See if it's reachable.
-					if len(d.remoteNodes) < maxNodes {
-						d.Ping(p.raddr.String())
-					}
-				}
-				switch r.Q {
-				case "ping":
-					d.replyPing(p.raddr, r)
-				case "get_peers":
-					d.replyGetPeers(p.raddr, r)
-				case "find_node":
-					d.replyFindNode(p.raddr, r)
-				// When implementing a handler for
-				// announce_peer, remember to change the
-				// get_peers reply tokens to be meaningful.
-				default:
-					l4g.Warn("DHT: non-implemented handler for type %v", r.Q)
-				}
+			node.lastTime = time.Now()
+			if _, ok := d.infoHashPeers[query.ih]; !ok {
+				d.infoHashPeers[query.ih] = map[string]int{}
+			}
+			switch query.Type {
+			case "ping", "announce_peer":
+				// served its purpose, nothing else to be done.
+				l4g.Trace("DHT: Received ping reply")
+			case "get_peers":
+				d.processGetPeerResults(node, r)
 			default:
-				l4g.Info("DHT: Bogus DHT query from %v.", p.raddr)
+				l4g.Info("DHT: Unknown query type:", query.Type, p.raddr)
+			}
+			node.pastQueries[r.T] = query
+			delete(node.pendingQueries, r.T)
+		} else {
+			l4g.Info("DHT: Unknown query id: %v", r.T)
+		}
+	case r.Y == "q":
+		if _, ok := d.remoteNodes[p.raddr.String()]; !ok {
+			// Another candidate for the routing table. See if it's reachable.
+			if len(d.remoteNodes) < maxNodes {
+				d.Ping(p.raddr.String())
 			}
 		}
+		switch r.Q {
+		case "ping":
+			d.replyPing(p.raddr, r)
+		case "get_peers":
+			d.replyGetPeers(p.raddr, r)
+		case "find_node":
+			d.replyFindNode(p.raddr, r)
+		// When implementing a handler for
+		// announce_peer, remember to change the
+		// get_peers reply tokens to be meaningful.
+		default:
+			l4g.Warn("DHT: non-implemented handler for type %v", r.Q)
+		}
+	default:
+		l4g.Info("DHT: Bogus DHT query from %v.", p.raddr)
 	}
 }
 
