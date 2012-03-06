@@ -269,9 +269,10 @@ func (d *DhtEngine) processPacket(p packetType) {
 				d.infoHashPeers[query.ih] = map[string]int{}
 			}
 			switch query.Type {
-			case "ping", "announce_peer":
+			case "ping":
 				// served its purpose, nothing else to be done.
 				l4g.Trace("DHT: Received ping reply")
+				totalRecvPingReply.Add(1)
 			case "get_peers":
 				d.processGetPeerResults(node, r)
 			default:
@@ -550,6 +551,7 @@ var totalSentPing = expvar.NewInt("totalSentPing")
 var totalSentGetPeers = expvar.NewInt("totalSentGetPeers")
 var totalRecvGetPeers = expvar.NewInt("totalRecvGetPeers")
 var totalRecvGetPeersReply = expvar.NewInt("totalRecvGetPeersReply")
+var totalRecvPingReply = expvar.NewInt("totalRecvPingReply")
 var totalRecvFindNode = expvar.NewInt("totalRecvFindNode")
 
 func (d *DhtEngine) bootStrapNetwork() {
