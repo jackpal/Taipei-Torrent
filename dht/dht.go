@@ -313,7 +313,7 @@ func (d *DhtEngine) routingTableCleanup() {
 	for _, n := range d.remoteNodes {
 		if n.reachable {
 			if len(n.pendingQueries) == 0 {
-				continue
+				goto PING
 			}
 			if time.Since(n.lastTime) > cleanupPeriod*2 {
 				l4g.Trace("DHT: Old dude seen %v ago. Deleting.", time.Since(n.lastTime))
@@ -334,6 +334,7 @@ func (d *DhtEngine) routingTableCleanup() {
 				continue
 			}
 		}
+PING:
 		d.Ping(n.address.String())
 	}
 	duration := time.Since(t0)
