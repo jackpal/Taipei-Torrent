@@ -163,6 +163,7 @@ func (d *DhtEngine) Ping(address string) {
 	queryArguments := map[string]interface{}{"id": d.peerID}
 	query := queryMessage{t, "q", "ping", queryArguments}
 	go sendMsg(d.conn, r.address, query)
+	totalSentPing.Add(1)
 }
 
 // RoutingTable outputs the routing table. Needed for persisting the table
@@ -545,6 +546,7 @@ var totalKilledNodes = expvar.NewInt("totalKilledNodes")
 var totalReachableNodes = expvar.NewInt("totalReachableNodes")
 var totalDupes = expvar.NewInt("totalDupes")
 var totalPeers = expvar.NewInt("totalPeers")
+var totalSentPing = expvar.NewInt("totalSentPing")
 var totalSentGetPeers = expvar.NewInt("totalSentGetPeers")
 var totalRecvGetPeers = expvar.NewInt("totalRecvGetPeers")
 var totalRecvGetPeersReply = expvar.NewInt("totalRecvGetPeersReply")
