@@ -339,6 +339,8 @@ PING:
 	}
 	duration := time.Since(t0)
 	// If this pauses the server for too long I may have to segment the cleanup.
+	// 2000 nodes: it takes ~12ms
+	// 4000 nodes: ~24ms.
 	l4g.Info("DHT: Routing table cleanup took %v", duration)
 }
 
