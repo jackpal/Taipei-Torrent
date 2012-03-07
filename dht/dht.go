@@ -41,7 +41,6 @@
 //
 
 // TODO: Save routing table on disk to be preserved between instances.
-// TODO: Cleanup bad nodes from time to time.
 
 // All methods of DhtRemoteNode (supposedly) run in a single thread so there
 // should be no races. We use auxiliary goroutines for IO and they communicate
@@ -334,7 +333,7 @@ func (d *DhtEngine) routingTableCleanup() {
 				continue
 			}
 		}
-PING:
+	PING:
 		d.Ping(n.address.String())
 	}
 	duration := time.Since(t0)
@@ -543,19 +542,19 @@ func (d *DhtEngine) processGetPeerResults(node *DhtRemoteNode, resp responseType
 	}
 }
 
-// Debugging information:
-// Which nodes we contacted.
-var totalNodes = expvar.NewInt("totalNodes")
-var totalKilledNodes = expvar.NewInt("totalKilledNodes")
-var totalReachableNodes = expvar.NewInt("totalReachableNodes")
-var totalDupes = expvar.NewInt("totalDupes")
-var totalPeers = expvar.NewInt("totalPeers")
-var totalSentPing = expvar.NewInt("totalSentPing")
-var totalSentGetPeers = expvar.NewInt("totalSentGetPeers")
-var totalRecvGetPeers = expvar.NewInt("totalRecvGetPeers")
-var totalRecvGetPeersReply = expvar.NewInt("totalRecvGetPeersReply")
-var totalRecvPingReply = expvar.NewInt("totalRecvPingReply")
-var totalRecvFindNode = expvar.NewInt("totalRecvFindNode")
+var (
+	totalNodes             = expvar.NewInt("totalNodes")
+	totalKilledNodes       = expvar.NewInt("totalKilledNodes")
+	totalReachableNodes    = expvar.NewInt("totalReachableNodes")
+	totalDupes             = expvar.NewInt("totalDupes")
+	totalPeers             = expvar.NewInt("totalPeers")
+	totalSentPing          = expvar.NewInt("totalSentPing")
+	totalSentGetPeers      = expvar.NewInt("totalSentGetPeers")
+	totalRecvGetPeers      = expvar.NewInt("totalRecvGetPeers")
+	totalRecvGetPeersReply = expvar.NewInt("totalRecvGetPeersReply")
+	totalRecvPingReply     = expvar.NewInt("totalRecvPingReply")
+	totalRecvFindNode      = expvar.NewInt("totalRecvFindNode")
+)
 
 func (d *DhtEngine) bootStrapNetwork() {
 	d.Ping(dhtRouter)
