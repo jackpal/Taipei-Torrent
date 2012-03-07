@@ -3,6 +3,7 @@ package dht
 
 import (
 	"bytes"
+	"expvar"
 	"log"
 	"net"
 	"strconv"
@@ -37,6 +38,11 @@ const (
 	NODE_CONTACT_LEN    = 26
 	PEER_CONTACT_LEN    = 6
 	MAX_UDP_PACKET_SIZE = 4096
+)
+
+var (
+	totalRecv = expvar.NewInt("totalRecv")
+	totalSent = expvar.NewInt("totalSent")
 )
 
 // The 'nodes' response is a string with fixed length contacts concatenated arbitrarily.
@@ -97,6 +103,7 @@ type responseType struct {
 
 // sendMsg bencodes the data in 'query' and sends it to the remote node.
 func sendMsg(conn *net.UDPConn, raddr *net.UDPAddr, query interface{}) {
+	totalSent.Add(1)
 	var b bytes.Buffer
 	if err := bencode.Marshal(&b, query); err != nil {
 		return
@@ -109,6 +116,7 @@ func sendMsg(conn *net.UDPConn, raddr *net.UDPAddr, query interface{}) {
 
 // Read responses from bencode-speaking nodes. Return the appropriate data structure.
 func readResponse(p packetType) (response responseType, err error) {
+	totalRecv.Add(1)
 	// The calls to bencode.Unmarshal() can be fragile.
 	defer func() {
 		if x := recover(); x != nil {
