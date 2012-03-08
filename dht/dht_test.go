@@ -19,9 +19,6 @@ func startDhtNode(t *testing.T) *DhtEngine {
 	return node
 }
 
-func dumpStats() {
-}
-
 // Requires Internet access and can be flaky if the server or the internet is
 // slow.
 func TestDhtLarge(t *testing.T) {

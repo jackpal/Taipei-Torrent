@@ -11,23 +11,19 @@ import (
 
 func BenchmarkFindClosest(b *testing.B) {
 	b.StopTimer()
-
-	// 16 bytes prefix for very distant nodes.
-	distant := "\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff"
-
+	// 16 bytes infohash prefix.
+	prefix := "\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff"
 	node, err := NewDhtNode("00bcdefghij01234567", 0, 1e7)
 	if err != nil {
 		log.Fatal(err)
 	}
-
 	// Add 100k nodes to the remote nodes slice.
 	for i := 0; i < 100000; i++ {
-
 		rId := make([]byte, 4)
 		if _, err := rand.Read(rId); err != nil {
 			log.Fatal("Couldnt produce random numbers for FindClosest:", err)
 		}
-		r, _ := node.newRemoteNode(distant+string(rId), ":0")
+		r, _ := node.newRemoteNode(prefix+string(rId), ":0")
 		if len(r.id) != 20 {
 			log.Fatalf("DhtRemoteNode construction error, wrong len: want %d, got %d",
 				20, len(r.id))
@@ -69,7 +65,7 @@ func TestNodeDelete(t *testing.T) {
 		tree.insert(r)
 	}
 	for i, r := range []string{"\x00", "\x01"} {
-		// t.Logf("cutting: %x", r)
+		t.Logf("Removing node: %x", r)
 		tree.cut(r, 0)
 		neighbors := tree.lookup(r)
 		if len(neighbors) == 0 {
@@ -81,27 +77,20 @@ func TestNodeDelete(t *testing.T) {
 		if r == neighbors[0].id {
 			t.Errorf("Node didnt get deleted as expected: %x", r)
 		}
-		// for _, x := range neighbors {
-		// 	t.Logf("%x", x.id)
-		// }
 	}
 
 }
 
 func TestNodeDistance(t *testing.T) {
-
 	tree := &nTree{}
-
 	for _, r := range nodes {
 		r.reachable = true
 		tree.insert(r)
 	}
-
 	tests := []testData{
 		{"\x04", 8},
 		{"\x07", 8},
 	}
-
 	for _, r := range tests {
 		distances := make([]string, 0, len(tests))
 		neighbors := tree.lookup(r.query)
@@ -109,7 +98,6 @@ func TestNodeDistance(t *testing.T) {
 			t.Errorf("id: %x, wanted len=%d, got len=%d", r.query, r.want, len(neighbors))
 			t.Errorf("Details: %#v", neighbors)
 		}
-
 		for _, x := range neighbors {
 			d := hashDistance(r.query, x.id)
 			var b []string
