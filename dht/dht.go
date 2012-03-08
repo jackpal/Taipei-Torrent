@@ -189,25 +189,15 @@ func (d *DhtEngine) DoDht() {
 	d.conn = socket
 	go readFromSocket(socket, socketChan)
 
-	d.bootStrapNetwork()
+	// Bootstrap the network.
+	d.Ping(dhtRouter)
 	cleanupTicker := time.Tick(cleanupPeriod)
 
-	l4g.Info("DHT: Starting DHT node.")
+	l4g.Info("DHT: Starting DHT node %x.", d.peerID)
 	for {
 		select {
-		case helloNode := <-d.remoteNodeAcquaintance:
-			// We've got a new node id. We need to:
-			// - see if we know it already, skip accordingly.
-			// - ping it and see if it's reachable. Ignore otherwise.
-			// - save it on our list of good nodes.
-			if _, ok := d.remoteNodes[helloNode.Id]; !ok {
-				if _, err := d.newRemoteNode(helloNode.Id, helloNode.Address); err != nil {
-					l4g.Warn("newRemoteNode error:", err)
-				} else if len(d.remoteNodes) < maxNodes {
-					d.Ping(helloNode.Address)
-				}
-			}
-
+		case n := <-d.remoteNodeAcquaintance:
+			d.helloFromPeer(n)
 		case needPeers := <-d.peersRequest:
 			// torrent server is asking for more peers for a particular infoHash.  Ask the closest nodes for
 			// directions. The goroutine will write into the PeersNeededResults channel.
@@ -217,6 +207,20 @@ func (d *DhtEngine) DoDht() {
 			d.processPacket(p)
 		case <-cleanupTicker:
 			d.routingTableCleanup()
+		}
+	}
+}
+
+func (d *DhtEngine) helloFromPeer(n *DhtNodeCandidate) {
+	// We've got a new node id. We need to:
+	// - see if we know it already, skip accordingly.
+	// - ping it and see if it's reachable. Ignore otherwise.
+	// - save it on our list of good nodes.
+	if _, ok := d.remoteNodes[n.Id]; !ok {
+		if _, err := d.newRemoteNode(n.Id, n.Address); err != nil {
+			l4g.Warn("newRemoteNode error:", err)
+		} else if len(d.remoteNodes) < maxNodes {
+			d.Ping(n.Address)
 		}
 	}
 }
@@ -266,7 +270,7 @@ func (d *DhtEngine) processPacket(p packetType) {
 			case "get_peers":
 				d.processGetPeerResults(node, r)
 			default:
-				l4g.Info("DHT: Unknown query type:", query.Type, p.raddr)
+				l4g.Info("DHT: Unknown query type: %v from %v", query.Type, p.raddr)
 			}
 			node.pastQueries[r.T] = query
 			delete(node.pendingQueries, r.T)
@@ -546,10 +550,6 @@ var (
 	totalRecvPingReply     = expvar.NewInt("totalRecvPingReply")
 	totalRecvFindNode      = expvar.NewInt("totalRecvFindNode")
 )
-
-func (d *DhtEngine) bootStrapNetwork() {
-	d.Ping(dhtRouter)
-}
 
 func init() {
 	l4g.Global.AddFilter("stdout", l4g.INFO, l4g.NewConsoleLogWriter())
