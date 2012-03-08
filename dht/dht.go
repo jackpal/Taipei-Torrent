@@ -76,7 +76,7 @@ func init() {
 // for torrent downloads without requiring a tracker. The client can only use the public (first letter uppercase)
 // channels for communicating with the DHT goroutines.
 type DhtEngine struct {
-	peerID string
+	nodeId string
 	port   int
 
 	remoteNodes map[string]*DhtRemoteNode // key == address
@@ -96,7 +96,7 @@ type DhtEngine struct {
 
 func NewDhtNode(nodeId string, port, numTargetPeers int) (node *DhtEngine, err error) {
 	node = &DhtEngine{
-		peerID:                 nodeId,
+		nodeId:                 nodeId,
 		port:                   port,
 		remoteNodes:            make(map[string]*DhtRemoteNode),
 		tree:                   &nTree{},
@@ -150,7 +150,7 @@ func (d *DhtEngine) Ping(address string) {
 	l4g.Debug("DHT: ping => %+v\n", address)
 	t := r.newQuery("ping")
 
-	queryArguments := map[string]interface{}{"id": d.peerID}
+	queryArguments := map[string]interface{}{"id": d.nodeId}
 	query := queryMessage{t, "q", "ping", queryArguments}
 	go sendMsg(d.conn, r.address, query)
 	totalSentPing.Add(1)
@@ -193,7 +193,7 @@ func (d *DhtEngine) DoDht() {
 	d.Ping(dhtRouter)
 	cleanupTicker := time.Tick(cleanupPeriod)
 
-	l4g.Info("DHT: Starting DHT node %x.", d.peerID)
+	l4g.Info("DHT: Starting DHT node %x.", d.nodeId)
 	for {
 		select {
 		case n := <-d.remoteNodeAcquaintance:
@@ -382,7 +382,7 @@ func (d *DhtEngine) getPeers(r *DhtRemoteNode, ih string) {
 	transId := r.newQuery(ty)
 	r.pendingQueries[transId].ih = ih
 	queryArguments := map[string]interface{}{
-		"id":        d.peerID,
+		"id":        d.nodeId,
 		"info_hash": ih,
 	}
 	query := queryMessage{transId, "q", ty, queryArguments}
@@ -403,7 +403,7 @@ func (d *DhtEngine) announcePeer(address *net.UDPAddr, ih string, token string) 
 	l4g.Trace("DHT: announce_peer => %v %x %x\n", address, ih, token)
 	transId := r.newQuery(ty)
 	queryArguments := map[string]interface{}{
-		"id":        d.peerID,
+		"id":        d.nodeId,
 		"info_hash": ih,
 		"port":      d.port,
 		"token":     token,
@@ -415,7 +415,7 @@ func (d *DhtEngine) announcePeer(address *net.UDPAddr, ih string, token string) 
 func (d *DhtEngine) replyGetPeers(addr *net.UDPAddr, r responseType) {
 	totalRecvGetPeers.Add(1)
 	l4g.Info(func() string {
-		x := hashDistance(r.A.InfoHash, d.peerID)
+		x := hashDistance(r.A.InfoHash, d.nodeId)
 		return fmt.Sprintf("DHT get_peers. Host: %v , nodeID: %x , InfoHash: %x , distance to me: %x", addr, r.A.Id, r.A.InfoHash, x)
 	})
 
@@ -453,8 +453,8 @@ func (d *DhtEngine) replyGetPeers(addr *net.UDPAddr, r responseType) {
 func (d *DhtEngine) replyFindNode(addr *net.UDPAddr, r responseType) {
 	totalRecvFindNode.Add(1)
 	l4g.Trace(func() string {
-		x := hashDistance(r.A.Target, d.peerID)
-		return fmt.Sprintf("DHT find_node. Host: %v , peerID: %x , nodeID: %x , distance to me: %x", addr, r.A.Id, r.A.Target, x)
+		x := hashDistance(r.A.Target, d.nodeId)
+		return fmt.Sprintf("DHT find_node. Host: %v , nodeId: %x , target ID: %x , distance to me: %x", addr, r.A.Id, r.A.Target, x)
 	})
 
 	node := r.A.Target
@@ -482,7 +482,7 @@ func (d *DhtEngine) replyPing(addr *net.UDPAddr, response responseType) {
 	reply := replyMessage{
 		T: response.T,
 		Y: "r",
-		R: map[string]interface{}{"id": d.peerID},
+		R: map[string]interface{}{"id": d.nodeId},
 	}
 	go sendMsg(d.conn, addr, reply)
 }
