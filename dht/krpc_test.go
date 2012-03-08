@@ -6,14 +6,8 @@ import (
 	"testing"
 	"time"
 
-	l4g "code.google.com/p/log4go"
+	"github.com/nictuku/Taipei-Torrent/bencode"
 )
-
-type pingTest struct {
-	transId string
-	nodeId  string
-	out     string
-}
 
 func startDhtNode(t *testing.T) *DhtEngine {
 	port := rand.Intn(10000) + 40000
@@ -26,64 +20,56 @@ func startDhtNode(t *testing.T) *DhtEngine {
 }
 
 func dumpStats() {
-	l4g.Info("=== Stats ===")
-	l4g.Info("totalReachableNodes: %d", totalReachableNodes)
-	l4g.Info("totalDupes: %d", totalDupes)
-	l4g.Info("totalPeers: %d", totalPeers)
-	l4g.Info("totalSentGetPeers: %d", totalSentGetPeers)
 }
 
-// Requires Internet access.
-func TestDhtBigAndSlow(t *testing.T) {
-	l4g.Info("start node.")
+// Requires Internet access and can be flaky if the server or the internet is
+// slow.
+func TestDhtLarge(t *testing.T) {
 	node := startDhtNode(t)
-	l4g.Info("done start node %v", node.port)
-	realDHTNodes := map[string]string{
-		//"DHT_ROUTER": "router.bittorrent.com",
-		//"DHT_ROUTER": "cetico.org",
-		"DHTROUTER__DHTROUTER": "65.99.215.8",
-		// DHT test router.
-		//"DHT_ROUTER": "dht.cetico.org:9660",
-		//"DHT_ROUTER": "localhost:33149",
+	realDHTNodes := []string{
+		"1.a.magnets.im",
 	}
-	// make this a ping response instead.
-	//for id, address := range realDHTNodes {
-	for id, addr := range realDHTNodes {
+	for _, addr := range realDHTNodes {
 		ip, err := net.LookupHost(addr)
 		if err != nil {
 			t.Error(err)
 			continue
 		}
-		addr = ip[0] + ":6881"
-		realDHTNodes[id] = addr
-		candidate := &DhtNodeCandidate{Id: id, Address: addr}
-		go node.RemoteNodeAcquaintance(candidate)
+		node.Ping(ip[0] + ":6881")
 	}
-	time.Sleep(2 * time.Second)
-	for _, address := range realDHTNodes {
-		if _, ok := node.remoteNodes[address]; !ok {
-			t.Fatalf("External DHT node not reachable: %s", address)
+
+	// Test that we can reach at least one node.
+	success := false
+	for i := 0; i < 10; i++ {
+		tbl := node.RoutingTable()
+		if len(tbl) > 0 {
+			t.Logf("Contacted %d DHT nodes.", len(tbl))
+			success = true
+			break
 		}
+		time.Sleep(time.Second)
 	}
-	// Bah, need to find a more permanent test torrent.
-	// http://www.osst.co.uk/Download/DamnSmallLinux/current/dsl-4.4.10.iso.torrent
-	infoHash := "\xa4\x1d\x1f\x89\x28\x64\x54\xb1\x8d\x8d\x4c\xb2\xe0\x2f\xfe\x11\x58\x74\x76\xc4"
-	time.Sleep(1.5e9)
+	if !success {
+		t.Fatal("No external DHT node could be contacted.")
+	}
+
+	// Test that we can find peers for a known torrent in a timely fashion.
+	//
+	// Torrent from: http://www.clearbits.net/torrents/244-time-management-for-anarchists-1
+	infoHash := "\xb4\x62\xc0\xa8\xbc\xef\x1c\xe5\xbb\x56\xb9\xfd\xb8\xcf\x37\xff\xd0\x2f\x5f\x59"
 	go node.PeersRequest(infoHash, true)
 	timeout := make(chan bool, 1)
 	go func() {
-		time.Sleep(10e9) // seconds
+		time.Sleep(10 * time.Second)
 		timeout <- true
 	}()
 	var infoHashPeers map[string][]string
-	l4g.Info("Waiting1")
 	select {
 	case infoHashPeers = <-node.PeersRequestResults:
-		t.Logf("Found peers: %q", infoHashPeers[infoHash])
+		t.Logf("Found %d peers.", len(infoHashPeers[infoHash]))
 	case <-timeout:
-		t.Fatal("could not find new torrent peers: timeout")
+		t.Fatal("Could not find new peers: timed out")
 	}
-	t.Logf("%d new torrent peers obtained.", len(infoHashPeers[infoHash]))
 	for ih, peers := range infoHashPeers {
 		if infoHash != ih {
 			t.Fatal("Unexpected infohash returned")
@@ -91,11 +77,15 @@ func TestDhtBigAndSlow(t *testing.T) {
 		if len(peers) == 0 {
 			t.Fatal("Could not find new torrent peers.")
 		}
-		// for _, peer := range peers {
-		// 	debug.Printf("peer found: %+v\n", bencode.BinaryToDottedPort(peer))
-		// }
+		for _, peer := range peers {
+			t.Logf("peer found: %+v\n", bencode.BinaryToDottedPort(peer))
+		}
 	}
-	dumpStats()
+	t.Logf("=== Stats ===")
+	t.Logf("totalReachableNodes: %v", totalReachableNodes)
+	t.Logf("totalDupes: %v", totalDupes)
+	t.Logf("totalPeers: %v", totalPeers)
+	t.Logf("totalSentGetPeers: %v", totalSentGetPeers)
 }
 
 func init() {
