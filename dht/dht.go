@@ -1,27 +1,18 @@
 // DHT node for Taipei Torrent, for tracker-less peer information exchange.
 //
 // Status:
-//  - able to get peers from the network
-//  - almost never removes nodes from the routing table.
-//  - does not proactively ping nodes to see if they are reachable.
-//  - has only soft limits for memory growth.
+//  Supports all DHT operations from the specification, except:
+//  - doesn't handle announce_peer.
+//  - doesn't try to maintain a minimum number of healthy node in the routing
+//  table (find_node).
 //
-// Usage: 
-//
-//  dhtNode := NewDhtNode("abcdefghij0123456789", port)  // Torrent node ID, UDP port.
-//  go dhtNode.PeersRequest(infoHash)
-//  -- wait --
-//  infoHashPeers = <-node.PeersRequestResults
-//
-//  infoHashPeers will contain:
-//  => map[string][]string
-//  -> key = infoHash
-//  -> value = slice of peer contacts in binary form. 
+// Summary from the bittorrent DHT protocol specification: 
 //
 // Message types:
 // - query
 // - response
 // - error
+//
 //
 // RPCs:
 //      ping:
@@ -42,9 +33,9 @@
 
 // TODO: Save routing table on disk to be preserved between instances.
 
-// All methods of DhtRemoteNode (supposedly) run in a single thread so there
-// should be no races. We use auxiliary goroutines for IO and they communicate
-// with the main goroutine via channels.
+// All methods of DhtRemoteNode run in a single thread so there should be no
+// races. We use auxiliary goroutines for IO and they communicate with the main
+// goroutine via channels.
 
 // Now for the true story: there are a few methods of DhtRemoteNode which can
 // be called by the client (different thread) and are clearly unsafe. They will
