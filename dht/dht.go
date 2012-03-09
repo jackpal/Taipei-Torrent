@@ -89,23 +89,25 @@ type DhtEngine struct {
 	Logger           Logger
 
 	// Public channels:
-	remoteNodeAcquaintance chan *DhtNodeCandidate
+	remoteNodeAcquaintance chan string
 	peersRequest           chan peerReq
 	PeersRequestResults    chan map[string][]string // key = infohash, v = slice of peers.
 }
 
 func NewDhtNode(nodeId string, port, numTargetPeers int) (node *DhtEngine, err error) {
 	node = &DhtEngine{
-		nodeId:                 nodeId,
-		port:                   port,
-		remoteNodes:            make(map[string]*DhtRemoteNode),
-		tree:                   &nTree{},
-		PeersRequestResults:    make(chan map[string][]string, 1),
-		remoteNodeAcquaintance: make(chan *DhtNodeCandidate),
-		peersRequest:           make(chan peerReq, 1), // buffer to avoid deadlock.
-		infoHashPeers:          make(map[string]map[string]int),
-		activeInfoHashes:       make(map[string]bool),
-		numTargetPeers:         numTargetPeers,
+		nodeId:              nodeId,
+		port:                port,
+		remoteNodes:         make(map[string]*DhtRemoteNode),
+		tree:                &nTree{},
+		PeersRequestResults: make(chan map[string][]string, 1),
+		// Buffer to avoid blocking on sends.
+		remoteNodeAcquaintance: make(chan string, 10),
+		// Buffer to avoid deadlocks and blocking on sends.
+		peersRequest:     make(chan peerReq, 10),
+		infoHashPeers:    make(map[string]map[string]int),
+		activeInfoHashes: make(map[string]bool),
+		numTargetPeers:   numTargetPeers,
 	}
 	return
 }
@@ -121,22 +123,16 @@ type peerReq struct {
 	announce bool
 }
 
-type DhtNodeCandidate struct {
-	Id      string
-	Address string
-}
-
 // PeersRequest tells the DHT to search for more peers for the infoHash
-// provided. announce should be true if the connected peer is actively download
-// this infohash. False should be used for when the DHT node is just a probe
-// and shouldn't send announce_peer.
-// Must be called as a goroutine.
+// provided. announce should be true if the connected peer is actively
+// downloading this infohash. False should be used for when the DHT node is
+// just a probe and shouldn't send announce_peer.
 func (d *DhtEngine) PeersRequest(ih string, announce bool) {
 	d.peersRequest <- peerReq{ih, announce}
 }
 
-func (d *DhtEngine) RemoteNodeAcquaintance(n *DhtNodeCandidate) {
-	d.remoteNodeAcquaintance <- n
+func (d *DhtEngine) RemoteNodeAcquaintance(addr string) {
+	d.remoteNodeAcquaintance <- addr
 }
 
 // XXX unsafe.
@@ -196,8 +192,8 @@ func (d *DhtEngine) DoDht() {
 	l4g.Info("DHT: Starting DHT node %x.", d.nodeId)
 	for {
 		select {
-		case n := <-d.remoteNodeAcquaintance:
-			d.helloFromPeer(n)
+		case addr := <-d.remoteNodeAcquaintance:
+			d.helloFromPeer(addr)
 		case peersRequest := <-d.peersRequest:
 			// torrent server is asking for more peers for a particular infoHash.  Ask the closest nodes for
 			// directions. The goroutine will write into the PeersNeededResults channel.
@@ -214,17 +210,18 @@ func (d *DhtEngine) DoDht() {
 	}
 }
 
-func (d *DhtEngine) helloFromPeer(n *DhtNodeCandidate) {
+func (d *DhtEngine) helloFromPeer(addr string) {
 	// We've got a new node id. We need to:
 	// - see if we know it already, skip accordingly.
-	// - ping it and see if it's reachable. Ignore otherwise.
-	// - save it on our list of good nodes.
-	if _, ok := d.remoteNodes[n.Id]; !ok {
-		if _, err := d.newRemoteNode(n.Id, n.Address); err != nil {
-			l4g.Warn("newRemoteNode error:", err)
-		} else if len(d.remoteNodes) < maxNodes {
-			d.Ping(n.Address)
-		}
+	// - ping it and see if it's reachable.
+	// - if it responds, save it in the routing table.
+	if _, ok := d.remoteNodes[addr]; ok {
+		// Node host+port already in the routing table.
+		return
+	}
+	if len(d.remoteNodes) < maxNodes {
+		d.Ping(addr)
+		return
 	}
 }
 

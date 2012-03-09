@@ -15,8 +15,8 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/jackpal/Taipei-Torrent/bencode"
-	"github.com/jackpal/Taipei-Torrent/dht"
+	"github.com/nictuku/Taipei-Torrent/bencode"
+	"github.com/nictuku/Taipei-Torrent/dht"
 )
 
 const (
@@ -337,7 +337,7 @@ func (t *TorrentSession) DoTorrent() (err error) {
 	DhtPeersRequestResults := make(chan map[string][]string)
 	if useDHT {
 		DhtPeersRequestResults = t.dht.PeersRequestResults
-		go t.dht.PeersRequest(t.m.InfoHash, true)
+		t.dht.PeersRequest(t.m.InfoHash, true)
 	}
 
 	t.fetchTrackerInfo("started")
@@ -655,10 +655,9 @@ func (t *TorrentSession) DoMessage(p *peerState, message []byte) (err error) {
 		if useDHT {
 			// If 128, then it supports DHT.
 			if int(message[7])&0x01 == 0x01 {
-				candidate := &dht.DhtNodeCandidate{Id: p.id, Address: p.address}
 				// It's OK if we know this node already. The DHT engine will
 				// ignore it accordingly.
-				go t.dht.RemoteNodeAcquaintance(candidate)
+				go t.dht.RemoteNodeAcquaintance(p.address)
 			}
 		}
 
@@ -820,8 +819,7 @@ func (t *TorrentSession) DoMessage(p *peerState, message []byte) (err error) {
 			if len(message) != 3 {
 				return errors.New(fmt.Sprintf("Unexpected length for port message:", len(message)))
 			}
-			candidate := &dht.DhtNodeCandidate{Id: p.id, Address: p.address}
-			go t.dht.RemoteNodeAcquaintance(candidate)
+			go t.dht.RemoteNodeAcquaintance(p.address)
 		default:
 			return errors.New("Uknown message id")
 		}
