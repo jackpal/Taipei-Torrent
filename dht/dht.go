@@ -90,7 +90,7 @@ type DhtEngine struct {
 
 	// Public channels:
 	remoteNodeAcquaintance chan *DhtNodeCandidate
-	peersRequest           chan string
+	peersRequest           chan peerReq
 	PeersRequestResults    chan map[string][]string // key = infohash, v = slice of peers.
 }
 
@@ -102,7 +102,7 @@ func NewDhtNode(nodeId string, port, numTargetPeers int) (node *DhtEngine, err e
 		tree:                   &nTree{},
 		PeersRequestResults:    make(chan map[string][]string, 1),
 		remoteNodeAcquaintance: make(chan *DhtNodeCandidate),
-		peersRequest:           make(chan string, 1), // buffer to avoid deadlock.
+		peersRequest:           make(chan peerReq, 1), // buffer to avoid deadlock.
 		infoHashPeers:          make(map[string]map[string]int),
 		activeInfoHashes:       make(map[string]bool),
 		numTargetPeers:         numTargetPeers,
@@ -116,23 +116,23 @@ type Logger interface {
 	GetPeers(*net.UDPAddr, string, string)
 }
 
+type peerReq struct {
+	ih       string
+	announce bool
+}
+
 type DhtNodeCandidate struct {
 	Id      string
 	Address string
 }
 
 // PeersRequest tells the DHT to search for more peers for the infoHash
-// provided. active should be true if the connected peer is actively download
+// provided. announce should be true if the connected peer is actively download
 // this infohash. False should be used for when the DHT node is just a probe
 // and shouldn't send announce_peer.
 // Must be called as a goroutine.
-// XXX unsafe.
-func (d *DhtEngine) PeersRequest(ih string, active bool) {
-	if active {
-		d.activeInfoHashes[ih] = true
-	}
-	// Signals the main DHT goroutine.
-	d.peersRequest <- ih
+func (d *DhtEngine) PeersRequest(ih string, announce bool) {
+	d.peersRequest <- peerReq{ih, announce}
 }
 
 func (d *DhtEngine) RemoteNodeAcquaintance(n *DhtNodeCandidate) {
@@ -198,11 +198,14 @@ func (d *DhtEngine) DoDht() {
 		select {
 		case n := <-d.remoteNodeAcquaintance:
 			d.helloFromPeer(n)
-		case needPeers := <-d.peersRequest:
+		case peersRequest := <-d.peersRequest:
 			// torrent server is asking for more peers for a particular infoHash.  Ask the closest nodes for
 			// directions. The goroutine will write into the PeersNeededResults channel.
-			l4g.Trace("DHT: torrent client asking more peers for %x. Calling GetPeers().", needPeers)
-			d.GetPeers(needPeers)
+			if peersRequest.announce {
+				d.activeInfoHashes[peersRequest.ih] = true
+			}
+			l4g.Trace("DHT: torrent client asking more peers for %x. Calling GetPeers().", peersRequest)
+			d.GetPeers(peersRequest.ih)
 		case p := <-socketChan:
 			d.processPacket(p)
 		case <-cleanupTicker:
