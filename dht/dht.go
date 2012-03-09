@@ -72,9 +72,9 @@ func init() {
 		"How often to ping nodes in the network to see if they are reachable.")
 }
 
-// DhtEngine should be created by NewDhtNode(). It provides DHT features to a torrent client, such as finding new peers
-// for torrent downloads without requiring a tracker. The client can only use the public (first letter uppercase)
-// channels for communicating with the DHT goroutines.
+// DhtEngine should be created by NewDhtNode(). It provides DHT features to a
+// torrent client, such as finding new peers for torrent downloads without
+// requiring a tracker.
 type DhtEngine struct {
 	nodeId string
 	port   int
@@ -135,23 +135,6 @@ func (d *DhtEngine) RemoteNodeAcquaintance(addr string) {
 	d.remoteNodeAcquaintance <- addr
 }
 
-// XXX unsafe.
-func (d *DhtEngine) Ping(address string) {
-	// TODO: should translate to an IP first.
-	r, err := d.getOrCreateRemoteNode(address)
-	if err != nil {
-		l4g.Info("ping error: %v", err)
-		return
-	}
-	l4g.Debug("DHT: ping => %+v\n", address)
-	t := r.newQuery("ping")
-
-	queryArguments := map[string]interface{}{"id": d.nodeId}
-	query := queryMessage{t, "q", "ping", queryArguments}
-	go sendMsg(d.conn, r.address, query)
-	totalSentPing.Add(1)
-}
-
 // RoutingTable outputs the routing table. Needed for persisting the table
 // between sessions.
 // XXX unsafe.
@@ -186,7 +169,7 @@ func (d *DhtEngine) DoDht() {
 	go readFromSocket(socket, socketChan)
 
 	// Bootstrap the network.
-	d.Ping(dhtRouter)
+	d.ping(dhtRouter)
 	cleanupTicker := time.Tick(cleanupPeriod)
 
 	l4g.Info("DHT: Starting DHT node %x.", d.nodeId)
@@ -216,11 +199,11 @@ func (d *DhtEngine) helloFromPeer(addr string) {
 	// - ping it and see if it's reachable.
 	// - if it responds, save it in the routing table.
 	if _, ok := d.remoteNodes[addr]; ok {
-		// Node host+port already in the routing table.
+		// Node host+port already known.
 		return
 	}
 	if len(d.remoteNodes) < maxNodes {
-		d.Ping(addr)
+		d.ping(addr)
 		return
 	}
 }
@@ -243,7 +226,7 @@ func (d *DhtEngine) processPacket(p packetType) {
 		if !ok {
 			l4g.Info("DHT: Received reply from a host we don't know: %v", p.raddr)
 			if len(d.remoteNodes) < maxNodes {
-				d.Ping(p.raddr.String())
+				d.ping(p.raddr.String())
 			}
 			// XXX: Add this guy to a list of dubious hosts.
 			return
@@ -281,7 +264,7 @@ func (d *DhtEngine) processPacket(p packetType) {
 		if _, ok := d.remoteNodes[p.raddr.String()]; !ok {
 			// Another candidate for the routing table. See if it's reachable.
 			if len(d.remoteNodes) < maxNodes {
-				d.Ping(p.raddr.String())
+				d.ping(p.raddr.String())
 			}
 		}
 		switch r.Q {
@@ -329,7 +312,7 @@ func (d *DhtEngine) routingTableCleanup() {
 			}
 		}
 	PING:
-		d.Ping(n.address.String())
+		d.ping(n.address.String())
 	}
 	duration := time.Since(t0)
 	// If this pauses the server for too long I may have to segment the cleanup.
@@ -374,6 +357,22 @@ func (d *DhtEngine) getOrCreateRemoteNode(address string) (r *DhtRemoteNode, err
 		r, err = d.newRemoteNode("", address)
 	}
 	return
+}
+
+func (d *DhtEngine) ping(address string) {
+	// TODO: should translate to an IP first.
+	r, err := d.getOrCreateRemoteNode(address)
+	if err != nil {
+		l4g.Info("ping error: %v", err)
+		return
+	}
+	l4g.Debug("DHT: ping => %+v\n", address)
+	t := r.newQuery("ping")
+
+	queryArguments := map[string]interface{}{"id": d.nodeId}
+	query := queryMessage{t, "q", "ping", queryArguments}
+	go sendMsg(d.conn, r.address, query)
+	totalSentPing.Add(1)
 }
 
 func (d *DhtEngine) getPeers(r *DhtRemoteNode, ih string) {
@@ -490,8 +489,8 @@ func (d *DhtEngine) replyPing(addr *net.UDPAddr, response responseType) {
 // Process another node's response to a get_peers query. If the response
 // contains peers, send them to the Torrent engine, our client, using the
 // DhtEngine.PeersRequestResults channel. If it contains closest nodes, query
-// them if we still need it.
-// Also announce ourselves as a peer for that node, unless we are in supernode mode.
+// them if we still need it. Also announce ourselves as a peer for that node,
+// unless we are in supernode mode.
 func (d *DhtEngine) processGetPeerResults(node *DhtRemoteNode, resp responseType) {
 	totalRecvGetPeersReply.Add(1)
 	query, _ := node.pendingQueries[resp.T]

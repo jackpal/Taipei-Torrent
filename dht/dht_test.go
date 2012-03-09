@@ -32,7 +32,7 @@ func TestDhtLarge(t *testing.T) {
 			t.Error(err)
 			continue
 		}
-		node.Ping(ip[0] + ":6881")
+		node.ping(ip[0] + ":6881")
 	}
 
 	// Test that we can reach at least one node.
