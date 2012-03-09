@@ -1,3 +1,31 @@
+// DHT routing using a binary tree and no buckets.
+//
+// Nodes have ids of 20-bytes. When looking up an infohash for itself or for a
+// remote host, the nodes have to look in its routing table for the closest
+// nodes and give out those.
+//
+// The distance between a node and an infohash is the XOR of the respective
+// strings. This means that 'sorting' nodes only makes sense with an infohash
+// as the pivot. You can't pre-sort nodes in any meaningful way.
+//
+// Most bittorrent/kademlia DHT implementations use a mix of bit-by-bit
+// comparison with the usage of buckets. That works very well. But I wanted to
+// try something different, that doesn't use buckets. So I use a simple binary tree.
+//
+// All nodes are inserted in the binary tree, with a fixed height of 160 (20
+// bytes). To lookup an infohash, I do an inorder traversal using the infohash
+// bit for each level.
+//
+// In most cases I'll reach the end of the tree without a precise hits, but I
+// simply continue the in-order traversal (but then to the 'left') and return
+// after I collect the 8 closest nodes.
+//
+// I don't know how slow this is compared to a implementation that uses
+// buckets. It's not slow as you would expect for a recursion of 160 levels,
+// and it's definitely more correct (the nodes in a bucket may or may not be
+// the closest that one knows for a particular infohash).
+//
+// TODO: Compress the tree since I don't actually need to have all 160 levels.
 package dht
 
 import (

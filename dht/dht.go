@@ -519,7 +519,6 @@ func (d *DhtEngine) processGetPeerResults(node *DhtRemoteNode, resp responseType
 			// If it's in our routing table already, ignore it.
 			if _, ok := d.remoteNodes[address]; ok {
 				totalDupes.Add(1)
-				// XXX Gotta improve things so we stop receiving so many dupes. Waste.
 			} else {
 				// And it is actually new. Interesting.
 				l4g.Trace(func() string {
