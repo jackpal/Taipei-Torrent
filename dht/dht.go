@@ -92,6 +92,7 @@ type DhtEngine struct {
 	remoteNodeAcquaintance chan string
 	peersRequest           chan peerReq
 	PeersRequestResults    chan map[string][]string // key = infohash, v = slice of peers.
+	rateLimit              *rateLimiter
 }
 
 func NewDhtNode(nodeId string, port, numTargetPeers int) (node *DhtEngine, err error) {
@@ -108,6 +109,7 @@ func NewDhtNode(nodeId string, port, numTargetPeers int) (node *DhtEngine, err e
 		infoHashPeers:    make(map[string]map[string]int),
 		activeInfoHashes: make(map[string]bool),
 		numTargetPeers:   numTargetPeers,
+		rateLimit:        NewLimiter(),
 	}
 	return
 }
@@ -209,6 +211,11 @@ func (d *DhtEngine) helloFromPeer(addr string) {
 }
 
 func (d *DhtEngine) processPacket(p packetType) {
+	if !d.rateLimit.checkBlock(p.raddr.IP.String()) {
+		l4g.Warn("ignoring blocked host: %v", p.raddr.IP)
+		totalIgnored.Add(1)
+		return
+	}
 	if p.b[0] != 'd' {
 		// Malformed DHT packet. There are protocol extensions out
 		// there that we don't support or understand.
@@ -547,6 +554,7 @@ var (
 	totalRecvGetPeersReply = expvar.NewInt("totalRecvGetPeersReply")
 	totalRecvPingReply     = expvar.NewInt("totalRecvPingReply")
 	totalRecvFindNode      = expvar.NewInt("totalRecvFindNode")
+	totalIgnored           = expvar.NewInt("totalIgnored")
 )
 
 func init() {
