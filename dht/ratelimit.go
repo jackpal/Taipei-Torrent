@@ -12,8 +12,8 @@ const (
 	maxHosts     = 1000
 )
 
-func NewLimiter() *rateLimiter {
-	r := rateLimiter{
+func NewThrottler() *clientThrottle {
+	r := clientThrottle{
 		c:       cache.NewLRUCache(maxHosts),
 		blocked: cache.NewLRUCache(maxHosts),
 	}
@@ -21,7 +21,7 @@ func NewLimiter() *rateLimiter {
 	return &r
 }
 
-type rateLimiter struct {
+type clientThrottle struct {
 	// Rate limiter.
 	c *cache.LRUCache
 
@@ -30,7 +30,7 @@ type rateLimiter struct {
 	blocked *cache.LRUCache
 }
 
-func (r *rateLimiter) checkBlock(host string) bool {
+func (r *clientThrottle) checkBlock(host string) bool {
 	_, blocked := r.blocked.Get(host)
 	if blocked {
 		// Bad guy stays there.
@@ -57,7 +57,7 @@ func (r *rateLimiter) checkBlock(host string) bool {
 // refill the buckets.
 // this is the first way I thought of how to implement client rate limiting.
 // Need to think and research more.
-func (r *rateLimiter) cleanup() {
+func (r *clientThrottle) cleanup() {
 	// Check the bucket faster than the rate period, to reduce the pressure in the cache.
 	t := time.Tick(5 * time.Second)
 

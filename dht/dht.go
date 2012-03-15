@@ -61,6 +61,7 @@ var (
 	dhtRouter     string
 	maxNodes      int
 	cleanupPeriod time.Duration
+	rateLimit     int64
 )
 
 func init() {
@@ -70,6 +71,8 @@ func init() {
 		"Maximum number of nodes to store in the routing table, in memory.")
 	flag.DurationVar(&cleanupPeriod, "cleanupPeriod", 10*time.Minute,
 		"How often to ping nodes in the network to see if they are reachable.")
+	flag.Int64Var(&rateLimit, "rateLimit", 1000,
+		"Maximum packets per second to be processed. Beyond this limit they are silently dropped.")
 }
 
 // DhtEngine should be created by NewDhtNode(). It provides DHT features to a
@@ -92,7 +95,7 @@ type DhtEngine struct {
 	remoteNodeAcquaintance chan string
 	peersRequest           chan peerReq
 	PeersRequestResults    chan map[string][]string // key = infohash, v = slice of peers.
-	rateLimit              *rateLimiter
+	clientThrottle         *clientThrottle
 }
 
 func NewDhtNode(nodeId string, port, numTargetPeers int) (node *DhtEngine, err error) {
@@ -109,7 +112,7 @@ func NewDhtNode(nodeId string, port, numTargetPeers int) (node *DhtEngine, err e
 		infoHashPeers:    make(map[string]map[string]int),
 		activeInfoHashes: make(map[string]bool),
 		numTargetPeers:   numTargetPeers,
-		rateLimit:        NewLimiter(),
+		clientThrottle:   NewThrottler(),
 	}
 	return
 }
@@ -174,8 +177,18 @@ func (d *DhtEngine) DoDht() {
 	d.ping(dhtRouter)
 	cleanupTicker := time.Tick(cleanupPeriod)
 
+	// Token bucket for limiting the number of packets per second.
+	fillTokenBucket := time.Tick(time.Second / 10)
+	tokenBucket := rateLimit
+
+	if rateLimit < 10 {
+		// Less than 10 leads to rounding problems.
+		rateLimit = 10
+	}
+
 	l4g.Info("DHT: Starting DHT node %x.", d.nodeId)
 	for {
+
 		select {
 		case addr := <-d.remoteNodeAcquaintance:
 			d.helloFromPeer(addr)
@@ -188,7 +201,17 @@ func (d *DhtEngine) DoDht() {
 			l4g.Trace("DHT: torrent client asking more peers for %x. Calling GetPeers().", peersRequest)
 			d.GetPeers(peersRequest.ih)
 		case p := <-socketChan:
-			d.processPacket(p)
+			if tokenBucket > 0 {
+				d.process(p)
+				tokenBucket -= 1
+			} else {
+				// In the future it might be better to avoid dropping things like ping replies.
+				totalDroppedPackets.Add(1)
+			}
+		case <-fillTokenBucket:
+			if tokenBucket < rateLimit {
+				tokenBucket += rateLimit / 10
+			}
 		case <-cleanupTicker:
 			d.routingTableCleanup()
 		}
@@ -210,10 +233,11 @@ func (d *DhtEngine) helloFromPeer(addr string) {
 	}
 }
 
-func (d *DhtEngine) processPacket(p packetType) {
-	if !d.rateLimit.checkBlock(p.raddr.IP.String()) {
+func (d *DhtEngine) process(p packetType) {
+	totalRecv.Add(1)
+	if !d.clientThrottle.checkBlock(p.raddr.IP.String()) {
 		l4g.Warn("ignoring blocked host: %v", p.raddr.IP)
-		totalIgnored.Add(1)
+		totalIgnoredHosts.Add(1)
 		return
 	}
 	if p.b[0] != 'd' {
@@ -554,7 +578,9 @@ var (
 	totalRecvGetPeersReply = expvar.NewInt("totalRecvGetPeersReply")
 	totalRecvPingReply     = expvar.NewInt("totalRecvPingReply")
 	totalRecvFindNode      = expvar.NewInt("totalRecvFindNode")
-	totalIgnored           = expvar.NewInt("totalIgnored")
+	totalIgnoredHosts      = expvar.NewInt("totalIgnoredHosts")
+	totalDroppedPackets    = expvar.NewInt("totalDroppedPackets")
+	totalRecv              = expvar.NewInt("totalRecv")
 )
 
 func init() {

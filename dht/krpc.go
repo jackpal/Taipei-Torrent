@@ -41,7 +41,6 @@ const (
 )
 
 var (
-	totalRecv = expvar.NewInt("totalRecv")
 	totalSent = expvar.NewInt("totalSent")
 )
 
@@ -116,7 +115,6 @@ func sendMsg(conn *net.UDPConn, raddr *net.UDPAddr, query interface{}) {
 
 // Read responses from bencode-speaking nodes. Return the appropriate data structure.
 func readResponse(p packetType) (response responseType, err error) {
-	totalRecv.Add(1)
 	// The calls to bencode.Unmarshal() can be fragile.
 	defer func() {
 		if x := recover(); x != nil {
