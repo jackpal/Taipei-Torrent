@@ -236,8 +236,7 @@ func (d *DhtEngine) helloFromPeer(addr string) {
 func (d *DhtEngine) process(p packetType) {
 	totalRecv.Add(1)
 	if !d.clientThrottle.checkBlock(p.raddr.IP.String()) {
-		l4g.Warn("ignoring blocked host: %v", p.raddr.IP)
-		totalIgnoredHosts.Add(1)
+		totalPacketsFromBlockedHosts.Add(1)
 		return
 	}
 	if p.b[0] != 'd' {
@@ -567,20 +566,20 @@ func (d *DhtEngine) processGetPeerResults(node *DhtRemoteNode, resp responseType
 }
 
 var (
-	totalNodes             = expvar.NewInt("totalNodes")
-	totalKilledNodes       = expvar.NewInt("totalKilledNodes")
-	totalReachableNodes    = expvar.NewInt("totalReachableNodes")
-	totalDupes             = expvar.NewInt("totalDupes")
-	totalPeers             = expvar.NewInt("totalPeers")
-	totalSentPing          = expvar.NewInt("totalSentPing")
-	totalSentGetPeers      = expvar.NewInt("totalSentGetPeers")
-	totalRecvGetPeers      = expvar.NewInt("totalRecvGetPeers")
-	totalRecvGetPeersReply = expvar.NewInt("totalRecvGetPeersReply")
-	totalRecvPingReply     = expvar.NewInt("totalRecvPingReply")
-	totalRecvFindNode      = expvar.NewInt("totalRecvFindNode")
-	totalIgnoredHosts      = expvar.NewInt("totalIgnoredHosts")
-	totalDroppedPackets    = expvar.NewInt("totalDroppedPackets")
-	totalRecv              = expvar.NewInt("totalRecv")
+	totalNodes                   = expvar.NewInt("totalNodes")
+	totalKilledNodes             = expvar.NewInt("totalKilledNodes")
+	totalReachableNodes          = expvar.NewInt("totalReachableNodes")
+	totalDupes                   = expvar.NewInt("totalDupes")
+	totalPeers                   = expvar.NewInt("totalPeers")
+	totalSentPing                = expvar.NewInt("totalSentPing")
+	totalSentGetPeers            = expvar.NewInt("totalSentGetPeers")
+	totalRecvGetPeers            = expvar.NewInt("totalRecvGetPeers")
+	totalRecvGetPeersReply       = expvar.NewInt("totalRecvGetPeersReply")
+	totalRecvPingReply           = expvar.NewInt("totalRecvPingReply")
+	totalRecvFindNode            = expvar.NewInt("totalRecvFindNode")
+	totalPacketsFromBlockedHosts = expvar.NewInt("totalPacketsFromBlockedHosts")
+	totalDroppedPackets          = expvar.NewInt("totalDroppedPackets")
+	totalRecv                    = expvar.NewInt("totalRecv")
 )
 
 func init() {
