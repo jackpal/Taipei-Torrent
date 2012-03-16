@@ -47,7 +47,6 @@ import (
 	"expvar"
 	"flag"
 	"fmt"
-	"log"
 	"math/rand"
 	"net"
 	"strings"
@@ -246,7 +245,7 @@ func (d *DhtEngine) process(p packetType) {
 	}
 	r, err := readResponse(p)
 	if err != nil {
-		log.Printf("DHT: readResponse Error: %v, %q", err, string(p.b))
+		l4g.Warn("DHT: readResponse Error: %v, %q", err, string(p.b))
 		return
 	}
 	switch {
@@ -583,5 +582,5 @@ var (
 )
 
 func init() {
-	l4g.Global.AddFilter("stdout", l4g.INFO, l4g.NewConsoleLogWriter())
+	l4g.Global.AddFilter("stdout", l4g.WARNING, l4g.NewConsoleLogWriter())
 }

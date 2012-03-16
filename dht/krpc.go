@@ -4,11 +4,11 @@ package dht
 import (
 	"bytes"
 	"expvar"
-	"log"
 	"net"
 	"strconv"
 	"time"
 
+	l4g "code.google.com/p/log4go"
 	"github.com/nictuku/Taipei-Torrent/bencode"
 )
 
@@ -48,9 +48,8 @@ var (
 func parseNodesString(nodes string) (parsed map[string]string) {
 	parsed = make(map[string]string)
 	if len(nodes)%NODE_CONTACT_LEN > 0 {
-		// TODO: Err
-		log.Println("DHT: Invalid length of nodes.")
-		log.Printf("DHT: Should be a multiple of %d, got %d", NODE_CONTACT_LEN, len(nodes))
+		l4g.Info("DHT: Invalid length of nodes.")
+		l4g.Info("DHT: Should be a multiple of %d, got %d", NODE_CONTACT_LEN, len(nodes))
 		return
 	}
 	for i := 0; i < len(nodes); i += NODE_CONTACT_LEN {

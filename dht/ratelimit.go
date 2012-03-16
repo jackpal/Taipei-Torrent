@@ -1,7 +1,6 @@
 package dht
 
 import (
-	"fmt"
 	"time"
 
 	"code.google.com/p/vitess/go/cache"
@@ -68,7 +67,6 @@ func (r *clientThrottle) cleanup() {
 			h = item.Value.(hits) + 5
 			if h > 60 {
 				// Reduce pressure in the LRU.
-				fmt.Printf("deleting cache entry for key %v\n", item.Key)
 				r.c.Delete(item.Key)
 			} else {
 				r.c.Set(item.Key, h)
