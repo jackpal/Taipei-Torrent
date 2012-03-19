@@ -8,8 +8,8 @@ import (
 	"testing"
 )
 
-// 16 bytes infohash prefix.
-const prefix = "\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff"
+// 16 bytes.
+const ffff = "\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff"
 
 func BenchmarkInsertRecursive(b *testing.B) {
 	b.StopTimer()
@@ -23,7 +23,7 @@ func BenchmarkInsertRecursive(b *testing.B) {
 		if _, err := rand.Read(rId); err != nil {
 			b.Fatal("Couldnt produce random numbers for FindClosest:", err)
 		}
-		id := prefix + string(rId)
+		id := string(rId) + ffff
 		if len(id) != 20 {
 			b.Fatalf("Random infohash construction error, wrong len: want %d, got %d",
 				20, len(id))
@@ -52,7 +52,7 @@ func BenchmarkInsert(b *testing.B) {
 		if _, err := rand.Read(rId); err != nil {
 			b.Fatal("Couldnt produce random numbers for FindClosest:", err)
 		}
-		id := prefix + string(rId)
+		id := string(rId) + ffff
 		if len(id) != 20 {
 			b.Fatalf("Random infohash construction error, wrong len: want %d, got %d",
 				20, len(id))
@@ -81,7 +81,7 @@ func BenchmarkFindClosest(b *testing.B) {
 		if _, err := rand.Read(rId); err != nil {
 			b.Fatal("Couldnt produce random numbers for FindClosest:", err)
 		}
-		r, _ := node.newRemoteNode(prefix+string(rId), ":0")
+		r, _ := node.newRemoteNode(string(rId)+ffff, ":0")
 		if len(r.id) != 20 {
 			b.Fatalf("DhtRemoteNode construction error, wrong len: want %d, got %d",
 				20, len(r.id))
@@ -203,7 +203,18 @@ func TestNodeDistance(t *testing.T) {
 //
 // #7 removed an unnecessary wrapper function.
 // BenchmarkFindClosest	  200000	      9691 ns/op
+//
+// #8 Random infohashes now have identical suffix instead of prefix. In the
+// wild, most of the calculations are done in the most significant bits so this
+// is closer to reality.
+// BenchmarkFindClosest	   50000	     35165 ns/op
 
 // $ go test -v -bench='BenchmarkInsert.*' -run=none
+//
+// #1 initial version of the test.
 // BenchmarkInsertRecursive	     500	   4701600 ns/op
 // BenchmarkInsert	     500	   3595448 ns/op
+//
+// #2 Random infohashes have identical suffix instead of prefix.
+// BenchmarkInsertRecursive	     100	  22598150 ns/op
+// BenchmarkInsert	     100	  19239120 ns/op
