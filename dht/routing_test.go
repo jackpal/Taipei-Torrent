@@ -92,7 +92,7 @@ func BenchmarkFindClosest(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		f := node.tree.lookupFiltered(fmt.Sprintf("x%10v", i) + "xxxxxxxxx")
 		if len(f) != kNodes {
-			b.Fatal("Missing results. Wanted %d, got %d", kNodes, len(f))
+			b.Fatalf("Missing results. Wanted %d, got %d", kNodes, len(f))
 		}
 	}
 }
@@ -179,11 +179,14 @@ func TestNodeDistance(t *testing.T) {
 
 }
 
+// ===================== lookup benchmark =================================
+
 // $ go test -v -bench='BenchmarkFindClosest' -run=NONE
 //
-// Results for nictuku's machine.
-//
-// #1
+// #1 In hindsight, this was a very embarrasing first attempt. I kept a list of
+// my nodes, and every time I had to do a lookup, I re-sorted the whole list of
+// nodes in the routing table using the XOR distance to the target infohash.
+// Honestly I had no idea how bad this was when I was wrote it. :-)
 // BenchmarkFindClosest	       1	7020661000 ns/op
 //
 // #2 not-checked in attempt to use a trie. Not even correct.
@@ -208,7 +211,11 @@ func TestNodeDistance(t *testing.T) {
 // wild, most of the calculations are done in the most significant bits so this
 // is closer to reality.
 // BenchmarkFindClosest	   50000	     35165 ns/op
+//
+// #9 Suffix compression. Magic? :-)
+// BenchmarkFindClosest	 1000000	      2795 ns/op
 
+// ===================== insertion benchmark =================================
 // $ go test -v -bench='BenchmarkInsert.*' -run=none
 //
 // #1 initial version of the test.
@@ -218,3 +225,6 @@ func TestNodeDistance(t *testing.T) {
 // #2 Random infohashes have identical suffix instead of prefix.
 // BenchmarkInsertRecursive	     100	  22598150 ns/op
 // BenchmarkInsert	     100	  19239120 ns/op
+//
+// #3 Suffix compression. Much less work (iterative version removed).
+// BenchmarkInsertRecursive	    5000	    448471 ns/op

@@ -55,50 +55,68 @@ func (n *nTree) insert(newNode *DhtRemoteNode) {
 	n.put(newNode, 0)
 }
 
+func (n *nTree) branchOut(n1, n2 *DhtRemoteNode, i int) {
+	// Since they are branching out it's guaranteed that no other nodes
+	// exist below this branch currently, so just create the respective
+	// nodes until their respective bits are different.
+	chr := byte(n1.id[i/8])
+	bitPos := byte(i % 8)
+	bit := (chr << bitPos) & 128
+
+	chr2 := byte(n2.id[i/8])
+	bitPos2 := byte(i % 8)
+	bit2 := (chr2 << bitPos2) & 128
+
+	if bit != bit2 {
+		n.put(n1, i)
+		n.put(n2, i)
+		return
+	}
+
+	// Identical bits.
+	if bit != 0 {
+		n.one = &nTree{}
+		n.one.branchOut(n1, n2, i+1)
+	} else {
+		n.zero = &nTree{}
+		n.zero.branchOut(n1, n2, i+1)
+	}
+}
+
 func (n *nTree) put(newNode *DhtRemoteNode, i int) {
 	if i >= len(newNode.id)*8 {
 		// Replaces the existing value, if any.
 		n.value = newNode
 		return
 	}
+
+	if n.value != nil {
+		if n.value.id == newNode.id {
+			// Replace existing compressed value.
+			n.value = newNode
+			return
+		}
+		old := n.value
+		n.value = nil
+		n.branchOut(newNode, old, i)
+		return
+	}
+
 	chr := byte(newNode.id[i/8])
 	bit := byte(i % 8)
 	if (chr<<bit)&128 != 0 {
 		if n.one == nil {
-			n.one = &nTree{}
+			n.one = &nTree{value: newNode}
+			return
 		}
 		n.one.put(newNode, i+1)
 	} else {
 		if n.zero == nil {
-			n.zero = &nTree{}
+			n.zero = &nTree{value: newNode}
+			return
 		}
 		n.zero.put(newNode, i+1)
 	}
-}
-
-// iterative version of node insertion.
-func (n *nTree) insertIterative(newNode *DhtRemoteNode) {
-	id := newNode.id
-	var bit uint8
-	var chr uint8
-	next := n
-	for i := 0; i < len(id)*8; i++ {
-		chr = byte(id[i/8])
-		bit = byte(i % 8)
-		if (chr<<bit)&128 != 0 {
-			if next.one == nil {
-				next.one = &nTree{}
-			}
-			next = next.one
-		} else {
-			if next.zero == nil {
-				next.zero = &nTree{}
-			}
-			next = next.zero
-		}
-	}
-	// Replaces the existing value, if any.
-	next.value = newNode
 }
 
 func (n *nTree) lookup(id string) []*DhtRemoteNode {
