@@ -10,20 +10,23 @@
 //
 // Most bittorrent/kademlia DHT implementations use a mix of bit-by-bit
 // comparison with the usage of buckets. That works very well. But I wanted to
-// try something different, that doesn't use buckets. So I use a simple binary tree.
+// try something different, that doesn't use buckets. Buckets have a single id
+// and one calculates the distance based solely on that, so there are no
+// guarantees that the bucket members are the closest nodes to the target
+// infohash. I wanted to achieve 100% precision, so I use a simple binary tree.
+//
+// I don't know how slow this is compared to a implementation that uses
+// buckets. It's not slow as you would expect for a recursion of 160 levels,
+// and it's definitely more correct.
 //
 // All nodes are inserted in the binary tree, with a fixed height of 160 (20
 // bytes). To lookup an infohash, I do an inorder traversal using the infohash
 // bit for each level.
 //
-// In most cases I'll reach the end of the tree without a precise hits, but I
-// simply continue the in-order traversal (but then to the 'left') and return
-// after I collect the 8 closest nodes.
-//
-// I don't know how slow this is compared to a implementation that uses
-// buckets. It's not slow as you would expect for a recursion of 160 levels,
-// and it's definitely more correct (the nodes in a bucket may or may not be
-// the closest that one knows for a particular infohash).
+// In most cases I'll reach the end of the tree without hitting the target
+// infohash, since in the vast majority of the cases it's not in my routing
+// table. Then I simply continue the in-order traversal (but then to the
+// 'left') and return after I collect the 8 closest nodes.
 //
 // TODO: Compress the tree since I don't actually need to have all 160 levels.
 package dht
