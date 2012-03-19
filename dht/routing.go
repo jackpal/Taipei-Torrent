@@ -50,7 +50,34 @@ const (
 	maxNodePendingQueries = 5
 )
 
+// recursive version of node insertion.
 func (n *nTree) insert(newNode *DhtRemoteNode) {
+	n.put(newNode, 0)
+}
+
+func (n *nTree) put(newNode *DhtRemoteNode, i int) {
+	if i >= len(newNode.id)*8 {
+		// Replaces the existing value, if any.
+		n.value = newNode
+		return
+	}
+	chr := byte(newNode.id[i/8])
+	bit := byte(i % 8)
+	if (chr<<bit)&128 != 0 {
+		if n.one == nil {
+			n.one = &nTree{}
+		}
+		n.one.put(newNode, i+1)
+	} else {
+		if n.zero == nil {
+			n.zero = &nTree{}
+		}
+		n.zero.put(newNode, i+1)
+	}
+}
+
+// iterative version of node insertion.
+func (n *nTree) insertIterative(newNode *DhtRemoteNode) {
 	id := newNode.id
 	var bit uint8
 	var chr uint8
@@ -70,10 +97,7 @@ func (n *nTree) insert(newNode *DhtRemoteNode) {
 			next = next.zero
 		}
 	}
-	if next.value != nil && next.value.id == id {
-		// There's already a node with this id. Keep.
-		return
-	}
+	// Replaces the existing value, if any.
 	next.value = newNode
 }
 

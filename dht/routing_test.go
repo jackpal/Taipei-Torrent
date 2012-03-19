@@ -3,29 +3,87 @@ package dht
 import (
 	"crypto/rand"
 	"fmt"
-	"log"
 	"sort"
 	"strings"
 	"testing"
 )
 
+// 16 bytes infohash prefix.
+const prefix = "\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff"
+
+func BenchmarkInsertRecursive(b *testing.B) {
+	b.StopTimer()
+
+	// Add 1k nodes to the tree.
+	const count = 1000
+	nodes := make([]*DhtRemoteNode, 0, count)
+
+	for i := 0; i < count; i++ {
+		rId := make([]byte, 4)
+		if _, err := rand.Read(rId); err != nil {
+			b.Fatal("Couldnt produce random numbers for FindClosest:", err)
+		}
+		id := prefix + string(rId)
+		if len(id) != 20 {
+			b.Fatalf("Random infohash construction error, wrong len: want %d, got %d",
+				20, len(id))
+		}
+		nodes = append(nodes, &DhtRemoteNode{id: id})
+	}
+	b.StartTimer()
+	// Each op is adding 1000 nodes to the tree.
+	for i := 0; i < b.N; i++ {
+		tree := &nTree{}
+		for _, r := range nodes {
+			tree.insert(r)
+		}
+	}
+}
+
+func BenchmarkInsert(b *testing.B) {
+	b.StopTimer()
+
+	// Add 1k nodes to the tree.
+	const count = 1000
+	nodes := make([]*DhtRemoteNode, 0, count)
+
+	for i := 0; i < count; i++ {
+		rId := make([]byte, 4)
+		if _, err := rand.Read(rId); err != nil {
+			b.Fatal("Couldnt produce random numbers for FindClosest:", err)
+		}
+		id := prefix + string(rId)
+		if len(id) != 20 {
+			b.Fatalf("Random infohash construction error, wrong len: want %d, got %d",
+				20, len(id))
+		}
+		nodes = append(nodes, &DhtRemoteNode{id: id})
+	}
+	b.StartTimer()
+	// Each op is adding 1000 nodes to the tree.
+	for i := 0; i < b.N; i++ {
+		tree := &nTree{}
+		for _, r := range nodes {
+			tree.insertIterative(r)
+		}
+	}
+}
+
 func BenchmarkFindClosest(b *testing.B) {
 	b.StopTimer()
-	// 16 bytes infohash prefix.
-	prefix := "\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff"
 	node, err := NewDhtNode("00bcdefghij01234567", 0, 1e7)
 	if err != nil {
-		log.Fatal(err)
+		b.Fatal(err)
 	}
 	// Add 100k nodes to the remote nodes slice.
 	for i := 0; i < 100000; i++ {
 		rId := make([]byte, 4)
 		if _, err := rand.Read(rId); err != nil {
-			log.Fatal("Couldnt produce random numbers for FindClosest:", err)
+			b.Fatal("Couldnt produce random numbers for FindClosest:", err)
 		}
 		r, _ := node.newRemoteNode(prefix+string(rId), ":0")
 		if len(r.id) != 20 {
-			log.Fatalf("DhtRemoteNode construction error, wrong len: want %d, got %d",
+			b.Fatalf("DhtRemoteNode construction error, wrong len: want %d, got %d",
 				20, len(r.id))
 		}
 		r.reachable = true
@@ -34,7 +92,7 @@ func BenchmarkFindClosest(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		f := node.tree.lookupFiltered(fmt.Sprintf("x%10v", i) + "xxxxxxxxx")
 		if len(f) != kNodes {
-			log.Fatalf("Missing results. Wanted %d, got %d", kNodes, len(f))
+			b.Fatal("Missing results. Wanted %d, got %d", kNodes, len(f))
 		}
 	}
 }
@@ -145,3 +203,7 @@ func TestNodeDistance(t *testing.T) {
 //
 // #7 removed an unnecessary wrapper function.
 // BenchmarkFindClosest	  200000	      9691 ns/op
+
+// $ go test -v -bench='BenchmarkInsert.*' -run=none
+// BenchmarkInsertRecursive	     500	   4701600 ns/op
+// BenchmarkInsert	     500	   3595448 ns/op
