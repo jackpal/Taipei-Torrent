@@ -40,35 +40,6 @@ func BenchmarkInsertRecursive(b *testing.B) {
 	}
 }
 
-func BenchmarkInsert(b *testing.B) {
-	b.StopTimer()
-
-	// Add 1k nodes to the tree.
-	const count = 1000
-	nodes := make([]*DhtRemoteNode, 0, count)
-
-	for i := 0; i < count; i++ {
-		rId := make([]byte, 4)
-		if _, err := rand.Read(rId); err != nil {
-			b.Fatal("Couldnt produce random numbers for FindClosest:", err)
-		}
-		id := string(rId) + ffff
-		if len(id) != 20 {
-			b.Fatalf("Random infohash construction error, wrong len: want %d, got %d",
-				20, len(id))
-		}
-		nodes = append(nodes, &DhtRemoteNode{id: id})
-	}
-	b.StartTimer()
-	// Each op is adding 1000 nodes to the tree.
-	for i := 0; i < b.N; i++ {
-		tree := &nTree{}
-		for _, r := range nodes {
-			tree.insertIterative(r)
-		}
-	}
-}
-
 func BenchmarkFindClosest(b *testing.B) {
 	b.StopTimer()
 	node, err := NewDhtNode("00bcdefghij01234567", 0, 1e7)
