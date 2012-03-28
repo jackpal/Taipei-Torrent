@@ -35,15 +35,24 @@ Development Roadmap
 +  Deal with TODOs
 +  Add a way of quitting other than typing control-C
 
-Build Instructions
-------------------
+Download, Install, and Build Instructions
+-----------------------------------------
 
-    go build
+1. Download and install the Go One environment from http://golang.org
+
+2. Use the "go" command to download, install, and build the Taipei-Torrent
+app:
+
+    go get com.github/jackpal/Taipei-Torrent
 
 Usage Instructions
 ------------------
 
-    ./Taipei-Torrent -torrent mydownload.torrent
+    Taipei-Torrent -torrent mydownload.torrent
+
+or
+
+    Taipei-Torrent --help
 
 Related Projects
 ----------------
