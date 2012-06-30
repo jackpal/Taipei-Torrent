@@ -15,8 +15,8 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/nictuku/Taipei-Torrent/bencode"
-	"github.com/nictuku/Taipei-Torrent/dht"
+	"github.com/jackpal/Taipei-Torrent/bencode"
+	"github.com/jackpal/Taipei-Torrent/dht"
 )
 
 const (
@@ -288,7 +288,6 @@ func (t *TorrentSession) AddPeer(conn net.Conn) {
 	ps.address = peer
 	var header [68]byte
 	copy(header[0:], kBitTorrentHeader[0:])
-	// TODO: Announce DHT support when we're ready.
 	if useDHT {
 		header[27] = header[27] | 0x01
 	}
