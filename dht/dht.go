@@ -54,6 +54,7 @@ import (
 
 	l4g "code.google.com/p/log4go"
 	"github.com/jackpal/Taipei-Torrent/bencode"
+	"github.com/jackpal/Taipei-Torrent/nettools"
 )
 
 var (
@@ -94,7 +95,7 @@ type DhtEngine struct {
 	remoteNodeAcquaintance chan string
 	peersRequest           chan peerReq
 	PeersRequestResults    chan map[string][]string // key = infohash, v = slice of peers.
-	clientThrottle         *clientThrottle
+	clientThrottle         *nettools.ClientThrottle
 }
 
 func NewDhtNode(nodeId string, port, numTargetPeers int) (node *DhtEngine, err error) {
@@ -111,7 +112,7 @@ func NewDhtNode(nodeId string, port, numTargetPeers int) (node *DhtEngine, err e
 		infoHashPeers:    make(map[string]map[string]int),
 		activeInfoHashes: make(map[string]bool),
 		numTargetPeers:   numTargetPeers,
-		clientThrottle:   NewThrottler(),
+		clientThrottle:   nettools.NewThrottler(),
 	}
 	return
 }
@@ -234,7 +235,7 @@ func (d *DhtEngine) helloFromPeer(addr string) {
 
 func (d *DhtEngine) process(p packetType) {
 	totalRecv.Add(1)
-	if !d.clientThrottle.checkBlock(p.raddr.IP.String()) {
+	if !d.clientThrottle.CheckBlock(p.raddr.IP.String()) {
 		totalPacketsFromBlockedHosts.Add(1)
 		return
 	}

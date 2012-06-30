@@ -1,4 +1,4 @@
-package dht
+package nettools
 
 import (
 	"time"
@@ -11,8 +11,8 @@ const (
 	maxHosts     = 1000
 )
 
-func NewThrottler() *clientThrottle {
-	r := clientThrottle{
+func NewThrottler() *ClientThrottle {
+	r := ClientThrottle{
 		c:       cache.NewLRUCache(maxHosts),
 		blocked: cache.NewLRUCache(maxHosts),
 	}
@@ -20,7 +20,7 @@ func NewThrottler() *clientThrottle {
 	return &r
 }
 
-type clientThrottle struct {
+type ClientThrottle struct {
 	// Rate limiter.
 	c *cache.LRUCache
 
@@ -29,7 +29,7 @@ type clientThrottle struct {
 	blocked *cache.LRUCache
 }
 
-func (r *clientThrottle) checkBlock(host string) bool {
+func (r *ClientThrottle) CheckBlock(host string) bool {
 	_, blocked := r.blocked.Get(host)
 	if blocked {
 		// Bad guy stays there.
@@ -56,7 +56,7 @@ func (r *clientThrottle) checkBlock(host string) bool {
 // refill the buckets.
 // this is the first way I thought of how to implement client rate limiting.
 // Need to think and research more.
-func (r *clientThrottle) cleanup() {
+func (r *ClientThrottle) cleanup() {
 	// Check the bucket faster than the rate period, to reduce the pressure in the cache.
 	t := time.Tick(5 * time.Second)
 

@@ -1,9 +1,6 @@
-package bencode
+package nettools
 
 import "fmt"
-
-// These are not strictly bencode features, but often needed by both DHT and
-// Torrent clients.
 
 func BinaryToDottedPort(port string) string {
 	return fmt.Sprintf("%d.%d.%d.%d:%d", port[0], port[1], port[2], port[3],
