@@ -31,23 +31,16 @@
 //     http://www.bittorrent.org/beps/bep_0005.html
 //
 
-// TODO: Save routing table on disk to be preserved between instances.
-
-// All methods of DhtRemoteNode run in a single thread so there should be no
-// races. We use auxiliary goroutines for IO and they communicate with the main
-// goroutine via channels.
-
-// Now for the true story: there are a few methods of DhtRemoteNode which can
-// be called by the client (different thread) and are clearly unsafe. They will
-// be fixed in time :-).
+// There is very few computation involved here, so almost everything runs in a
+// single thread.
 
 package dht
 
 import (
+	"crypto/rand"
 	"expvar"
 	"flag"
 	"fmt"
-	"math/rand"
 	"net"
 	"strings"
 	"time"
@@ -61,6 +54,7 @@ var (
 	dhtRouter     string
 	maxNodes      int
 	cleanupPeriod time.Duration
+	savePeriod    time.Duration
 	rateLimit     int64
 )
 
@@ -72,6 +66,8 @@ func init() {
 		"Maximum number of nodes to store in the routing table, in memory.")
 	flag.DurationVar(&cleanupPeriod, "cleanupPeriod", 10*time.Minute,
 		"How often to ping nodes in the network to see if they are reachable.")
+	flag.DurationVar(&savePeriod, "savePeriod", 5*time.Minute,
+		"How often to save the routing table to disk.")
 	flag.Int64Var(&rateLimit, "rateLimit", 1000,
 		"Maximum packets per second to be processed. Beyond this limit they are silently dropped.")
 }
@@ -97,11 +93,12 @@ type DhtEngine struct {
 	peersRequest           chan peerReq
 	PeersRequestResults    chan map[string][]string // key = infohash, v = slice of peers.
 	clientThrottle         *nettools.ClientThrottle
+
+	store *DhtStore
 }
 
-func NewDhtNode(nodeId string, port, numTargetPeers int) (node *DhtEngine, err error) {
+func NewDhtNode(port, numTargetPeers int, writeStore bool) (node *DhtEngine, err error) {
 	node = &DhtEngine{
-		nodeId:              nodeId,
 		port:                port,
 		remoteNodes:         make(map[string]*DhtRemoteNode),
 		tree:                &nTree{},
@@ -114,6 +111,23 @@ func NewDhtNode(nodeId string, port, numTargetPeers int) (node *DhtEngine, err e
 		activeInfoHashes: make(map[string]bool),
 		numTargetPeers:   numTargetPeers,
 		clientThrottle:   nettools.NewThrottler(),
+	}
+	c := openStore(port)
+	if writeStore {
+		node.store = c
+	}
+	if len(c.Id) != 20 {
+		c.Id = newNodeId()
+		l4g.Info("newId: %x %d", c.Id, len(c.Id))
+		if writeStore {
+			saveStore(*c)
+		}
+	}
+	// The types don't match because JSON marshalling needs []byte.
+	node.nodeId = string(c.Id)
+
+	for addr, _ := range c.Remotes {
+		go node.RemoteNodeAcquaintance(addr)
 	}
 	return
 }
@@ -141,10 +155,9 @@ func (d *DhtEngine) RemoteNodeAcquaintance(addr string) {
 	d.remoteNodeAcquaintance <- addr
 }
 
-// RoutingTable outputs the routing table. Needed for persisting the table
+// routingTable outputs the routing table. Needed for persisting the table
 // between sessions.
-// XXX unsafe.
-func (d *DhtEngine) RoutingTable() (tbl map[string][]byte) {
+func (d *DhtEngine) routingTable() (tbl map[string][]byte) {
 	tbl = make(map[string][]byte)
 	for addr, r := range d.remoteNodes {
 		if r.reachable && len(r.id) == 20 {
@@ -154,13 +167,11 @@ func (d *DhtEngine) RoutingTable() (tbl map[string][]byte) {
 	return
 }
 
-// Asks for more peers for a torrent. Runs on the main dht goroutine so it must
-// finish quickly.
-// XXX called by client. Unsafe.
-func (d *DhtEngine) GetPeers(infoHash string) {
+// Asks for more peers for a torrent.
+func (d *DhtEngine) getPeers(infoHash string) {
 	closest := d.tree.lookupFiltered(infoHash)
 	for _, r := range closest {
-		d.getPeers(r, infoHash)
+		go d.getPeersFrom(r, infoHash)
 	}
 }
 
@@ -178,6 +189,11 @@ func (d *DhtEngine) DoDht() {
 	d.ping(dhtRouter)
 	cleanupTicker := time.Tick(cleanupPeriod)
 
+	saveTicker := make(<-chan time.Time)
+	if d.store != nil {
+		saveTicker = time.Tick(savePeriod)
+	}
+
 	// Token bucket for limiting the number of packets per second.
 	fillTokenBucket := time.Tick(time.Second / 10)
 	tokenBucket := rateLimit
@@ -188,8 +204,8 @@ func (d *DhtEngine) DoDht() {
 	}
 
 	l4g.Info("DHT: Starting DHT node %x.", d.nodeId)
-	for {
 
+	for {
 		select {
 		case addr := <-d.remoteNodeAcquaintance:
 			d.helloFromPeer(addr)
@@ -199,8 +215,8 @@ func (d *DhtEngine) DoDht() {
 			if peersRequest.announce {
 				d.activeInfoHashes[peersRequest.ih] = true
 			}
-			l4g.Trace("DHT: torrent client asking more peers for %x. Calling GetPeers().", peersRequest)
-			d.GetPeers(peersRequest.ih)
+			l4g.Trace("DHT: torrent client asking more peers for %x. Calling getPeers().", peersRequest)
+			d.getPeers(peersRequest.ih)
 		case p := <-socketChan:
 			if tokenBucket > 0 {
 				d.process(p)
@@ -215,6 +231,12 @@ func (d *DhtEngine) DoDht() {
 			}
 		case <-cleanupTicker:
 			d.routingTableCleanup()
+		case <-saveTicker:
+			tbl := d.routingTable()
+			if len(tbl) > 5 {
+				d.store.Remotes = tbl
+				saveStore(*d.store)
+			}
 		}
 	}
 }
@@ -363,9 +385,13 @@ func (d *DhtEngine) newRemoteNode(id string, hostPort string) (r *DhtRemoteNode,
 	if err != nil {
 		return nil, err
 	}
+	n, err := rand.Read(make([]byte, 1))
+	if err != nil {
+		return nil, err
+	}
 	r = &DhtRemoteNode{
 		address:        address,
-		lastQueryID:    rand.Intn(255) + 1, // Doesn't have to be crypto safe.
+		lastQueryID:    n,
 		id:             id,
 		reachable:      false,
 		pendingQueries: map[string]*queryType{},
@@ -402,11 +428,11 @@ func (d *DhtEngine) ping(address string) {
 
 	queryArguments := map[string]interface{}{"id": d.nodeId}
 	query := queryMessage{t, "q", "ping", queryArguments}
-	go sendMsg(d.conn, r.address, query)
+	sendMsg(d.conn, r.address, query)
 	totalSentPing.Add(1)
 }
 
-func (d *DhtEngine) getPeers(r *DhtRemoteNode, ih string) {
+func (d *DhtEngine) getPeersFrom(r *DhtRemoteNode, ih string) {
 	totalSentGetPeers.Add(1)
 	ty := "get_peers"
 	transId := r.newQuery(ty)
@@ -420,7 +446,7 @@ func (d *DhtEngine) getPeers(r *DhtRemoteNode, ih string) {
 		x := hashDistance(r.id, ih)
 		return fmt.Sprintf("DHT sending get_peers. nodeID: %x , InfoHash: %x , distance: %x", r.id, ih, x)
 	})
-	go sendMsg(d.conn, r.address, query)
+	sendMsg(d.conn, r.address, query)
 }
 
 func (d *DhtEngine) announcePeer(address *net.UDPAddr, ih string, token string) {
@@ -439,7 +465,7 @@ func (d *DhtEngine) announcePeer(address *net.UDPAddr, ih string, token string) 
 		"token":     token,
 	}
 	query := queryMessage{transId, "q", ty, queryArguments}
-	go sendMsg(d.conn, address, query)
+	sendMsg(d.conn, address, query)
 }
 
 func (d *DhtEngine) replyGetPeers(addr *net.UDPAddr, r responseType) {
@@ -476,8 +502,7 @@ func (d *DhtEngine) replyGetPeers(addr *net.UDPAddr, r responseType) {
 		l4g.Trace("replyGetPeers: Nodes only. Giving %d", len(n))
 		reply.R["nodes"] = strings.Join(n, "")
 	}
-	go sendMsg(d.conn, addr, reply)
-
+	sendMsg(d.conn, addr, reply)
 }
 
 func (d *DhtEngine) replyFindNode(addr *net.UDPAddr, r responseType) {
@@ -504,7 +529,7 @@ func (d *DhtEngine) replyFindNode(addr *net.UDPAddr, r responseType) {
 	}
 	l4g.Trace("replyFindNode: Nodes only. Giving %d", len(n))
 	reply.R["nodes"] = strings.Join(n, "")
-	go sendMsg(d.conn, addr, reply)
+	sendMsg(d.conn, addr, reply)
 }
 
 func (d *DhtEngine) replyPing(addr *net.UDPAddr, response responseType) {
@@ -514,7 +539,7 @@ func (d *DhtEngine) replyPing(addr *net.UDPAddr, response responseType) {
 		Y: "r",
 		R: map[string]interface{}{"id": d.nodeId},
 	}
-	go sendMsg(d.conn, addr, reply)
+	sendMsg(d.conn, addr, reply)
 }
 
 // Process another node's response to a get_peers query. If the response
@@ -558,12 +583,20 @@ func (d *DhtEngine) processGetPeerResults(node *DhtRemoteNode, resp responseType
 				})
 				if _, err := d.newRemoteNode(id, address); err == nil {
 					if len(d.infoHashPeers[query.ih]) < d.numTargetPeers {
-						d.GetPeers(query.ih)
+						d.getPeers(query.ih)
 					}
 				}
 			}
 		}
 	}
+}
+
+func newNodeId() []byte {
+	b := make([]byte, 20)
+	if _, err := rand.Read(b); err != nil {
+		l4g.Exit("nodeId rand:", err)
+	}
+	return b
 }
 
 var (

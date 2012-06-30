@@ -11,7 +11,8 @@ import (
 
 func startDhtNode(t *testing.T) *DhtEngine {
 	port := rand.Intn(10000) + 40000
-	node, err := NewDhtNode("abcdefghij0123456789", port, 100)
+	node, err := NewDhtNode(port, 100, false)
+	node.nodeId = "abcdefghij0123456789"
 	if err != nil {
 		t.Errorf("NewDhtNode(): %v", err)
 	}
@@ -38,7 +39,8 @@ func TestDhtLarge(t *testing.T) {
 	// Test that we can reach at least one node.
 	success := false
 	for i := 0; i < 10; i++ {
-		tbl := node.RoutingTable()
+		// XXX: Not synchronized.
+		tbl := node.routingTable()
 		if len(tbl) > 0 {
 			t.Logf("Contacted %d DHT nodes.", len(tbl))
 			success = true

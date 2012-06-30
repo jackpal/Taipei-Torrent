@@ -42,7 +42,8 @@ func BenchmarkInsertRecursive(b *testing.B) {
 
 func BenchmarkFindClosest(b *testing.B) {
 	b.StopTimer()
-	node, err := NewDhtNode("00bcdefghij01234567", 0, 1e7)
+	node, err := NewDhtNode(0, 1e7, false)
+	node.nodeId = "00bcdefghij01234567"
 	if err != nil {
 		b.Fatal(err)
 	}

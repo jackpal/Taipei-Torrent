@@ -92,8 +92,7 @@ func listenForPeerConnections(listenPort int, conChan chan net.Conn) {
 	log.Println("Listening for peers on port:", listenString)
 	listener, err := net.Listen("tcp", listenString)
 	if err != nil {
-		log.Println("Listen failed:", err)
-		return
+		log.Fatal("Listen failed:", err)
 	}
 	for {
 		var conn net.Conn
@@ -230,7 +229,7 @@ func NewTorrentSession(torrent string) (ts *TorrentSession, err error) {
 	// TODO: Don't use DHT if torrent is private. 
 	if useDHT {
 		// TODO: UPnP UDP port mapping.
-		if t.dht, err = dht.NewDhtNode(t.si.PeerId, listenPort, TARGET_NUM_PEERS); err != nil {
+		if t.dht, err = dht.NewDhtNode(listenPort, TARGET_NUM_PEERS, true); err != nil {
 			log.Println("DHT node creation error", err)
 			return
 		}
@@ -361,7 +360,7 @@ func (t *TorrentSession) DoTorrent() (err error) {
 					}
 				}
 			}
-			log.Println("Contacting", newPeerCount, "new peers (thanks DHT!!)")
+			// log.Println("Contacting", newPeerCount, "new peers (thanks DHT!)")
 		case ti := <-t.trackerInfoChan:
 			t.ti = ti
 			log.Println("Torrent has", t.ti.Complete, "seeders and", t.ti.Incomplete, "leachers.")
