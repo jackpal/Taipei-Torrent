@@ -20,6 +20,8 @@ func NewThrottler() *ClientThrottle {
 	return &r
 }
 
+// ClientThrottle identifies and blocks hosts that are too spammy. It only
+// cares about the number of operations per minute.
 type ClientThrottle struct {
 	// Rate limiter.
 	c *cache.LRUCache
