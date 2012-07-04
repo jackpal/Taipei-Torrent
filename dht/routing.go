@@ -27,8 +27,6 @@
 // infohash, since in the vast majority of the cases it's not in my routing
 // table. Then I simply continue the in-order traversal (but then to the
 // 'left') and return after I collect the 8 closest nodes.
-//
-// TODO: Compress the tree since I don't actually need to have all 160 levels.
 package dht
 
 import (
@@ -37,7 +35,7 @@ import (
 
 type nTree struct {
 	zero, one *nTree
-	value     *DhtRemoteNode
+	value     *DHTRemoteNode
 }
 
 const (
@@ -51,11 +49,11 @@ const (
 )
 
 // recursive version of node insertion.
-func (n *nTree) insert(newNode *DhtRemoteNode) {
+func (n *nTree) insert(newNode *DHTRemoteNode) {
 	n.put(newNode, 0)
 }
 
-func (n *nTree) branchOut(n1, n2 *DhtRemoteNode, i int) {
+func (n *nTree) branchOut(n1, n2 *DHTRemoteNode, i int) {
 	// Since they are branching out it's guaranteed that no other nodes
 	// exist below this branch currently, so just create the respective
 	// nodes until their respective bits are different.
@@ -83,7 +81,7 @@ func (n *nTree) branchOut(n1, n2 *DhtRemoteNode, i int) {
 	}
 }
 
-func (n *nTree) put(newNode *DhtRemoteNode, i int) {
+func (n *nTree) put(newNode *DHTRemoteNode, i int) {
 	if i >= len(newNode.id)*8 {
 		// Replaces the existing value, if any.
 		n.value = newNode
@@ -119,23 +117,23 @@ func (n *nTree) put(newNode *DhtRemoteNode, i int) {
 	}
 }
 
-func (n *nTree) lookup(id string) []*DhtRemoteNode {
-	ret := make([]*DhtRemoteNode, 0, kNodes)
+func (n *nTree) lookup(id string) []*DHTRemoteNode {
+	ret := make([]*DHTRemoteNode, 0, kNodes)
 	if n == nil || id == "" {
 		return nil
 	}
 	return n.traverse(id, 0, ret, false)
 }
 
-func (n *nTree) lookupFiltered(id string) []*DhtRemoteNode {
-	ret := make([]*DhtRemoteNode, 0, kNodes)
+func (n *nTree) lookupFiltered(id string) []*DHTRemoteNode {
+	ret := make([]*DHTRemoteNode, 0, kNodes)
 	if n == nil || id == "" {
 		return nil
 	}
 	return n.traverse(id, 0, ret, true)
 }
 
-func (n *nTree) traverse(id string, i int, ret []*DhtRemoteNode, filter bool) []*DhtRemoteNode {
+func (n *nTree) traverse(id string, i int, ret []*DHTRemoteNode, filter bool) []*DHTRemoteNode {
 	if n == nil {
 		return ret
 	}

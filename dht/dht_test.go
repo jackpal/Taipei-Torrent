@@ -9,21 +9,21 @@ import (
 	"github.com/jackpal/Taipei-Torrent/bencode"
 )
 
-func startDhtNode(t *testing.T) *DhtEngine {
+func startDHTNode(t *testing.T) *DHTEngine {
 	port := rand.Intn(10000) + 40000
-	node, err := NewDhtNode(port, 100, false)
+	node, err := NewDHTNode(port, 100, false)
 	node.nodeId = "abcdefghij0123456789"
 	if err != nil {
-		t.Errorf("NewDhtNode(): %v", err)
+		t.Errorf("NewDHTNode(): %v", err)
 	}
-	go node.DoDht()
+	go node.DoDHT()
 	return node
 }
 
 // Requires Internet access and can be flaky if the server or the internet is
 // slow.
-func TestDhtLarge(t *testing.T) {
-	node := startDhtNode(t)
+func TestDHTLarge(t *testing.T) {
+	node := startDHTNode(t)
 	realDHTNodes := []string{
 		"1.a.magnets.im",
 	}
@@ -39,7 +39,6 @@ func TestDhtLarge(t *testing.T) {
 	// Test that we can reach at least one node.
 	success := false
 	for i := 0; i < 10; i++ {
-		// XXX: Not synchronized.
 		tbl := node.routingTable.reachableNodes()
 		if len(tbl) > 0 {
 			t.Logf("Contacted %d DHT nodes.", len(tbl))

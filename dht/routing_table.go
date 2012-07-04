@@ -13,16 +13,16 @@ import (
 func newRoutingTable() *routingTable {
 	return &routingTable{
 		&nTree{},
-		make(map[string]*DhtRemoteNode),
+		make(map[string]*DHTRemoteNode),
 	}
 }
 
 type routingTable struct {
 	*nTree
-	addresses map[string]*DhtRemoteNode
+	addresses map[string]*DHTRemoteNode
 }
 
-func (r *routingTable) hostPortToNode(hostPort string) (node *DhtRemoteNode, addr string, ok bool) {
+func (r *routingTable) hostPortToNode(hostPort string) (node *DHTRemoteNode, addr string, ok bool) {
 	address, err := net.ResolveUDPAddr("udp", hostPort)
 	if err != nil {
 		return nil, "", false
@@ -48,7 +48,7 @@ func (r *routingTable) reachableNodes() (tbl map[string][]byte) {
 
 // update the existing routingTable entry for this node, giving an error if the
 // node was not found.
-func (r *routingTable) update(node *DhtRemoteNode) error {
+func (r *routingTable) update(node *DHTRemoteNode) error {
 	_, addr, ok := r.hostPortToNode(node.address.String())
 	if !ok {
 		return fmt.Errorf("node missing from the routing table:", node.address.String())
@@ -63,7 +63,7 @@ func (r *routingTable) update(node *DhtRemoteNode) error {
 
 // insert the provided node into the routing table. Gives an error if another
 // node already existed with that address.
-func (r *routingTable) insert(node *DhtRemoteNode) error {
+func (r *routingTable) insert(node *DHTRemoteNode) error {
 	_, addr, ok := r.hostPortToNode(node.address.String())
 	if ok {
 		return fmt.Errorf("node already existed in routing table:", node.address.String())
@@ -81,7 +81,7 @@ func (r *routingTable) insert(node *DhtRemoteNode) error {
 // forceNode returns a node for hostPort, which can be an IP:port or Host:port,
 // which will be resolved if possible.  Preferably return an entry that is
 // already in the routing table, but create a new one otherwise, thus being idempotent.
-func (r *routingTable) forceNode(id string, hostPort string) (node *DhtRemoteNode, err error) {
+func (r *routingTable) forceNode(id string, hostPort string) (node *DHTRemoteNode, err error) {
 	node, addr, ok := r.hostPortToNode(hostPort)
 	if ok {
 		return node, nil
@@ -94,7 +94,7 @@ func (r *routingTable) forceNode(id string, hostPort string) (node *DhtRemoteNod
 	if err != nil {
 		return nil, err
 	}
-	node = &DhtRemoteNode{
+	node = &DHTRemoteNode{
 		address:        udpaddr,
 		lastQueryID:    n,
 		id:             id,
@@ -105,7 +105,7 @@ func (r *routingTable) forceNode(id string, hostPort string) (node *DhtRemoteNod
 	return node, r.insert(node)
 }
 
-func (r *routingTable) kill(n *DhtRemoteNode) {
+func (r *routingTable) kill(n *DHTRemoteNode) {
 	delete(r.addresses, n.address.String())
 	r.nTree.cut(n.id, 0)
 	totalKilledNodes.Add(1)

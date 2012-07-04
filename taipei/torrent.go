@@ -176,7 +176,7 @@ type TorrentSession struct {
 	goodPieces      int
 	activePieces    map[int]*ActivePiece
 	lastHeartBeat   time.Time
-	dht             *dht.DhtEngine
+	dht             *dht.DHTEngine
 }
 
 func NewTorrentSession(torrent string) (ts *TorrentSession, err error) {
@@ -229,11 +229,11 @@ func NewTorrentSession(torrent string) (ts *TorrentSession, err error) {
 	// TODO: Don't use DHT if torrent is private. 
 	if useDHT {
 		// TODO: UPnP UDP port mapping.
-		if t.dht, err = dht.NewDhtNode(listenPort, TARGET_NUM_PEERS, true); err != nil {
+		if t.dht, err = dht.NewDHTNode(listenPort, TARGET_NUM_PEERS, true); err != nil {
 			log.Println("DHT node creation error", err)
 			return
 		}
-		go t.dht.DoDht()
+		go t.dht.DoDHT()
 	}
 	return t, err
 }
@@ -332,9 +332,9 @@ func (t *TorrentSession) DoTorrent() (err error) {
 	conChan := make(chan net.Conn)
 	go listenForPeerConnections(t.si.Port, conChan)
 
-	DhtPeersRequestResults := make(chan map[string][]string)
+	DHTPeersRequestResults := make(chan map[string][]string)
 	if useDHT {
-		DhtPeersRequestResults = t.dht.PeersRequestResults
+		DHTPeersRequestResults = t.dht.PeersRequestResults
 		t.dht.PeersRequest(t.m.InfoHash, true)
 	}
 
@@ -346,7 +346,7 @@ func (t *TorrentSession) DoTorrent() (err error) {
 			if !trackerLessMode {
 				t.fetchTrackerInfo("")
 			}
-		case dhtInfoHashPeers := <-DhtPeersRequestResults:
+		case dhtInfoHashPeers := <-DHTPeersRequestResults:
 			newPeerCount := 0
 			// key = infoHash. The torrent client currently only
 			// supports one download at a time, so let's assume

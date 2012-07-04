@@ -38,7 +38,7 @@ func mkdirStore() string {
 	return dir
 }
 
-type DhtStore struct {
+type DHTStore struct {
 	// The rest of the stack uses string, but that confuses the json
 	// Marshaller. []byte is more correct anyway.
 	Id      []byte
@@ -46,8 +46,8 @@ type DhtStore struct {
 	Remotes map[string][]byte // Key: IP, Value: node ID.
 }
 
-func openStore(port int) (cfg *DhtStore) {
-	cfg = &DhtStore{}
+func openStore(port int) (cfg *DHTStore) {
+	cfg = &DHTStore{}
 
 	// If a node is running in port 30610, the config should be in
 	// ~/.taipeitorrent/dht-36010
@@ -66,7 +66,7 @@ func openStore(port int) (cfg *DhtStore) {
 }
 
 // saveStore tries to safe the provided config in a safe way.
-func saveStore(s DhtStore) {
+func saveStore(s DHTStore) {
 
 	tmp, err := ioutil.TempFile(configFilePrefix, "taipeitorrent")
 	if err != nil {

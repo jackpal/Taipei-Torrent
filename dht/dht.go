@@ -72,10 +72,10 @@ func init() {
 		"Maximum packets per second to be processed. Beyond this limit they are silently dropped.")
 }
 
-// DhtEngine should be created by NewDhtNode(). It provides DHT features to a
+// DHTEngine should be created by NewDHTNode(). It provides DHT features to a
 // torrent client, such as finding new peers for torrent downloads without
 // requiring a tracker.
-type DhtEngine struct {
+type DHTEngine struct {
 	nodeId string
 	port   int
 
@@ -93,11 +93,11 @@ type DhtEngine struct {
 	PeersRequestResults    chan map[string][]string // key = infohash, v = slice of peers.
 	clientThrottle         *nettools.ClientThrottle
 
-	store *DhtStore
+	store *DHTStore
 }
 
-func NewDhtNode(port, numTargetPeers int, writeStore bool) (node *DhtEngine, err error) {
-	node = &DhtEngine{
+func NewDHTNode(port, numTargetPeers int, writeStore bool) (node *DHTEngine, err error) {
+	node = &DHTEngine{
 		port:                port,
 		routingTable:        newRoutingTable(),
 		PeersRequestResults: make(chan map[string][]string, 1),
@@ -145,24 +145,24 @@ type peerReq struct {
 // provided. announce should be true if the connected peer is actively
 // downloading this infohash. False should be used for when the DHT node is
 // just a probe and shouldn't send announce_peer.
-func (d *DhtEngine) PeersRequest(ih string, announce bool) {
+func (d *DHTEngine) PeersRequest(ih string, announce bool) {
 	d.peersRequest <- peerReq{ih, announce}
 }
 
-func (d *DhtEngine) RemoteNodeAcquaintance(addr string) {
+func (d *DHTEngine) RemoteNodeAcquaintance(addr string) {
 	d.remoteNodeAcquaintance <- addr
 }
 
 // Asks for more peers for a torrent.
-func (d *DhtEngine) getPeers(infoHash string) {
+func (d *DHTEngine) getPeers(infoHash string) {
 	closest := d.routingTable.lookupFiltered(infoHash)
 	for _, r := range closest {
 		go d.getPeersFrom(r, infoHash)
 	}
 }
 
-// DoDht is the DHT node main loop and should be run as a goroutine by the torrent client.
-func (d *DhtEngine) DoDht() {
+// DoDHT is the DHT node main loop and should be run as a goroutine by the torrent client.
+func (d *DHTEngine) DoDHT() {
 	socketChan := make(chan packetType)
 	socket, err := listen(d.port)
 	if err != nil {
@@ -227,7 +227,7 @@ func (d *DhtEngine) DoDht() {
 	}
 }
 
-func (d *DhtEngine) helloFromPeer(addr string) {
+func (d *DHTEngine) helloFromPeer(addr string) {
 	// We've got a new node id. We need to:
 	// - see if we know it already, skip accordingly.
 	// - ping it and see if it's reachable.
@@ -243,7 +243,7 @@ func (d *DhtEngine) helloFromPeer(addr string) {
 	}
 }
 
-func (d *DhtEngine) process(p packetType) {
+func (d *DHTEngine) process(p packetType) {
 	totalRecv.Add(1)
 	if !d.clientThrottle.CheckBlock(p.raddr.IP.String()) {
 		totalPacketsFromBlockedHosts.Add(1)
@@ -268,7 +268,7 @@ func (d *DhtEngine) process(p packetType) {
 			if d.routingTable.length() < maxNodes {
 				d.ping(addr)
 			}
-			// XXX: Add this guy to a list of dubious hosts.
+			// TODO: Add this guy to a list of dubious hosts.
 			return
 		}
 		// Fix the node ID.
@@ -325,7 +325,7 @@ func (d *DhtEngine) process(p packetType) {
 	}
 }
 
-func (d *DhtEngine) ping(address string) {
+func (d *DHTEngine) ping(address string) {
 	r, err := d.routingTable.forceNode("", address)
 	if err != nil {
 		l4g.Info("ping error: %v", err)
@@ -340,7 +340,7 @@ func (d *DhtEngine) ping(address string) {
 	totalSentPing.Add(1)
 }
 
-func (d *DhtEngine) getPeersFrom(r *DhtRemoteNode, ih string) {
+func (d *DHTEngine) getPeersFrom(r *DHTRemoteNode, ih string) {
 	totalSentGetPeers.Add(1)
 	ty := "get_peers"
 	transId := r.newQuery(ty)
@@ -360,7 +360,7 @@ func (d *DhtEngine) getPeersFrom(r *DhtRemoteNode, ih string) {
 // announcePeer sends a message to the destination address to advertise that
 // our node is a peer for this infohash, using the provided token to
 // 'authenticate'.
-func (d *DhtEngine) announcePeer(address *net.UDPAddr, ih string, token string) {
+func (d *DHTEngine) announcePeer(address *net.UDPAddr, ih string, token string) {
 	r, err := d.routingTable.forceNode("", address.String())
 	if err != nil {
 		l4g.Trace("announcePeer:", err)
@@ -379,7 +379,7 @@ func (d *DhtEngine) announcePeer(address *net.UDPAddr, ih string, token string) 
 	sendMsg(d.conn, address, query)
 }
 
-func (d *DhtEngine) replyGetPeers(addr *net.UDPAddr, r responseType) {
+func (d *DHTEngine) replyGetPeers(addr *net.UDPAddr, r responseType) {
 	totalRecvGetPeers.Add(1)
 	l4g.Info(func() string {
 		x := hashDistance(r.A.InfoHash, d.nodeId)
@@ -416,7 +416,7 @@ func (d *DhtEngine) replyGetPeers(addr *net.UDPAddr, r responseType) {
 	sendMsg(d.conn, addr, reply)
 }
 
-func (d *DhtEngine) replyFindNode(addr *net.UDPAddr, r responseType) {
+func (d *DHTEngine) replyFindNode(addr *net.UDPAddr, r responseType) {
 	totalRecvFindNode.Add(1)
 	l4g.Trace(func() string {
 		x := hashDistance(r.A.Target, d.nodeId)
@@ -444,7 +444,7 @@ func (d *DhtEngine) replyFindNode(addr *net.UDPAddr, r responseType) {
 	sendMsg(d.conn, addr, reply)
 }
 
-func (d *DhtEngine) replyPing(addr *net.UDPAddr, response responseType) {
+func (d *DHTEngine) replyPing(addr *net.UDPAddr, response responseType) {
 	l4g.Trace("DHT: reply ping => %v\n", addr)
 	reply := replyMessage{
 		T: response.T,
@@ -456,10 +456,10 @@ func (d *DhtEngine) replyPing(addr *net.UDPAddr, response responseType) {
 
 // Process another node's response to a get_peers query. If the response
 // contains peers, send them to the Torrent engine, our client, using the
-// DhtEngine.PeersRequestResults channel. If it contains closest nodes, query
+// DHTEngine.PeersRequestResults channel. If it contains closest nodes, query
 // them if we still need it. Also announce ourselves as a peer for that node,
 // unless we are in supernode mode.
-func (d *DhtEngine) processGetPeerResults(node *DhtRemoteNode, resp responseType) {
+func (d *DHTEngine) processGetPeerResults(node *DHTRemoteNode, resp responseType) {
 	totalRecvGetPeersReply.Add(1)
 	query, _ := node.pendingQueries[resp.T]
 	if d.activeInfoHashes[query.ih] {

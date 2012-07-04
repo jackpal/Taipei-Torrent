@@ -12,12 +12,8 @@ import (
 	"github.com/jackpal/Taipei-Torrent/bencode"
 )
 
-// ip:port as returned by net.ResolveUDPAddr
-type hostPort string
-
 // Owned by the DHT engine.
-type DhtRemoteNode struct {
-	// XXX move to hostPort
+type DHTRemoteNode struct {
 	address *net.UDPAddr
 	id      string
 	// lastQueryID should be incremented after consumed. Based on the
@@ -38,10 +34,9 @@ type queryType struct {
 }
 
 const (
-	NODE_ID_LEN         = 20
-	NODE_CONTACT_LEN    = 26
-	PEER_CONTACT_LEN    = 6
-	MAX_UDP_PACKET_SIZE = 4096
+	maxUDPPacketSize = 4096
+	nodeContactLen   = 26
+	nodeIdLen        = 20
 )
 
 var (
@@ -51,14 +46,14 @@ var (
 // The 'nodes' response is a string with fixed length contacts concatenated arbitrarily.
 func parseNodesString(nodes string) (parsed map[string]string) {
 	parsed = make(map[string]string)
-	if len(nodes)%NODE_CONTACT_LEN > 0 {
+	if len(nodes)%nodeContactLen > 0 {
 		l4g.Info("DHT: Invalid length of nodes.")
-		l4g.Info("DHT: Should be a multiple of %d, got %d", NODE_CONTACT_LEN, len(nodes))
+		l4g.Info("DHT: Should be a multiple of %d, got %d", nodeContactLen, len(nodes))
 		return
 	}
-	for i := 0; i < len(nodes); i += NODE_CONTACT_LEN {
-		id := nodes[i : i+NODE_ID_LEN]
-		address := bencode.BinaryToDottedPort(nodes[i+NODE_ID_LEN : i+NODE_CONTACT_LEN])
+	for i := 0; i < len(nodes); i += nodeContactLen {
+		id := nodes[i : i+nodeIdLen]
+		address := bencode.BinaryToDottedPort(nodes[i+nodeIdLen : i+nodeContactLen])
 		parsed[id] = address
 	}
 	return
@@ -68,7 +63,7 @@ func parseNodesString(nodes string) (parsed map[string]string) {
 // newQuery creates a new transaction id and adds an entry to r.pendingQueries.
 // It does not set any extra information to the transaction information, so the
 // caller must take care of that. (XXX: Ugly)
-func (r *DhtRemoteNode) newQuery(transType string) (transId string) {
+func (r *DHTRemoteNode) newQuery(transType string) (transId string) {
 	r.lastQueryID = (r.lastQueryID + 1) % 256
 	transId = strconv.Itoa(r.lastQueryID)
 	r.pendingQueries[transId] = &queryType{Type: transType}
@@ -168,11 +163,11 @@ func listen(listenPort int) (socket *net.UDPConn, err error) {
 // Read from UDP socket, writes slice of byte into channel.
 func readFromSocket(socket *net.UDPConn, conChan chan packetType) {
 	for {
-		b := make([]byte, MAX_UDP_PACKET_SIZE)
+		b := make([]byte, maxUDPPacketSize)
 		n, addr, err := socket.ReadFromUDP(b)
 		b = b[0:n]
-		if n == MAX_UDP_PACKET_SIZE {
-			// debug.Printf("DHT: Warning. Received packet with len >= %d, some data may have been discarded.\n", MAX_UDP_PACKET_SIZE)
+		if n == maxUDPPacketSize {
+			// debug.Printf("DHT: Warning. Received packet with len >= %d, some data may have been discarded.\n", maxUDPPacketSize)
 		}
 		if n > 0 && err == nil {
 			p := packetType{b, addr}
