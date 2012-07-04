@@ -55,6 +55,12 @@ or
 
     Taipei-Torrent --help
 
+Build Status
+----------------
+
+Currently ![](http://goci.me/project/image/github.com/nictuku/Taipei-Torrent)
+
+
 Related Projects
 ----------------
 
