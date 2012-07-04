@@ -53,12 +53,16 @@ func BenchmarkFindClosest(b *testing.B) {
 		if _, err := rand.Read(rId); err != nil {
 			b.Fatal("Couldnt produce random numbers for FindClosest:", err)
 		}
-		r, _ := node.routingTable.forceNode(string(rId)+ffff, ":0")
+		r := &DhtRemoteNode{
+			lastQueryID: 0,
+			id:          string(rId) + ffff,
+		}
 		if len(r.id) != 20 {
 			b.Fatalf("DhtRemoteNode construction error, wrong len: want %d, got %d",
 				20, len(r.id))
 		}
 		r.reachable = true
+		node.routingTable.insert(r)
 	}
 	b.StartTimer()
 	for i := 0; i < b.N; i++ {
