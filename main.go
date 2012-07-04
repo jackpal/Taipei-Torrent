@@ -5,7 +5,7 @@ import (
 	"log"
 	"os"
 
-	"github.com/jackpal/Taipei-Torrent/taipei"
+	"github.com/nictuku/Taipei-Torrent/taipei"
 )
 
 var torrent string

@@ -15,8 +15,8 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/jackpal/Taipei-Torrent/bencode"
-	"github.com/jackpal/Taipei-Torrent/dht"
+	"github.com/nictuku/Taipei-Torrent/bencode"
+	"github.com/nictuku/Taipei-Torrent/dht"
 )
 
 const (

@@ -43,8 +43,8 @@ import (
 	"time"
 
 	l4g "code.google.com/p/log4go"
-	"github.com/jackpal/Taipei-Torrent/bencode"
-	"github.com/jackpal/Taipei-Torrent/nettools"
+	"github.com/nictuku/Taipei-Torrent/bencode"
+	"github.com/nictuku/Taipei-Torrent/nettools"
 )
 
 var (

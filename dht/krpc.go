@@ -9,7 +9,7 @@ import (
 	"time"
 
 	l4g "code.google.com/p/log4go"
-	"github.com/jackpal/Taipei-Torrent/bencode"
+	"github.com/nictuku/Taipei-Torrent/bencode"
 )
 
 // Owned by the DHT engine.
