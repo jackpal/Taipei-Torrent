@@ -1,10 +1,12 @@
 // DHT node for Taipei Torrent, for tracker-less peer information exchange.
 //
+// ============================================================================
 // Status:
 //  Supports all DHT operations from the specification, except:
-//  - doesn't handle announce_peer.
-//  - doesn't try to maintain a minimum number of healthy node in the routing
-//  table (find_node).
+//  - TODO: handle announce_peer.
+//  - TODO: maintain a healthy neighborhood in the routing table, to guarantee
+//  the DHT performance (find_node).
+// ============================================================================
 //
 // Summary from the bittorrent DHT protocol specification: 
 //
@@ -12,7 +14,6 @@
 // - query
 // - response
 // - error
-//
 //
 // RPCs:
 //      ping:
@@ -30,10 +31,6 @@
 // Reference:
 //     http://www.bittorrent.org/beps/bep_0005.html
 //
-
-// There is very few computation involved here, so almost everything runs in a
-// single thread.
-
 package dht
 
 import (
@@ -59,7 +56,7 @@ var (
 )
 
 func init() {
-	// TODO: Run our own router.
+	// TODO: Run my own router.
 	flag.StringVar(&dhtRouter, "dhtRouter", "router.utorrent.com:6881",
 		"IP:Port address of the DHT router used to bootstrap the DHT network.")
 	flag.IntVar(&maxNodes, "maxNodes", 1000,
