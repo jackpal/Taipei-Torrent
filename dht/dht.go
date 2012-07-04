@@ -43,7 +43,6 @@ import (
 	"time"
 
 	l4g "code.google.com/p/log4go"
-	"github.com/nictuku/Taipei-Torrent/bencode"
 	"github.com/nictuku/Taipei-Torrent/nettools"
 )
 
@@ -405,7 +404,7 @@ func (d *DHTEngine) replyGetPeers(addr *net.UDPAddr, r responseType) {
 	} else {
 		n := make([]string, 0, kNodes)
 		for _, r := range d.routingTable.lookupFiltered(ih) {
-			n = append(n, r.id+bencode.DottedPortToBinary(r.address.String()))
+			n = append(n, r.id+nettools.DottedPortToBinary(r.address.String()))
 		}
 		l4g.Trace("replyGetPeers: Nodes only. Giving %d", len(n))
 		reply.R["nodes"] = strings.Join(n, "")
@@ -434,7 +433,7 @@ func (d *DHTEngine) replyFindNode(addr *net.UDPAddr, r responseType) {
 	neighbors := d.routingTable.lookup(node)
 	n := make([]string, 0, kNodes)
 	for _, r := range neighbors {
-		n = append(n, r.id+bencode.DottedPortToBinary(r.address.String()))
+		n = append(n, r.id+nettools.DottedPortToBinary(r.address.String()))
 	}
 	l4g.Trace("replyFindNode: Nodes only. Giving %d", len(n))
 	reply.R["nodes"] = strings.Join(n, "")

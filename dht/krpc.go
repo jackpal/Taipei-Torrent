@@ -10,6 +10,7 @@ import (
 
 	l4g "code.google.com/p/log4go"
 	"github.com/nictuku/Taipei-Torrent/bencode"
+	"github.com/nictuku/Taipei-Torrent/nettools"
 )
 
 // Owned by the DHT engine.
@@ -53,7 +54,7 @@ func parseNodesString(nodes string) (parsed map[string]string) {
 	}
 	for i := 0; i < len(nodes); i += nodeContactLen {
 		id := nodes[i : i+nodeIdLen]
-		address := bencode.BinaryToDottedPort(nodes[i+nodeIdLen : i+nodeContactLen])
+		address := nettools.BinaryToDottedPort(nodes[i+nodeIdLen : i+nodeContactLen])
 		parsed[id] = address
 	}
 	return
