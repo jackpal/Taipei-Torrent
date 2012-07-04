@@ -12,8 +12,12 @@ import (
 	"github.com/jackpal/Taipei-Torrent/bencode"
 )
 
+// ip:port as returned by net.ResolveUDPAddr
+type hostPort string
+
 // Owned by the DHT engine.
 type DhtRemoteNode struct {
+	// XXX move to hostPort
 	address *net.UDPAddr
 	id      string
 	// lastQueryID should be incremented after consumed. Based on the

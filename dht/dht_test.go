@@ -40,7 +40,7 @@ func TestDhtLarge(t *testing.T) {
 	success := false
 	for i := 0; i < 10; i++ {
 		// XXX: Not synchronized.
-		tbl := node.routingTable()
+		tbl := node.routingTable.reachableNodes()
 		if len(tbl) > 0 {
 			t.Logf("Contacted %d DHT nodes.", len(tbl))
 			success = true
