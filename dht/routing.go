@@ -31,6 +31,8 @@ package dht
 
 import (
 	"time"
+
+	l4g "code.google.com/p/log4go"
 )
 
 type nTree struct {
@@ -212,6 +214,10 @@ func (n *nTree) filter(ih string) bool {
 		return false
 	}
 	for _, q := range r.pendingQueries {
+		if q == nil {
+			l4g.Error("nil pending query for ih %v: %+v", ih, q)
+			continue
+		}
 		if q.Type == "get_peers" && q.ih == ih {
 			return false
 		}

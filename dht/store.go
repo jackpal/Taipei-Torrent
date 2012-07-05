@@ -86,5 +86,5 @@ func saveStore(s DHTStore) {
 	if err := os.Rename(tmp.Name(), p); err != nil {
 		log.Println("saveStore failed when replacing existing config:", err)
 	}
-	log.Println("SAVED.")
+	log.Println("Saved DHT routing table to the filesystem.")
 }
