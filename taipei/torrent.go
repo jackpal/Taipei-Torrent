@@ -51,7 +51,7 @@ func init() {
 	flag.StringVar(&fileDir, "fileDir", ".", "path to directory where files are stored")
 	flag.IntVar(&port, "port", 0, "Port to listen on. Defaults to random.")
 	flag.BoolVar(&useUPnP, "useUPnP", false, "Use UPnP to open port in firewall.")
-	flag.BoolVar(&useDHT, "useDHT", false, "Use DHT to get peers (NOT WORKING).")
+	flag.BoolVar(&useDHT, "useDHT", false, "Use DHT to get peers.")
 	flag.BoolVar(&trackerLessMode, "trackerLessMode", false, "Do not get peers from the tracker. Good for "+
 		"testing the DHT mode.")
 }
@@ -416,8 +416,6 @@ func (t *TorrentSession) DoTorrent() (err error) {
 			}
 			log.Println("Peers:", len(t.peers), "downloaded:", t.si.Downloaded,
 				"uploaded:", t.si.Uploaded, "ratio", ratio)
-			// TODO: Remove this hack when we support DHT and/or PEX
-			// In a large well-seeded swarm, try to maintain a reasonable number of peers.
 			log.Println("good, total", t.goodPieces, t.totalPieces)
 			if len(t.peers) < TARGET_NUM_PEERS && t.goodPieces < t.totalPieces {
 				if useDHT {
