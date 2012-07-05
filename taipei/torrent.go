@@ -12,6 +12,7 @@ import (
 	"net"
 	"net/url"
 	"os"
+	"runtime"
 	"strconv"
 	"time"
 
@@ -854,8 +855,6 @@ func (t *TorrentSession) isInteresting(p *peerState) bool {
 	return false
 }
 
-// TODO: See if we can overlap IO with computation
-
 func checkPieces(fs FileStore, totalLength int64, m *MetaInfo) (good, bad int64, goodBits *Bitset, err error) {
 	pieceLength := m.Info.PieceLength
 	numPieces := (totalLength + pieceLength - 1) / pieceLength
@@ -891,27 +890,82 @@ func checkEqual(ref string, current []byte) bool {
 	return true
 }
 
+// computeSums reads the file content and computes the SHA1 hash for each
+// piece. Spawns parallel goroutines to compute the hashes, since each
+// computation takes ~30ms.
 func computeSums(fs FileStore, totalLength int64, pieceLength int64) (sums []byte, err error) {
 	numPieces := (totalLength + pieceLength - 1) / pieceLength
 	sums = make([]byte, sha1.Size*numPieces)
-	hasher := sha1.New()
-	piece := make([]byte, pieceLength)
+	pieces := make(chan []byte, 10)
+
+	// Read file content and sends to "pieces", keeping order.
+	go func() {
+		piece := make([]byte, pieceLength)
+		for i := int64(0); i < numPieces; i++ {
+			if i == numPieces-1 {
+				piece = piece[0 : totalLength-i*pieceLength]
+			}
+			_, err = fs.ReadAt(piece, i*pieceLength)
+			if err != nil {
+				pieces <- nil
+			} else {
+				pieces <- piece
+			}
+		}
+		close(pieces)
+	}()
+
+	// Calculate the SHA1 hash for each piece, in parallel goroutines.
+	numHashRoutines := int64(runtime.GOMAXPROCS(0))
+	hashers := make([]chan piece, numHashRoutines, 5)
+	results := make([]chan pieceHash, numHashRoutines)
+	for shard := int64(0); shard < numHashRoutines; shard++ {
+		hashers[shard] = make(chan piece)
+		results[shard] = make(chan pieceHash)
+		go hashPiece(hashers[shard], results[shard])
+	}
+	go func() {
+		i := int64(0)
+		for d := range pieces {
+			hashers[i%numHashRoutines] <- piece{i, d}
+			i++
+		}
+	}()
+
+	// Merge back the results.
 	for i := int64(0); i < numPieces; i++ {
-		if i == numPieces-1 {
-			piece = piece[0 : totalLength-i*pieceLength]
+		for shard := int64(0); shard < numHashRoutines; shard++ {
+			h := <-results[shard]
+			copy(sums[h.i*sha1.Size:], h.hash)
+			i++
 		}
-		_, err = fs.ReadAt(piece, i*pieceLength)
-		if err != nil {
-			return
-		}
-		hasher.Reset()
-		_, err = hasher.Write(piece)
-		if err != nil {
-			return
-		}
-		copy(sums[i*sha1.Size:], hasher.Sum(nil))
 	}
 	return
+}
+
+type piece struct {
+	i    int64
+	data []byte
+}
+
+type pieceHash struct {
+	i    int64
+	hash []byte
+}
+
+func hashPiece(pieces chan piece, result chan pieceHash) {
+	hasher := sha1.New()
+	i := int64(0)
+	for piece := range pieces {
+		hasher.Reset()
+		_, err := hasher.Write(piece.data)
+		if err != nil {
+			result <- pieceHash{i, nil}
+		} else {
+			result <- pieceHash{i, hasher.Sum(nil)}
+		}
+		i++
+	}
 }
 
 func checkPiece(fs FileStore, totalLength int64, m *MetaInfo, pieceIndex int) (good bool, err error) {
