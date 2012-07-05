@@ -192,7 +192,8 @@ func NewTorrentSession(torrent string) (ts *TorrentSession, err error) {
 	if err != nil {
 		return
 	}
-	log.Printf("Tracker: %v, Comment: %v, InfoHash: %x, Encoding: %v", t.m.Announce, t.m.Comment, t.m.InfoHash, t.m.Encoding)
+	log.Printf("Tracker: %v, Comment: %v, InfoHash: %x, Encoding: %v, Private: %v",
+		t.m.Announce, t.m.Comment, t.m.InfoHash, t.m.Encoding, t.m.Info.Private)
 	if e := t.m.Encoding; e != "" && e != "UTF-8" {
 		log.Println("Unknown encoding", e)
 		err = errors.New("Unknown encoding")
@@ -225,7 +226,6 @@ func NewTorrentSession(torrent string) (ts *TorrentSession, err error) {
 		left = left - t.m.Info.PieceLength + int64(t.lastPieceLength)
 	}
 	t.si = &SessionInfo{PeerId: peerId(), Port: listenPort, Left: left}
-	// TODO: Don't use DHT if torrent is private. 
 	if useDHT {
 		// TODO: UPnP UDP port mapping.
 		if t.dht, err = dht.NewDHTNode(listenPort, TARGET_NUM_PEERS, true); err != nil {
@@ -286,7 +286,7 @@ func (t *TorrentSession) AddPeer(conn net.Conn) {
 	ps.address = peer
 	var header [68]byte
 	copy(header[0:], kBitTorrentHeader[0:])
-	if useDHT {
+	if t.m.Info.Private != 1 && useDHT {
 		header[27] = header[27] | 0x01
 	}
 	copy(header[28:48], string2Bytes(t.m.InfoHash))
@@ -332,7 +332,7 @@ func (t *TorrentSession) DoTorrent() (err error) {
 	go listenForPeerConnections(t.si.Port, conChan)
 
 	DHTPeersRequestResults := make(chan map[string][]string)
-	if useDHT {
+	if t.m.Info.Private != 1 && useDHT {
 		DHTPeersRequestResults = t.dht.PeersRequestResults
 		t.dht.PeersRequest(t.m.InfoHash, true)
 	}
@@ -417,7 +417,7 @@ func (t *TorrentSession) DoTorrent() (err error) {
 				"uploaded:", t.si.Uploaded, "ratio", ratio)
 			log.Println("good, total", t.goodPieces, t.totalPieces)
 			if len(t.peers) < TARGET_NUM_PEERS && t.goodPieces < t.totalPieces {
-				if useDHT {
+				if t.m.Info.Private != 1 && useDHT {
 					go t.dht.PeersRequest(t.m.InfoHash, true)
 				}
 				if !trackerLessMode {
@@ -647,7 +647,7 @@ func (t *TorrentSession) DoMessage(p *peerState, message []byte) (err error) {
 	}
 	if len(p.id) == 0 {
 		// This is the header message from the peer.
-		if useDHT {
+		if t.m.Info.Private != 1 && useDHT {
 			// If 128, then it supports DHT.
 			if int(message[7])&0x01 == 0x01 {
 				// It's OK if we know this node already. The DHT engine will
