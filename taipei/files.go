@@ -42,9 +42,17 @@ func createPath(parts []string) (path string, err error) {
 
 func (fe *fileEntry) open(name string, length int64) (err error) {
 	fe.length = length
-	fe.fd, err = os.Create(name)
-	if err != nil {
-		return
+	st, err := os.Stat(name)
+	if err != nil && os.IsNotExist(err) {
+		fe.fd, err = os.Create(name)
+		if err != nil {
+			return
+		}
+	} else {
+		fe.fd, err = os.OpenFile(name, os.O_RDWR, 0600)
+		if st.Size() == length {
+			return
+		}
 	}
 	err = os.Truncate(name, length)
 	if err != nil {
