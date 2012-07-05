@@ -42,13 +42,16 @@ func checkEqual(ref string, current []byte) bool {
 	return true
 }
 
+type chunk struct {
+	i    int64
+	data []byte
+}
+
 // computeSums reads the file content and computes the SHA1 hash for each
 // piece. Spawns parallel goroutines to compute the hashes, since each
 // computation takes ~30ms.
 func computeSums(fs FileStore, totalLength int64, pieceLength int64) (sums []byte, err error) {
-	numPieces := (totalLength + pieceLength - 1) / pieceLength
-	sums = make([]byte, sha1.Size*numPieces)
-	// Calculate the SHA1 hash for each piece, in parallel goroutines.
+	// Calculate the SHA1 hash for each piece in parallel goroutines.
 	hashes := make(chan chunk)
 	results := make(chan chunk, 3)
 	for i := int64(0); i < int64(runtime.GOMAXPROCS(0)); i++ {
@@ -56,6 +59,7 @@ func computeSums(fs FileStore, totalLength int64, pieceLength int64) (sums []byt
 	}
 
 	// Read file content and send to "pieces", keeping order.
+	numPieces := (totalLength + pieceLength - 1) / pieceLength
 	go func() {
 		for i := int64(0); i < numPieces; i++ {
 			piece := make([]byte, pieceLength, pieceLength)
@@ -70,16 +74,12 @@ func computeSums(fs FileStore, totalLength int64, pieceLength int64) (sums []byt
 	}()
 
 	// Merge back the results.
+	sums = make([]byte, sha1.Size*numPieces)
 	for i := int64(0); i < numPieces; i++ {
 		h := <-results
 		copy(sums[h.i*sha1.Size:], h.data)
 	}
 	return
-}
-
-type chunk struct {
-	i    int64
-	data []byte
 }
 
 func hashPiece(h chan chunk, result chan chunk) {
