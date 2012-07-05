@@ -48,75 +48,50 @@ func checkEqual(ref string, current []byte) bool {
 func computeSums(fs FileStore, totalLength int64, pieceLength int64) (sums []byte, err error) {
 	numPieces := (totalLength + pieceLength - 1) / pieceLength
 	sums = make([]byte, sha1.Size*numPieces)
-	pieces := make(chan []byte, 10)
+	// Calculate the SHA1 hash for each piece, in parallel goroutines.
+	hashes := make(chan chunk)
+	results := make(chan chunk, 3)
+	for i := int64(0); i < int64(runtime.GOMAXPROCS(0)); i++ {
+		go hashPiece(hashes, results)
+	}
 
-	// Read file content and sends to "pieces", keeping order.
+	// Read file content and send to "pieces", keeping order.
 	go func() {
-		piece := make([]byte, pieceLength)
 		for i := int64(0); i < numPieces; i++ {
+			piece := make([]byte, pieceLength, pieceLength)
 			if i == numPieces-1 {
 				piece = piece[0 : totalLength-i*pieceLength]
 			}
-			_, err = fs.ReadAt(piece, i*pieceLength)
-			if err != nil {
-				pieces <- nil
-			} else {
-				pieces <- piece
-			}
+			// Ignore errors.
+			fs.ReadAt(piece, i*pieceLength)
+			hashes <- chunk{i: i, data: piece}
 		}
-		close(pieces)
-	}()
-
-	// Calculate the SHA1 hash for each piece, in parallel goroutines.
-	numHashRoutines := int64(runtime.GOMAXPROCS(0))
-	hashers := make([]chan piece, numHashRoutines, 5)
-	results := make([]chan pieceHash, numHashRoutines)
-	for shard := int64(0); shard < numHashRoutines; shard++ {
-		hashers[shard] = make(chan piece)
-		results[shard] = make(chan pieceHash)
-		go hashPiece(hashers[shard], results[shard])
-	}
-	go func() {
-		i := int64(0)
-		for d := range pieces {
-			hashers[i%numHashRoutines] <- piece{i, d}
-			i++
-		}
+		close(hashes)
 	}()
 
 	// Merge back the results.
 	for i := int64(0); i < numPieces; i++ {
-		for shard := int64(0); shard < numHashRoutines; shard++ {
-			h := <-results[shard]
-			copy(sums[h.i*sha1.Size:], h.hash)
-			i++
-		}
+		h := <-results
+		copy(sums[h.i*sha1.Size:], h.data)
 	}
 	return
 }
 
-type piece struct {
+type chunk struct {
 	i    int64
 	data []byte
 }
 
-type pieceHash struct {
-	i    int64
-	hash []byte
-}
-
-func hashPiece(pieces chan piece, result chan pieceHash) {
+func hashPiece(h chan chunk, result chan chunk) {
 	hasher := sha1.New()
-	i := int64(0)
-	for piece := range pieces {
+	for piece := range h {
 		hasher.Reset()
 		_, err := hasher.Write(piece.data)
 		if err != nil {
-			result <- pieceHash{i, nil}
+			result <- chunk{piece.i, nil}
 		} else {
-			result <- pieceHash{i, hasher.Sum(nil)}
+			result <- chunk{piece.i, hasher.Sum(nil)}
 		}
-		i++
 	}
 }
 

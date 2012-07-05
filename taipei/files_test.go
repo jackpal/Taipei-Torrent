@@ -8,24 +8,41 @@ import (
 )
 
 type testFile struct {
-	path     string
-	hashWant string
+	path    string
+	fileLen int64
+	hash    string
+	// SHA1 of the first 25 bytes only.
+	hashPieceA string
+	// SHA1 of bytes 25-49
+	hashPieceB string
 }
 
-var tests []testFile = []testFile{{"testdata/file", "60CACBF3D72E1E7834203DA608037B1BF83B40E8"}}
+var tests []testFile = []testFile{{
+	"testData/file",
+	1024,
+	"A0AD08765665C1339E2F829F4EBFF598B355A62B",
+	// dd if=testdata/file bs=25 count=1 | shasum
+	"4582F29D1C80210E6B1D4BACF772572E6F4518FB",
+	// dd if=testdata/file bs=25 count=1 skip=1 | shasum
+	"2676C88B22E905E9DC0BD437533ED69E5D899EF4",
+}}
+
+func mkFileStore(tf testFile) (fs *fileStore, err error) {
+	fd, err := os.Open(tf.path)
+	if err != nil {
+		return fs, err
+	}
+	f := fileEntry{tf.fileLen, fd}
+	return &fileStore{[]int64{0}, []fileEntry{f}}, nil
+}
 
 func TestFileStoreRead(t *testing.T) {
 	for _, testFile := range tests {
-
-		fd, err := os.Open(testFile.path)
+		fs, err := mkFileStore(testFile)
 		if err != nil {
 			t.Fatal(err)
 		}
-		fileLen := int64(1024)
-		f := fileEntry{fileLen, fd}
-		fs := fileStore{[]int64{0}, []fileEntry{f}}
-
-		ret := make([]byte, fileLen)
+		ret := make([]byte, testFile.fileLen)
 		_, err = fs.ReadAt(ret, 0)
 		if err != nil {
 			t.Fatal(err)
@@ -33,8 +50,8 @@ func TestFileStoreRead(t *testing.T) {
 		h := sha1.New()
 		h.Write(ret)
 		sum := fmt.Sprintf("%X", h.Sum(nil))
-		if sum != testFile.hashWant {
-			t.Errorf("Wanted %v, got %v\n", testFile.hashWant, sum)
+		if sum != testFile.hash {
+			t.Errorf("Wanted %v, got %v\n", testFile.hash, sum)
 		}
 	}
 }
