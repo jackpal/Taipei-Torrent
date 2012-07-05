@@ -15,8 +15,8 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/nictuku/Taipei-Torrent/bencode"
 	"github.com/nictuku/Taipei-Torrent/dht"
+	"github.com/nictuku/Taipei-Torrent/nettools"
 )
 
 const (
@@ -353,7 +353,7 @@ func (t *TorrentSession) DoTorrent() (err error) {
 			// it's the case.
 			for _, peers := range dhtInfoHashPeers {
 				for _, peer := range peers {
-					peer = bencode.BinaryToDottedPort(peer)
+					peer = nettools.BinaryToDottedPort(peer)
 					if _, ok := t.peers[peer]; !ok {
 						newPeerCount++
 						go connectToPeer(peer, conChan)
@@ -369,7 +369,7 @@ func (t *TorrentSession) DoTorrent() (err error) {
 				log.Println("Tracker gave us", len(peers)/6, "peers")
 				newPeerCount := 0
 				for i := 0; i < len(peers); i += 6 {
-					peer := bencode.BinaryToDottedPort(peers[i : i+6])
+					peer := nettools.BinaryToDottedPort(peers[i : i+6])
 					if _, ok := t.peers[peer]; !ok {
 						newPeerCount++
 						go connectToPeer(peer, conChan)
