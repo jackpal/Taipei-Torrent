@@ -55,12 +55,16 @@ func getString(m map[string]interface{}, k string) string {
 func getMetaInfo(torrent string) (metaInfo *MetaInfo, err error) {
 	var input io.ReadCloser
 	if strings.HasPrefix(torrent, "http:") {
-		// 6g compiler bug prevents us from writing r, _, err :=
-		var r *http.Response
-		if r, err = http.Get(torrent); err != nil {
-			return
+		r, err := http.Get(torrent)
+		if err != nil {
+			return nil, err
 		}
 		input = r.Body
+	} else if strings.HasPrefix(torrent, "magnet:") {
+		input, err = torrentFromMagnet(torrent)
+		if err != nil {
+			return
+		}
 	} else {
 		if input, err = os.Open(torrent); err != nil {
 			return
