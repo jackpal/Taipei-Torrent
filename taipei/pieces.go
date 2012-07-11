@@ -54,7 +54,7 @@ func computeSums(fs FileStore, totalLength int64, pieceLength int64) (sums []byt
 	// Calculate the SHA1 hash for each piece in parallel goroutines.
 	hashes := make(chan chunk)
 	results := make(chan chunk, 3)
-	for i := int64(0); i < int64(runtime.GOMAXPROCS(0)); i++ {
+	for i := 0; i < runtime.GOMAXPROCS(0); i++ {
 		go hashPiece(hashes, results)
 	}
 
