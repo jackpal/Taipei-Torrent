@@ -48,7 +48,9 @@ var trackerLessMode bool
 
 func init() {
 	flag.StringVar(&fileDir, "fileDir", ".", "path to directory where files are stored")
-	flag.IntVar(&port, "port", 0, "Port to listen on. Defaults to random.")
+	// If the port is 0, picks up a random port - but the DHT will keep
+	// running on port 0 because ListenUDP doesn't do that.
+	flag.IntVar(&port, "port", 6881, "Port to listen on.")
 	flag.BoolVar(&useUPnP, "useUPnP", false, "Use UPnP to open port in firewall.")
 	flag.BoolVar(&useDHT, "useDHT", false, "Use DHT to get peers.")
 	flag.BoolVar(&trackerLessMode, "trackerLessMode", false, "Do not get peers from the tracker. Good for "+
@@ -208,11 +210,10 @@ func NewTorrentSession(torrent string) (ts *TorrentSession, err error) {
 	t.totalSize = totalSize
 	t.lastPieceLength = int(t.totalSize % t.m.Info.PieceLength)
 
-	log.Println("Computing pieces left")
 	start := time.Now()
 	good, bad, pieceSet, err := checkPieces(t.fileStore, totalSize, t.m)
 	end := time.Now()
-	log.Println("Took", end.Sub(start).Seconds(), "seconds")
+	log.Printf("Computed missing pieces (%.2f seconds)", end.Sub(start).Seconds())
 	if err != nil {
 		return
 	}
