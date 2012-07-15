@@ -10,10 +10,13 @@ import (
 	"strings"
 )
 
-var configFilePrefix string
-
-func init() {
-	configFilePrefix = mkdirStore()
+type DHTStore struct {
+	// The rest of the stack uses string, but that confuses the json
+	// Marshaller. []byte is more correct anyway.
+	Id      []byte
+	Port    int
+	Remotes map[string][]byte // Key: IP, Value: node ID.
+	path    string
 }
 
 // mkdirStore() creates a directory to load and save the configuration from.
@@ -39,20 +42,12 @@ func mkdirStore() string {
 	return dir
 }
 
-type DHTStore struct {
-	// The rest of the stack uses string, but that confuses the json
-	// Marshaller. []byte is more correct anyway.
-	Id      []byte
-	Port    int
-	Remotes map[string][]byte // Key: IP, Value: node ID.
-}
-
 func openStore(port int) (cfg *DHTStore) {
-	cfg = &DHTStore{}
+	cfg = &DHTStore{path: mkdirStore()}
 
 	// If a node is running in port 30610, the config should be in
 	// ~/.taipeitorrent/dht-36010
-	p := fmt.Sprintf("%v-%v", path.Join(configFilePrefix, "dht"), port)
+	p := fmt.Sprintf("%v-%v", path.Join(cfg.path, "dht"), port)
 	f, err := os.Open(p)
 	if err != nil {
 		// log.Println(err)
@@ -69,7 +64,7 @@ func openStore(port int) (cfg *DHTStore) {
 // saveStore tries to safe the provided config in a safe way.
 func saveStore(s DHTStore) {
 
-	tmp, err := ioutil.TempFile(configFilePrefix, "taipeitorrent")
+	tmp, err := ioutil.TempFile(s.path, "taipeitorrent")
 	if err != nil {
 		log.Println("saveStore tempfile:", err)
 		return
@@ -85,7 +80,7 @@ func saveStore(s DHTStore) {
 
 	// Write worked, so replace the existing file. That's atomic in Linux, but
 	// not on Windows.
-	p := fmt.Sprintf("%v-%v", configFilePrefix+"/dht", s.Port)
+	p := fmt.Sprintf("%v-%v", s.path+"/dht", s.Port)
 	if err := os.Rename(tmp.Name(), p); err != nil {
 		// if os.IsExist(err) {
 		// Not working for Windows:
