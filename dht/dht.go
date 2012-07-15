@@ -92,7 +92,7 @@ type DHTEngine struct {
 	store *DHTStore
 }
 
-func NewDHTNode(port, numTargetPeers int, writeStore bool) (node *DHTEngine, err error) {
+func NewDHTNode(port, numTargetPeers int, storeEnabled bool) (node *DHTEngine, err error) {
 	node = &DHTEngine{
 		port:                port,
 		routingTable:        newRoutingTable(),
@@ -106,16 +106,12 @@ func NewDHTNode(port, numTargetPeers int, writeStore bool) (node *DHTEngine, err
 		numTargetPeers:   numTargetPeers,
 		clientThrottle:   nettools.NewThrottler(),
 	}
-	c := openStore(port)
-	if writeStore {
-		node.store = c
-	}
+	c := openStore(port, storeEnabled)
+	node.store = c
 	if len(c.Id) != 20 {
 		c.Id = newNodeId()
 		l4g.Info("newId: %x %d", c.Id, len(c.Id))
-		if writeStore {
-			saveStore(*c)
-		}
+		saveStore(*c)
 	}
 	// The types don't match because JSON marshalling needs []byte.
 	node.nodeId = string(c.Id)

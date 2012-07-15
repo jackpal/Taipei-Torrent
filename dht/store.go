@@ -16,7 +16,7 @@ type DHTStore struct {
 	Id      []byte
 	Port    int
 	Remotes map[string][]byte // Key: IP, Value: node ID.
-	path    string
+	path    string            // Empty if the store is disabled.
 }
 
 // mkdirStore() creates a directory to load and save the configuration from.
@@ -42,28 +42,33 @@ func mkdirStore() string {
 	return dir
 }
 
-func openStore(port int) (cfg *DHTStore) {
-	cfg = &DHTStore{path: mkdirStore()}
+func openStore(port int, enabled bool) (cfg *DHTStore) {
+	cfg = &DHTStore{Port: port}
+	if enabled {
+		cfg.path = mkdirStore()
 
-	// If a node is running in port 30610, the config should be in
-	// ~/.taipeitorrent/dht-36010
-	p := fmt.Sprintf("%v-%v", path.Join(cfg.path, "dht"), port)
-	f, err := os.Open(p)
-	if err != nil {
-		// log.Println(err)
-		return cfg
-	}
-	defer f.Close()
+		// If a node is running in port 30610, the config should be in
+		// ~/.taipeitorrent/dht-36010
+		p := fmt.Sprintf("%v-%v", path.Join(cfg.path, "dht"), port)
+		f, err := os.Open(p)
+		if err != nil {
+			// log.Println(err)
+			return cfg
+		}
+		defer f.Close()
 
-	if err = json.NewDecoder(f).Decode(cfg); err != nil {
-		log.Println(err)
+		if err = json.NewDecoder(f).Decode(cfg); err != nil {
+			log.Println(err)
+		}
 	}
 	return
 }
 
 // saveStore tries to safe the provided config in a safe way.
 func saveStore(s DHTStore) {
-
+	if s.path == "" {
+		return
+	}
 	tmp, err := ioutil.TempFile(s.path, "taipeitorrent")
 	if err != nil {
 		log.Println("saveStore tempfile:", err)
