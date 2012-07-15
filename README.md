@@ -22,7 +22,7 @@ top level.
 Current Status
 --------------
 
-Should just work, please report an issue otherwise.
+Tested on Windows, Linux and Mac OSX.
 
 Development Roadmap
 -------------------
@@ -60,6 +60,7 @@ Build Status
 
 Currently ![](http://goci.me/project/image/github.com/nictuku/Taipei-Torrent)
 
+[GoCI project status](http://goci.me/project/github.com/nictuku/Taipei-Torrent)
 
 Related Projects
 ----------------
