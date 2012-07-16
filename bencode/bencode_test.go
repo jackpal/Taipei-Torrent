@@ -53,8 +53,7 @@ func fuzzyEqual(a, b any) bool {
 
 func checkFuzzyEqualValue(a, b reflect.Value) (err error) {
 	if !fuzzyEqualValue(a, b) {
-		err = errors.New(fmt.Sprint(a, " != ", b,
-			": ", a.Interface(), "!=", b.Interface()))
+		err = fmt.Errorf("Wanted %v(%v) got %v(%v)", a, a.Interface(), b, b.Interface())
 	}
 	return
 }
@@ -189,9 +188,9 @@ func checkUnmarshal(expected string, data any) (err error) {
 		return
 	}
 	dataValue := reflect.ValueOf(data)
-	newOne := reflect.New(dataValue.Type())
+	newOne := reflect.New(reflect.TypeOf(data))
 	buf := bytes.NewBufferString(expected)
-	if err = Unmarshal(buf, newOne.Interface()); err != nil {
+	if err = UnmarshalValue(buf, newOne); err != nil {
 		return
 	}
 	if err = checkFuzzyEqualValue(dataValue, newOne.Elem()); err != nil {
@@ -235,15 +234,15 @@ type structA struct {
 
 // TODO: make this test pass.
 
-func xTestUnmarshal(t *testing.T) {
+func TestUnmarshal(t *testing.T) {
 	type structNested struct {
 		T string            "t"
 		Y string            "y"
 		Q string            "q"
 		A map[string]string "a"
 	}
-	innerDict := map[string]string{"id": "abcdefghij0123456789"}
-	nestedDictionary := structNested{"aa", "q", "ping", innerDict}
+	//innerDict := map[string]string{"id": "abcdefghij0123456789"}
+	//nestedDictionary := structNested{"aa", "q", "ping", innerDict}
 
 	tests := []SVPair{
 		SVPair{"i100e", 100},
@@ -256,12 +255,11 @@ func xTestUnmarshal(t *testing.T) {
 		SVPair{"l3:abc3:defe", []string{"abc", "def"}},
 		SVPair{"li42e3:abce", []any{42, "abc"}},
 		SVPair{"de", map[string]any{}},
-		SVPair{"d3:cati1e3:dogi2ee", map[string]any{"cat": 1, "dog": 2}},
-		SVPair{"d1:ai10e1:b3:fooe", structA{10, "foo"}},
-		SVPair{"d1:ad2:id20:abcdefghij0123456789e1:q4:ping1:t2:aa1:y1:qe", nestedDictionary},
+		//SVPair{"d3:cati1e3:dogi2ee", map[string]any{"cat": 1, "dog": 2}},
+		//SVPair{"d1:ai10e1:b3:fooe", structA{10, "foo"}},
+		//SVPair{"d1:ad2:id20:abcdefghij0123456789e1:q4:ping1:t2:aa1:y1:qe", nestedDictionary},
 	}
 	for _, sv := range tests {
-		println(sv.s)
 		if err := checkUnmarshal(sv.s, sv.v); err != nil {
 			t.Error(err.Error())
 		}

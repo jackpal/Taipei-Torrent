@@ -52,6 +52,8 @@ func setint(val reflect.Value, i int64) {
 		v.SetUint(uint64(i))
 	case reflect.Interface:
 		v.Set(reflect.ValueOf(i))
+	default:
+		panic("setint called for bogus type: " + val.Kind().String())
 	}
 }
 
@@ -266,7 +268,7 @@ func Unmarshal(r io.Reader, val interface{}) (err error) {
 		err = errors.New("Attempt to unmarshal into a non-pointer")
 		return
 	}
-	err = UnmarshalValue(r, reflect.ValueOf(val))
+	err = UnmarshalValue(r, reflect.Indirect(reflect.ValueOf(val)))
 	return
 }
 
@@ -276,9 +278,9 @@ func Unmarshal(r io.Reader, val interface{}) (err error) {
 func UnmarshalValue(r io.Reader, v reflect.Value) (err error) {
 	var b *structBuilder
 
-	// If val is a pointer to a slice, we append to the slice.
+	// XXX: Decide if the extra codnitions are needed. Affect map?
 	if ptr := v; ptr.Kind() == reflect.Ptr {
-		if slice := ptr.Elem(); slice.Kind() == reflect.Slice {
+		if slice := ptr.Elem(); slice.Kind() == reflect.Slice || slice.Kind() == reflect.Int || slice.Kind() == reflect.String {
 			b = &structBuilder{val: slice}
 		}
 	}
