@@ -109,11 +109,16 @@ func (b *structBuilder) String(s string) {
 		return
 	}
 
-	switch v := b.val; v.Kind() {
+	switch b.val.Kind() {
 	case reflect.String:
-		v.SetString(s)
+		if !b.val.CanSet() {
+			x := ""
+			b.val = reflect.ValueOf(&x).Elem()
+
+		}
+		b.val.SetString(s)
 	case reflect.Interface:
-		v.Set(reflect.ValueOf(s))
+		b.val.Set(reflect.ValueOf(s))
 	}
 }
 
