@@ -62,7 +62,7 @@ L:
 	}
 	// We throw away any messages waiting to be sent, including the
 	// nil message that is automatically sent when the in channel is closed
-	// close(out) // No need to close channel.
+	close(out)
 }
 
 func NewPeerState(conn net.Conn) *peerState {
