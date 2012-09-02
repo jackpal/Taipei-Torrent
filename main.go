@@ -5,14 +5,13 @@ import (
 	"log"
 	"os"
 
-	"github.com/nictuku/Taipei-Torrent/taipei"
+	"github.com/uriel/Taipei-Torrent/taipei"
 )
 
 var torrent string
 var debugp bool
 
 func main() {
-	registerFlags()
 	flag.BoolVar(&debugp, "debug", false, "Turn on debugging")
 	flag.Usage = usage
 	flag.Parse()
