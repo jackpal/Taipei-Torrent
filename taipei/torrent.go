@@ -50,7 +50,8 @@ func init() {
 	flag.StringVar(&fileDir, "fileDir", ".", "path to directory where files are stored")
 	// If the port is 0, picks up a random port - but the DHT will keep
 	// running on port 0 because ListenUDP doesn't do that.
-	flag.IntVar(&port, "port", 6881, "Port to listen on.")
+	// Don't use port 6881, is blacklisted by some trackers.
+	flag.IntVar(&port, "port", 7777, "Port to listen on.") 
 	flag.BoolVar(&useUPnP, "useUPnP", false, "Use UPnP to open port in firewall.")
 	flag.BoolVar(&useDHT, "useDHT", false, "Use DHT to get peers.")
 	flag.BoolVar(&trackerLessMode, "trackerLessMode", false, "Do not get peers from the tracker. Good for "+
