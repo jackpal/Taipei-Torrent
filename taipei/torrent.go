@@ -241,24 +241,36 @@ func NewTorrentSession(torrent string) (ts *TorrentSession, err error) {
 func (t *TorrentSession) fetchTrackerInfo(event string) {
 	m, si := t.m, t.si
 	log.Println("Stats: Uploaded", si.Uploaded, "Downloaded", si.Downloaded, "Left", si.Left)
-	// We build the URL in two steps because of a bug on the ARM go compiler.
-	// A single long concatenation would break compilation for ARM.
-	u := m.Announce + "?" +
-		"info_hash=" + url.QueryEscape(m.InfoHash) +
-		"&peer_id=" + si.PeerId +
-		"&port=" + strconv.Itoa(si.Port)
-	u += "&uploaded=" + strconv.FormatInt(si.Uploaded, 10) +
-		"&downloaded=" + strconv.FormatInt(si.Downloaded, 10) +
-		"&left=" + strconv.FormatInt(si.Left, 10) +
-		"&compact=1"
-	if event != "" {
-		u += "&event=" + event
+	u, err := url.Parse(m.Announce)
+	if err != nil {
+		log.Println("Error: Invalid announce URL(", m.Announce, "):", err)
 	}
+	uq := u.Query()
+	uq.Add("info_hash", m.InfoHash)
+	uq.Add("peer_id", si.PeerId)
+	uq.Add("port", strconv.Itoa(si.Port))
+	uq.Add("uploaded", strconv.FormatInt(si.Uploaded, 10))
+	uq.Add("downloaded", strconv.FormatInt(si.Downloaded, 10))
+	uq.Add("left", strconv.FormatInt(si.Left, 10))
+	uq.Add("compact", "1")
+
+	if event != "" {
+		uq.Add("event", event)
+	}
+
+	// This might reorder the existing query string in the Announce url
+	// I worry this might break some broken trackers that don't parse URLs
+	// properly.
+
+	u.RawQuery = uq.Encode()
+
 	ch := t.trackerInfoChan
 	go func() {
-		ti, err := getTrackerInfo(u)
+		ti, err := getTrackerInfo(u.String())
 		if ti == nil || err != nil {
-			log.Println("Could not fetch tracker info:", err)
+			log.Println("Error: Could not fetch tracker info:", err)
+		} else if ti.FailureReason != "" {
+			log.Println("Error: Tracker returned failure reason:", ti.FailureReason)
 		} else {
 			ch <- ti
 		}
