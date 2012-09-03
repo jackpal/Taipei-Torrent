@@ -11,6 +11,7 @@ import (
 	"net"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strconv"
 	"time"
 
@@ -202,8 +203,16 @@ func NewTorrentSession(torrent string) (ts *TorrentSession, err error) {
 		err = errors.New("Unknown encoding")
 		return
 	}
+	ext := ".torrent"
+	dir := fileDir
+	if len(t.m.Info.Files) != 0 {
+		dir += "/"+filepath.Base(torrent)
+		if dir[len(dir)-len(ext):] == ext {
+			dir = dir[:len(dir)-len(ext)]
+		}
+	}
 
-	fileStore, totalSize, err := NewFileStore(&t.m.Info, fileDir)
+	fileStore, totalSize, err := NewFileStore(&t.m.Info, dir)
 	if err != nil {
 		return
 	}
