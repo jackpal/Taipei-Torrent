@@ -52,7 +52,7 @@ func init() {
 	// If the port is 0, picks up a random port - but the DHT will keep
 	// running on port 0 because ListenUDP doesn't do that.
 	// Don't use port 6881, is blacklisted by some trackers.
-	flag.IntVar(&port, "port", 7777, "Port to listen on.") 
+	flag.IntVar(&port, "port", 7777, "Port to listen on.")
 	flag.BoolVar(&useUPnP, "useUPnP", false, "Use UPnP to open port in firewall.")
 	flag.BoolVar(&useDHT, "useDHT", false, "Use DHT to get peers.")
 	flag.BoolVar(&trackerLessMode, "trackerLessMode", false, "Do not get peers from the tracker. Good for "+
@@ -112,16 +112,16 @@ func (t *TorrentSession) listenForPeerConnections(conChan chan net.Conn) {
 
 	log.Println("Listening for peers on port:", t.si.Port)
 	go func() {
-	for {
-		var conn net.Conn
-		conn, err = listener.Accept()
-		if err != nil {
-			log.Println("Listener failed:", err)
-		} else {
-			// log.Println("A peer contacted us", conn.RemoteAddr().String())
-			conChan <- conn
+		for {
+			var conn net.Conn
+			conn, err = listener.Accept()
+			if err != nil {
+				log.Println("Listener failed:", err)
+			} else {
+				// log.Println("A peer contacted us", conn.RemoteAddr().String())
+				conChan <- conn
+			}
 		}
-	}
 	}()
 }
 
@@ -222,7 +222,7 @@ func NewTorrentSession(torrent string) (ts *TorrentSession, err error) {
 	ext := ".torrent"
 	dir := fileDir
 	if len(t.m.Info.Files) != 0 {
-		dir += "/"+filepath.Base(torrent)
+		dir += "/" + filepath.Base(torrent)
 		if dir[len(dir)-len(ext):] == ext {
 			dir = dir[:len(dir)-len(ext)]
 		}
