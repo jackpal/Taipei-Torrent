@@ -80,7 +80,7 @@ func ensureDirectory(fullPath string) (err error) {
 	return
 }
 
-func NewFileStore(info *InfoDict, fileDir string) (f FileStore, totalSize int64, err error) {
+func NewFileStore(info *InfoDict, storePath string) (f FileStore, totalSize int64, err error) {
 	fs := new(fileStore)
 	numFiles := len(info.Files)
 	if numFiles == 0 {
@@ -97,7 +97,7 @@ func NewFileStore(info *InfoDict, fileDir string) (f FileStore, totalSize int64,
 		if err != nil {
 			return
 		}
-		fullPath := fileDir + "/" + torrentPath
+		fullPath := storePath + "/" + torrentPath
 		err = ensureDirectory(fullPath)
 		if err != nil {
 			return
