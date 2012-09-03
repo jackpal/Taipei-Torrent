@@ -7,12 +7,12 @@ import (
 	"runtime"
 )
 
-func checkPieces(fs FileStore, totalLength int64, m *MetaInfo) (good, bad int64, goodBits *Bitset, err error) {
+func checkPieces(fs FileStore, totalLength int64, m *MetaInfo) (good, bad int, goodBits *Bitset, err error) {
 	pieceLength := m.Info.PieceLength
-	numPieces := (totalLength + pieceLength - 1) / pieceLength
+	numPieces := int((totalLength + pieceLength - 1) / pieceLength)
 	goodBits = NewBitset(int(numPieces))
 	ref := m.Info.Pieces
-	if len(ref) != int(numPieces*sha1.Size) {
+	if len(ref) != numPieces*sha1.Size {
 		err = errors.New("Incorrect Info.Pieces length")
 		return
 	}
@@ -20,7 +20,7 @@ func checkPieces(fs FileStore, totalLength int64, m *MetaInfo) (good, bad int64,
 	if err != nil {
 		return
 	}
-	for i := int64(0); i < numPieces; i++ {
+	for i := 0; i < numPieces; i++ {
 		base := i * sha1.Size
 		end := base + sha1.Size
 		if checkEqual(ref[base:end], currentSums[base:end]) {

@@ -215,9 +215,7 @@ func NewTorrentSession(torrent string) (ts *TorrentSession, err error) {
 	log.Printf("Tracker: %v, Comment: %v, InfoHash: %x, Encoding: %v, Private: %v",
 		t.m.Announce, t.m.Comment, t.m.InfoHash, t.m.Encoding, t.m.Info.Private)
 	if e := t.m.Encoding; e != "" && e != "UTF-8" {
-		log.Println("Unknown encoding", e)
-		err = errors.New("Unknown encoding")
-		return
+		return nil, errors.New(fmt.Sprintf("Unknown encoding %s",e))
 	}
 	ext := ".torrent"
 	dir := fileDir
@@ -228,27 +226,25 @@ func NewTorrentSession(torrent string) (ts *TorrentSession, err error) {
 		}
 	}
 
-	fileStore, totalSize, err := NewFileStore(&t.m.Info, dir)
+	t.fileStore, t.totalSize, err = NewFileStore(&t.m.Info, dir)
 	if err != nil {
 		return
 	}
-	t.fileStore = fileStore
-	t.totalSize = totalSize
 	t.lastPieceLength = int(t.totalSize % t.m.Info.PieceLength)
 
 	start := time.Now()
-	good, bad, pieceSet, err := checkPieces(t.fileStore, totalSize, t.m)
+	good, bad, pieceSet, err := checkPieces(t.fileStore, t.totalSize, t.m)
 	end := time.Now()
 	log.Printf("Computed missing pieces (%.2f seconds)", end.Sub(start).Seconds())
 	if err != nil {
 		return
 	}
 	t.pieceSet = pieceSet
-	t.totalPieces = int(good + bad)
-	t.goodPieces = int(good)
+	t.totalPieces = good + bad
+	t.goodPieces = good
 	log.Println("Good pieces:", good, "Bad pieces:", bad)
 
-	left := bad * t.m.Info.PieceLength
+	left := int64(bad) * int64(t.m.Info.PieceLength)
 	if !t.pieceSet.IsSet(t.totalPieces - 1) {
 		left = left - t.m.Info.PieceLength + int64(t.lastPieceLength)
 	}
