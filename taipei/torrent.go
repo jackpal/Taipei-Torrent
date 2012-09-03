@@ -90,13 +90,28 @@ func chooseListenPort() (listenPort int, err error) {
 	return
 }
 
-func listenForPeerConnections(listenPort int, conChan chan net.Conn) {
-	listenString := ":" + strconv.Itoa(listenPort)
-	log.Println("Listening for peers on port:", listenString)
+func (t *TorrentSession) listenForPeerConnections(conChan chan net.Conn) {
+	listenString := ":" + strconv.Itoa(t.si.Port)
 	listener, err := net.Listen("tcp", listenString)
 	if err != nil {
 		log.Fatal("Listen failed:", err)
 	}
+
+	// If port was not set by UPnP, and was 0, get the actual port
+	if t.si.Port == 0 {
+		// so we can send it to trackers.
+		_, p, err := net.SplitHostPort(listener.Addr().String())
+		if err == nil {
+			t.si.Port, err = strconv.Atoi(p)
+		}
+
+		if err != nil {
+			log.Panic("PANIC: net.Listen() gave us an ivalid port?!?", err)
+		}
+	}
+
+	log.Println("Listening for peers on port:", t.si.Port)
+	go func() {
 	for {
 		var conn net.Conn
 		conn, err = listener.Accept()
@@ -107,6 +122,7 @@ func listenForPeerConnections(listenPort int, conChan chan net.Conn) {
 			conChan <- conn
 		}
 	}
+	}()
 }
 
 var kBitTorrentHeader = []byte{'\x13', 'B', 'i', 't', 'T', 'o', 'r',
@@ -353,7 +369,7 @@ func (t *TorrentSession) DoTorrent() (err error) {
 	t.trackerInfoChan = make(chan *TrackerResponse)
 
 	conChan := make(chan net.Conn)
-	go listenForPeerConnections(t.si.Port, conChan)
+	t.listenForPeerConnections(conChan)
 
 	DHTPeersRequestResults := make(chan map[string][]string)
 	if t.m.Info.Private != 1 && useDHT {
