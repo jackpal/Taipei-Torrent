@@ -232,8 +232,6 @@ type structA struct {
 	B string "b"
 }
 
-// TODO: make this test pass.
-
 func TestUnmarshal(t *testing.T) {
 	type structNested struct {
 		T string            "t"
@@ -256,7 +254,7 @@ func TestUnmarshal(t *testing.T) {
 		SVPair{"li42e3:abce", []any{42, "abc"}},
 		SVPair{"de", map[string]any{}},
 		//SVPair{"d3:cati1e3:dogi2ee", map[string]any{"cat": 1, "dog": 2}},
-		//SVPair{"d1:ai10e1:b3:fooe", structA{10, "foo"}},
+		SVPair{"d1:ai10e1:b3:fooe", structA{10, "foo"}},
 		//SVPair{"d1:ad2:id20:abcdefghij0123456789e1:q4:ping1:t2:aa1:y1:qe", nestedDictionary},
 	}
 	for _, sv := range tests {
