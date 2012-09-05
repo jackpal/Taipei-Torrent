@@ -49,11 +49,11 @@ app:
 Usage Instructions
 ------------------
 
-    Taipei-Torrent -torrent mydownload.torrent
+    Taipei-Torrent mydownload.torrent
 
 or
 
-    Taipei-Torrent --help
+    Taipei-Torrent -help
 
 Build Status
 ----------------
