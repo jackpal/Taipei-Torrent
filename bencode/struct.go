@@ -72,6 +72,10 @@ func (b *structBuilder) Int64(i int64) {
 	if b == nil {
 		return
 	}
+	if !b.val.CanSet() {
+		x := 0
+		b.val = reflect.ValueOf(&x).Elem()
+	}
 	v := b.val
 	if isfloat(v) {
 		setfloat(v, float64(i))
@@ -84,6 +88,10 @@ func (b *structBuilder) Uint64(i uint64) {
 	if b == nil {
 		return
 	}
+	if !b.val.CanSet() {
+		x := uint64(0)
+		b.val = reflect.ValueOf(&x).Elem()
+	}
 	v := b.val
 	if isfloat(v) {
 		setfloat(v, float64(i))
@@ -95,6 +103,10 @@ func (b *structBuilder) Uint64(i uint64) {
 func (b *structBuilder) Float64(f float64) {
 	if b == nil {
 		return
+	}
+	if !b.val.CanSet() {
+		x := float64(0)
+		b.val = reflect.ValueOf(&x).Elem()
 	}
 	v := b.val
 	if isfloat(v) {
@@ -109,11 +121,16 @@ func (b *structBuilder) String(s string) {
 		return
 	}
 
-	switch v := b.val; v.Kind() {
+	switch b.val.Kind() {
 	case reflect.String:
-		v.SetString(s)
+		if !b.val.CanSet() {
+			x := ""
+			b.val = reflect.ValueOf(&x).Elem()
+
+		}
+		b.val.SetString(s)
 	case reflect.Interface:
-		v.Set(reflect.ValueOf(s))
+		b.val.Set(reflect.ValueOf(s))
 	}
 }
 
@@ -164,7 +181,7 @@ func (b *structBuilder) Map() {
 	if b == nil {
 		return
 	}
-	if v := b.val; v.Kind() == reflect.Ptr && v.IsNil() {
+	if v := b.val; v.Kind() == reflect.Ptr {
 		if v.IsNil() {
 			v.Set(reflect.Zero(v.Type().Elem()).Addr())
 			b.Flush()

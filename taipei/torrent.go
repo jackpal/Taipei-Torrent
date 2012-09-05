@@ -282,6 +282,7 @@ func (t *TorrentSession) AddPeer(conn net.Conn) {
 	if len(t.peers) >= MAX_NUM_PEERS {
 		log.Println("We have enough peers. Rejecting additional peer", peer)
 		conn.Close()
+		return
 	}
 	ps := NewPeerState(conn)
 	ps.address = peer
