@@ -51,7 +51,7 @@ func init() {
 	flag.StringVar(&fileDir, "fileDir", ".", "path to directory where files are stored")
 	// If the port is 0, picks up a random port - but the DHT will keep
 	// running on port 0 because ListenUDP doesn't do that.
-	// Don't use port 6881, is blacklisted by some trackers.
+	// Don't use port 6881 which blacklisted by some trackers.
 	flag.IntVar(&port, "port", 7777, "Port to listen on.")
 	flag.BoolVar(&useUPnP, "useUPnP", false, "Use UPnP to open port in firewall.")
 	flag.BoolVar(&useDHT, "useDHT", false, "Use DHT to get peers.")
@@ -106,7 +106,7 @@ func (t *TorrentSession) listenForPeerConnections(conChan chan net.Conn) {
 		}
 
 		if err != nil {
-			log.Panic("PANIC: net.Listen() gave us an ivalid port?!?", err)
+			log.Fatal("net.Listen() gave us an ivalid port: ", err)
 		}
 	}
 
@@ -215,7 +215,7 @@ func NewTorrentSession(torrent string) (ts *TorrentSession, err error) {
 	log.Printf("Tracker: %v, Comment: %v, InfoHash: %x, Encoding: %v, Private: %v",
 		t.m.Announce, t.m.Comment, t.m.InfoHash, t.m.Encoding, t.m.Info.Private)
 	if e := t.m.Encoding; e != "" && e != "UTF-8" {
-		return nil, errors.New(fmt.Sprintf("Unknown encoding %s",e))
+		return nil, errors.New(fmt.Sprintf("Unknown encoding %s", e))
 	}
 	ext := ".torrent"
 	dir := fileDir

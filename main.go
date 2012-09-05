@@ -5,7 +5,7 @@ import (
 	"log"
 	"os"
 
-	"github.com/uriel/Taipei-Torrent/taipei"
+	"github.com/nictuku/Taipei-Torrent/taipei"
 )
 
 var torrent string
@@ -16,10 +16,10 @@ func main() {
 	flag.Usage = usage
 	flag.Parse()
 
-	args := flag.Args()	
+	args := flag.Args()
 	if len(args) != 1 {
-		log.Printf("Torrent file or torrent URL required.")
-		usage()	
+		log.Println("Torrent file or torrent URL required.")
+		usage()
 	}
 
 	torrent = args[0]
