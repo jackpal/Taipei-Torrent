@@ -11,6 +11,7 @@ import (
 	"net"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strconv"
 	"time"
 
@@ -50,7 +51,8 @@ func init() {
 	flag.StringVar(&fileDir, "fileDir", ".", "path to directory where files are stored")
 	// If the port is 0, picks up a random port - but the DHT will keep
 	// running on port 0 because ListenUDP doesn't do that.
-	flag.IntVar(&port, "port", 6881, "Port to listen on.")
+	// Don't use port 6881, is blacklisted by some trackers.
+	flag.IntVar(&port, "port", 7777, "Port to listen on.")
 	flag.BoolVar(&useUPnP, "useUPnP", false, "Use UPnP to open port in firewall.")
 	flag.BoolVar(&useDHT, "useDHT", false, "Use DHT to get peers.")
 	flag.BoolVar(&trackerLessMode, "trackerLessMode", false, "Do not get peers from the tracker. Good for "+
@@ -88,23 +90,39 @@ func chooseListenPort() (listenPort int, err error) {
 	return
 }
 
-func listenForPeerConnections(listenPort int, conChan chan net.Conn) {
-	listenString := ":" + strconv.Itoa(listenPort)
-	log.Println("Listening for peers on port:", listenString)
+func (t *TorrentSession) listenForPeerConnections(conChan chan net.Conn) {
+	listenString := ":" + strconv.Itoa(t.si.Port)
 	listener, err := net.Listen("tcp", listenString)
 	if err != nil {
 		log.Fatal("Listen failed:", err)
 	}
-	for {
-		var conn net.Conn
-		conn, err = listener.Accept()
+
+	// If port was not set by UPnP, and was 0, get the actual port
+	if t.si.Port == 0 {
+		// so we can send it to trackers.
+		_, p, err := net.SplitHostPort(listener.Addr().String())
+		if err == nil {
+			t.si.Port, err = strconv.Atoi(p)
+		}
+
 		if err != nil {
-			log.Println("Listener failed:", err)
-		} else {
-			// log.Println("A peer contacted us", conn.RemoteAddr().String())
-			conChan <- conn
+			log.Panic("PANIC: net.Listen() gave us an ivalid port?!?", err)
 		}
 	}
+
+	log.Println("Listening for peers on port:", t.si.Port)
+	go func() {
+		for {
+			var conn net.Conn
+			conn, err = listener.Accept()
+			if err != nil {
+				log.Println("Listener failed:", err)
+			} else {
+				// log.Println("A peer contacted us", conn.RemoteAddr().String())
+				conChan <- conn
+			}
+		}
+	}()
 }
 
 var kBitTorrentHeader = []byte{'\x13', 'B', 'i', 't', 'T', 'o', 'r',
@@ -197,32 +215,36 @@ func NewTorrentSession(torrent string) (ts *TorrentSession, err error) {
 	log.Printf("Tracker: %v, Comment: %v, InfoHash: %x, Encoding: %v, Private: %v",
 		t.m.Announce, t.m.Comment, t.m.InfoHash, t.m.Encoding, t.m.Info.Private)
 	if e := t.m.Encoding; e != "" && e != "UTF-8" {
-		log.Println("Unknown encoding", e)
-		err = errors.New("Unknown encoding")
-		return
+		return nil, errors.New(fmt.Sprintf("Unknown encoding %s",e))
+	}
+	ext := ".torrent"
+	dir := fileDir
+	if len(t.m.Info.Files) != 0 {
+		dir += "/" + filepath.Base(torrent)
+		if dir[len(dir)-len(ext):] == ext {
+			dir = dir[:len(dir)-len(ext)]
+		}
 	}
 
-	fileStore, totalSize, err := NewFileStore(&t.m.Info, fileDir)
+	t.fileStore, t.totalSize, err = NewFileStore(&t.m.Info, dir)
 	if err != nil {
 		return
 	}
-	t.fileStore = fileStore
-	t.totalSize = totalSize
 	t.lastPieceLength = int(t.totalSize % t.m.Info.PieceLength)
 
 	start := time.Now()
-	good, bad, pieceSet, err := checkPieces(t.fileStore, totalSize, t.m)
+	good, bad, pieceSet, err := checkPieces(t.fileStore, t.totalSize, t.m)
 	end := time.Now()
 	log.Printf("Computed missing pieces (%.2f seconds)", end.Sub(start).Seconds())
 	if err != nil {
 		return
 	}
 	t.pieceSet = pieceSet
-	t.totalPieces = int(good + bad)
-	t.goodPieces = int(good)
+	t.totalPieces = good + bad
+	t.goodPieces = good
 	log.Println("Good pieces:", good, "Bad pieces:", bad)
 
-	left := bad * t.m.Info.PieceLength
+	left := int64(bad) * int64(t.m.Info.PieceLength)
 	if !t.pieceSet.IsSet(t.totalPieces - 1) {
 		left = left - t.m.Info.PieceLength + int64(t.lastPieceLength)
 	}
@@ -241,24 +263,36 @@ func NewTorrentSession(torrent string) (ts *TorrentSession, err error) {
 func (t *TorrentSession) fetchTrackerInfo(event string) {
 	m, si := t.m, t.si
 	log.Println("Stats: Uploaded", si.Uploaded, "Downloaded", si.Downloaded, "Left", si.Left)
-	// We build the URL in two steps because of a bug on the ARM go compiler.
-	// A single long concatenation would break compilation for ARM.
-	u := m.Announce + "?" +
-		"info_hash=" + url.QueryEscape(m.InfoHash) +
-		"&peer_id=" + si.PeerId +
-		"&port=" + strconv.Itoa(si.Port)
-	u += "&uploaded=" + strconv.FormatInt(si.Uploaded, 10) +
-		"&downloaded=" + strconv.FormatInt(si.Downloaded, 10) +
-		"&left=" + strconv.FormatInt(si.Left, 10) +
-		"&compact=1"
-	if event != "" {
-		u += "&event=" + event
+	u, err := url.Parse(m.Announce)
+	if err != nil {
+		log.Println("Error: Invalid announce URL(", m.Announce, "):", err)
 	}
+	uq := u.Query()
+	uq.Add("info_hash", m.InfoHash)
+	uq.Add("peer_id", si.PeerId)
+	uq.Add("port", strconv.Itoa(si.Port))
+	uq.Add("uploaded", strconv.FormatInt(si.Uploaded, 10))
+	uq.Add("downloaded", strconv.FormatInt(si.Downloaded, 10))
+	uq.Add("left", strconv.FormatInt(si.Left, 10))
+	uq.Add("compact", "1")
+
+	if event != "" {
+		uq.Add("event", event)
+	}
+
+	// This might reorder the existing query string in the Announce url
+	// I worry this might break some broken trackers that don't parse URLs
+	// properly.
+
+	u.RawQuery = uq.Encode()
+
 	ch := t.trackerInfoChan
 	go func() {
-		ti, err := getTrackerInfo(u)
+		ti, err := getTrackerInfo(u.String())
 		if ti == nil || err != nil {
-			log.Println("Could not fetch tracker info:", err)
+			log.Println("Error: Could not fetch tracker info:", err)
+		} else if ti.FailureReason != "" {
+			log.Println("Error: Tracker returned failure reason:", ti.FailureReason)
 		} else {
 			ch <- ti
 		}
@@ -331,7 +365,7 @@ func (t *TorrentSession) DoTorrent() (err error) {
 	t.trackerInfoChan = make(chan *TrackerResponse)
 
 	conChan := make(chan net.Conn)
-	go listenForPeerConnections(t.si.Port, conChan)
+	t.listenForPeerConnections(conChan)
 
 	DHTPeersRequestResults := make(chan map[string][]string)
 	if t.m.Info.Private != 1 && useDHT {

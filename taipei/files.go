@@ -64,7 +64,7 @@ func ensureDirectory(fullPath string) (err error) {
 	return
 }
 
-func NewFileStore(info *InfoDict, fileDir string) (f FileStore, totalSize int64, err error) {
+func NewFileStore(info *InfoDict, storePath string) (f FileStore, totalSize int64, err error) {
 	fs := new(fileStore)
 	numFiles := len(info.Files)
 	if numFiles == 0 {
@@ -76,7 +76,7 @@ func NewFileStore(info *InfoDict, fileDir string) (f FileStore, totalSize int64,
 	fs.offsets = make([]int64, numFiles)
 	for i, _ := range info.Files {
 		src := &info.Files[i]
-		fullPath := path.Join(fileDir, path.Clean(path.Join(src.Path...)))
+		fullPath := path.Join(storePath, path.Clean(path.Join(src.Path...)))
 		err = ensureDirectory(fullPath)
 		if err != nil {
 			return

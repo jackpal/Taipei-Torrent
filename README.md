@@ -44,7 +44,7 @@ Download, Install, and Build Instructions
 2. Use the "go" command to download, install, and build the Taipei-Torrent
 app:
 
-    go get com.github/nictuku/Taipei-Torrent
+    go get github.com/nictuku/Taipei-Torrent
 
 Usage Instructions
 ------------------

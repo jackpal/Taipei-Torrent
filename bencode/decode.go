@@ -66,6 +66,7 @@ func (j *decoder) Elem(i int) Builder {
 		v = make([]interface{}, 0, 8)
 		j.value = v
 	}
+/* XXX There is a bug in here somewhere, but append() works fine.
 	lens := len(v)
 	if cap(v) <= lens {
 		news := make([]interface{}, 0, lens*2)
@@ -73,6 +74,8 @@ func (j *decoder) Elem(i int) Builder {
 		v = news
 	}
 	v = v[0 : lens+1]
+*/	
+	v = append(v, nil)
 	j.value = v
 	return newDecoder(v, i)
 }
