@@ -24,27 +24,19 @@ type fileStore struct {
 	files   []fileEntry // Stored in increasing globalOffset order
 }
 
-func createPath(parts []string) (path string, err error) {
-	// TODO: better, OS-specific sanitization.
-	for _, part := range parts {
-		// Sanitize file names.
-		if strings.Index(part, "/") >= 0 ||
-			strings.Index(part, "\\") >= 0 ||
-			part == ".." {
-			err = errors.New("Bad path part " + part)
-			return
-		}
-	}
-
-	path = strings.Join(parts, "/")
-	return
-}
-
 func (fe *fileEntry) open(name string, length int64) (err error) {
 	fe.length = length
-	fe.fd, err = os.Create(name)
-	if err != nil {
-		return
+	st, err := os.Stat(name)
+	if err != nil && os.IsNotExist(err) {
+		fe.fd, err = os.Create(name)
+		if err != nil {
+			return
+		}
+	} else {
+		fe.fd, err = os.OpenFile(name, os.O_RDWR, 0600)
+		if st.Size() == length {
+			return
+		}
 	}
 	err = os.Truncate(name, length)
 	if err != nil {
@@ -72,7 +64,7 @@ func ensureDirectory(fullPath string) (err error) {
 	return
 }
 
-func NewFileStore(info *InfoDict, fileDir string) (f FileStore, totalSize int64, err error) {
+func NewFileStore(info *InfoDict, storePath string) (f FileStore, totalSize int64, err error) {
 	fs := new(fileStore)
 	numFiles := len(info.Files)
 	if numFiles == 0 {
@@ -84,12 +76,7 @@ func NewFileStore(info *InfoDict, fileDir string) (f FileStore, totalSize int64,
 	fs.offsets = make([]int64, numFiles)
 	for i, _ := range info.Files {
 		src := &info.Files[i]
-		var torrentPath string
-		torrentPath, err = createPath(src.Path)
-		if err != nil {
-			return
-		}
-		fullPath := fileDir + "/" + torrentPath
+		fullPath := path.Join(storePath, path.Clean(path.Join(src.Path...)))
 		err = ensureDirectory(fullPath)
 		if err != nil {
 			return
