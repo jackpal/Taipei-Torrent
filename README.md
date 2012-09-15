@@ -9,7 +9,7 @@ FAQ:
 
 Q: Why call it Taipei Torrent?
 
-A: I started writing it while visiting Taipei, Taiwan
+A: jackpal started writing it while visiting Taipei, Taiwan
 
 Q: What is the license?
 
@@ -22,11 +22,12 @@ top level.
 Current Status
 --------------
 
-Works, at least for some torrents.
+Tested on Windows, Linux and Mac OSX.
 
 Development Roadmap
 -------------------
 
++  Support magnet links
 +  Implement choke/unchoke logic
 +  Full UPnP support (need to be able to search for an unused listener port,
    detect we have already acquired the port,
@@ -43,19 +44,25 @@ Download, Install, and Build Instructions
 2. Use the "go" command to download, install, and build the Taipei-Torrent
 app:
 
-    go get com.github/jackpal/Taipei-Torrent
+    go get github.com/nictuku/Taipei-Torrent
 
 Usage Instructions
 ------------------
 
-    Taipei-Torrent -torrent mydownload.torrent
+    Taipei-Torrent mydownload.torrent
 
 or
 
-    Taipei-Torrent --help
+    Taipei-Torrent -help
+
+Build Status
+----------------
+
+Currently ![](http://goci.me/project/image/github.com/nictuku/Taipei-Torrent)
+
+[GoCI project status](http://goci.me/project/github.com/nictuku/Taipei-Torrent)
 
 Related Projects
 ----------------
 
-https://github.com/nictuku/Taipei-Torrent an actively developed
-fork that includes support for Distributed Hash Tables.
+https://github.com/jackpal/Taipei-Torrent the original project from which this is based.

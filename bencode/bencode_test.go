@@ -53,8 +53,7 @@ func fuzzyEqual(a, b any) bool {
 
 func checkFuzzyEqualValue(a, b reflect.Value) (err error) {
 	if !fuzzyEqualValue(a, b) {
-		err = errors.New(fmt.Sprint(a, " != ", b,
-			": ", a.Interface(), "!=", b.Interface()))
+		err = fmt.Errorf("Wanted %v(%v) got %v(%v)", a, a.Interface(), b, b.Interface())
 	}
 	return
 }
@@ -189,9 +188,9 @@ func checkUnmarshal(expected string, data any) (err error) {
 		return
 	}
 	dataValue := reflect.ValueOf(data)
-	newOne := reflect.New(dataValue.Type())
+	newOne := reflect.New(reflect.TypeOf(data))
 	buf := bytes.NewBufferString(expected)
-	if err = Unmarshal(buf, newOne.Interface()); err != nil {
+	if err = UnmarshalValue(buf, newOne); err != nil {
 		return
 	}
 	if err = checkFuzzyEqualValue(dataValue, newOne.Elem()); err != nil {
@@ -233,9 +232,7 @@ type structA struct {
 	B string "b"
 }
 
-// TODO: make this test pass.
-
-func xTestUnmarshal(t *testing.T) {
+func TestUnmarshal(t *testing.T) {
 	type structNested struct {
 		T string            "t"
 		Y string            "y"
@@ -261,7 +258,6 @@ func xTestUnmarshal(t *testing.T) {
 		SVPair{"d1:ad2:id20:abcdefghij0123456789e1:q4:ping1:t2:aa1:y1:qe", nestedDictionary},
 	}
 	for _, sv := range tests {
-		println(sv.s)
 		if err := checkUnmarshal(sv.s, sv.v); err != nil {
 			t.Error(err.Error())
 		}

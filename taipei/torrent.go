@@ -2,7 +2,6 @@ package taipei
 
 import (
 	"bytes"
-	"crypto/sha1"
 	"errors"
 	"flag"
 	"fmt"
@@ -12,11 +11,18 @@ import (
 	"net"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strconv"
 	"time"
+
+	"github.com/nictuku/Taipei-Torrent/dht"
+	"github.com/nictuku/Taipei-Torrent/nettools"
 )
 
-const MAX_PEERS = 60
+const (
+	MAX_NUM_PEERS    = 60
+	TARGET_NUM_PEERS = 15
+)
 
 // BitTorrent message types. Sources:
 // http://bittorrent.org/beps/bep_0003.html
@@ -38,21 +44,24 @@ const (
 var port int
 var useUPnP bool
 var fileDir string
+var useDHT bool
+var trackerLessMode bool
 
 func init() {
 	flag.StringVar(&fileDir, "fileDir", ".", "path to directory where files are stored")
-	flag.IntVar(&port, "port", 0, "Port to listen on. Defaults to random.")
+	// If the port is 0, picks up a random port - but the DHT will keep
+	// running on port 0 because ListenUDP doesn't do that.
+	// Don't use port 6881 which blacklisted by some trackers.
+	flag.IntVar(&port, "port", 7777, "Port to listen on.")
 	flag.BoolVar(&useUPnP, "useUPnP", false, "Use UPnP to open port in firewall.")
+	flag.BoolVar(&useDHT, "useDHT", false, "Use DHT to get peers.")
+	flag.BoolVar(&trackerLessMode, "trackerLessMode", false, "Do not get peers from the tracker. Good for "+
+		"testing the DHT mode.")
 }
 
 func peerId() string {
 	sid := "-tt" + strconv.Itoa(os.Getpid()) + "_" + strconv.FormatInt(rand.Int63(), 10)
 	return sid[0:20]
-}
-
-func binaryToDottedPort(port string) string {
-	return fmt.Sprintf("%d.%d.%d.%d:%d", port[0], port[1], port[2], port[3],
-		(uint16(port[4])<<8)|uint16(port[5]))
 }
 
 func chooseListenPort() (listenPort int, err error) {
@@ -81,24 +90,39 @@ func chooseListenPort() (listenPort int, err error) {
 	return
 }
 
-func listenForPeerConnections(listenPort int, conChan chan net.Conn) {
-	listenString := ":" + strconv.Itoa(listenPort)
-	log.Println("Listening for peers on port:", listenString)
+func (t *TorrentSession) listenForPeerConnections(conChan chan net.Conn) {
+	listenString := ":" + strconv.Itoa(t.si.Port)
 	listener, err := net.Listen("tcp", listenString)
 	if err != nil {
-		log.Println("Listen failed:", err)
-		return
+		log.Fatal("Listen failed:", err)
 	}
-	for {
-		var conn net.Conn
-		conn, err = listener.Accept()
+
+	// If port was not set by UPnP, and was 0, get the actual port
+	if t.si.Port == 0 {
+		// so we can send it to trackers.
+		_, p, err := net.SplitHostPort(listener.Addr().String())
+		if err == nil {
+			t.si.Port, err = strconv.Atoi(p)
+		}
+
 		if err != nil {
-			log.Println("Listener failed:", err)
-		} else {
-			// log.Println("A peer contacted us", conn.RemoteAddr().String())
-			conChan <- conn
+			log.Fatal("net.Listen() gave us an ivalid port: ", err)
 		}
 	}
+
+	log.Println("Listening for peers on port:", t.si.Port)
+	go func() {
+		for {
+			var conn net.Conn
+			conn, err = listener.Accept()
+			if err != nil {
+				log.Println("Listener failed:", err)
+			} else {
+				// log.Println("A peer contacted us", conn.RemoteAddr().String())
+				conChan <- conn
+			}
+		}
+	}()
 }
 
 var kBitTorrentHeader = []byte{'\x13', 'B', 'i', 't', 'T', 'o', 'r',
@@ -171,6 +195,7 @@ type TorrentSession struct {
 	goodPieces      int
 	activePieces    map[int]*ActivePiece
 	lastHeartBeat   time.Time
+	dht             *dht.DHTEngine
 }
 
 func NewTorrentSession(torrent string) (ts *TorrentSession, err error) {
@@ -187,63 +212,87 @@ func NewTorrentSession(torrent string) (ts *TorrentSession, err error) {
 	if err != nil {
 		return
 	}
-	log.Println("Tracker:", t.m.Announce, "Comment:", t.m.Comment, "Encoding:", t.m.Encoding)
+	log.Printf("Tracker: %v, Comment: %v, InfoHash: %x, Encoding: %v, Private: %v",
+		t.m.Announce, t.m.Comment, t.m.InfoHash, t.m.Encoding, t.m.Info.Private)
 	if e := t.m.Encoding; e != "" && e != "UTF-8" {
-		log.Println("Unknown encoding", e)
-		err = errors.New("Unknown encoding")
-		return
+		return nil, errors.New(fmt.Sprintf("Unknown encoding %s", e))
+	}
+	ext := ".torrent"
+	dir := fileDir
+	if len(t.m.Info.Files) != 0 {
+		dir += "/" + filepath.Base(torrent)
+		if dir[len(dir)-len(ext):] == ext {
+			dir = dir[:len(dir)-len(ext)]
+		}
 	}
 
-	fileStore, totalSize, err := NewFileStore(&t.m.Info, fileDir)
+	t.fileStore, t.totalSize, err = NewFileStore(&t.m.Info, dir)
 	if err != nil {
 		return
 	}
-	t.fileStore = fileStore
-	t.totalSize = totalSize
 	t.lastPieceLength = int(t.totalSize % t.m.Info.PieceLength)
 
-	log.Println("Computing pieces left")
 	start := time.Now()
-	good, bad, pieceSet, err := checkPieces(t.fileStore, totalSize, t.m)
+	good, bad, pieceSet, err := checkPieces(t.fileStore, t.totalSize, t.m)
 	end := time.Now()
-	log.Println("Took", end.Sub(start).Seconds(), "seconds")
+	log.Printf("Computed missing pieces (%.2f seconds)", end.Sub(start).Seconds())
 	if err != nil {
 		return
 	}
 	t.pieceSet = pieceSet
-	t.totalPieces = int(good + bad)
-	t.goodPieces = int(good)
+	t.totalPieces = good + bad
+	t.goodPieces = good
 	log.Println("Good pieces:", good, "Bad pieces:", bad)
 
-	left := bad * t.m.Info.PieceLength
+	left := int64(bad) * int64(t.m.Info.PieceLength)
 	if !t.pieceSet.IsSet(t.totalPieces - 1) {
 		left = left - t.m.Info.PieceLength + int64(t.lastPieceLength)
 	}
 	t.si = &SessionInfo{PeerId: peerId(), Port: listenPort, Left: left}
+	if useDHT {
+		// TODO: UPnP UDP port mapping.
+		if t.dht, err = dht.NewDHTNode(listenPort, TARGET_NUM_PEERS, true); err != nil {
+			log.Println("DHT node creation error", err)
+			return
+		}
+		go t.dht.DoDHT()
+	}
 	return t, err
 }
 
 func (t *TorrentSession) fetchTrackerInfo(event string) {
 	m, si := t.m, t.si
 	log.Println("Stats: Uploaded", si.Uploaded, "Downloaded", si.Downloaded, "Left", si.Left)
-	// We build the URL in two steps because of a bug on the ARM go compiler.
-	// A single long concatenation would break compilation for ARM.
-	u := m.Announce + "?" +
-		"info_hash=" + url.QueryEscape(m.InfoHash) +
-		"&peer_id=" + si.PeerId +
-		"&port=" + strconv.Itoa(si.Port)
-	u += "&uploaded=" + strconv.FormatInt(si.Uploaded, 10) +
-		"&downloaded=" + strconv.FormatInt(si.Downloaded, 10) +
-		"&left=" + strconv.FormatInt(si.Left, 10) +
-		"&compact=1"
-	if event != "" {
-		u += "&event=" + event
+	u, err := url.Parse(m.Announce)
+	if err != nil {
+		log.Println("Error: Invalid announce URL(", m.Announce, "):", err)
 	}
+	uq := u.Query()
+	uq.Add("info_hash", m.InfoHash)
+	uq.Add("peer_id", si.PeerId)
+	uq.Add("port", strconv.Itoa(si.Port))
+	uq.Add("uploaded", strconv.FormatInt(si.Uploaded, 10))
+	uq.Add("downloaded", strconv.FormatInt(si.Downloaded, 10))
+	uq.Add("left", strconv.FormatInt(si.Left, 10))
+	uq.Add("compact", "1")
+
+	if event != "" {
+		uq.Add("event", event)
+	}
+
+	// This might reorder the existing query string in the Announce url
+	// I worry this might break some broken trackers that don't parse URLs
+	// properly.
+
+	u.RawQuery = uq.Encode()
+
 	ch := t.trackerInfoChan
 	go func() {
-		ti, err := getTrackerInfo(u)
+		ti, err := getTrackerInfo(u.String())
 		if ti == nil || err != nil {
-			log.Println("Could not fetch tracker info:", err)
+			log.Println("Error: Could not fetch tracker info:", err)
+		} else if ti.FailureReason != "" {
+			log.Println("Error: Tracker returned failure reason:", ti.FailureReason)
 		} else {
 			ch <- ti
 		}
@@ -264,14 +313,18 @@ func connectToPeer(peer string, ch chan net.Conn) {
 func (t *TorrentSession) AddPeer(conn net.Conn) {
 	peer := conn.RemoteAddr().String()
 	// log.Println("Adding peer", peer)
-	if len(t.peers) >= MAX_PEERS {
+	if len(t.peers) >= MAX_NUM_PEERS {
 		log.Println("We have enough peers. Rejecting additional peer", peer)
 		conn.Close()
+		return
 	}
 	ps := NewPeerState(conn)
 	ps.address = peer
 	var header [68]byte
 	copy(header[0:], kBitTorrentHeader[0:])
+	if t.m.Info.Private != 1 && useDHT {
+		header[27] = header[27] | 0x01
+	}
 	copy(header[28:48], string2Bytes(t.m.InfoHash))
 	copy(header[48:68], string2Bytes(t.si.PeerId))
 
@@ -290,9 +343,9 @@ func (t *TorrentSession) ClosePeer(peer *peerState) {
 
 func (t *TorrentSession) deadlockDetector() {
 	for {
-		time.Sleep(10 * time.Second)
+		time.Sleep(15 * time.Second)
 		age := time.Now().Sub(t.lastHeartBeat)
-		if age > 10*time.Second {
+		if age > 15*time.Second {
 			log.Println("Starvation or deadlock of main thread detected. Look in the stack dump for what DoTorrent() is currently doing.")
 			log.Println("Last heartbeat", age.Seconds(), "seconds ago")
 			panic("Killed by deadlock detector")
@@ -312,29 +365,62 @@ func (t *TorrentSession) DoTorrent() (err error) {
 	t.trackerInfoChan = make(chan *TrackerResponse)
 
 	conChan := make(chan net.Conn)
+	t.listenForPeerConnections(conChan)
 
-	go listenForPeerConnections(t.si.Port, conChan)
+	DHTPeersRequestResults := make(chan map[string][]string)
+	if t.m.Info.Private != 1 && useDHT {
+		DHTPeersRequestResults = t.dht.PeersRequestResults
+		t.dht.PeersRequest(t.m.InfoHash, true)
+	}
 
 	t.fetchTrackerInfo("started")
 
 	for {
 		select {
 		case _ = <-retrackerChan:
-			t.fetchTrackerInfo("")
+			if !trackerLessMode {
+				t.fetchTrackerInfo("")
+			}
+		case dhtInfoHashPeers := <-DHTPeersRequestResults:
+			newPeerCount := 0
+			// key = infoHash. The torrent client currently only
+			// supports one download at a time, so let's assume
+			// it's the case.
+			for _, peers := range dhtInfoHashPeers {
+				for _, peer := range peers {
+					peer = nettools.BinaryToDottedPort(peer)
+					if _, ok := t.peers[peer]; !ok {
+						newPeerCount++
+						go connectToPeer(peer, conChan)
+					}
+				}
+			}
+			// log.Println("Contacting", newPeerCount, "new peers (thanks DHT!)")
 		case ti := <-t.trackerInfoChan:
 			t.ti = ti
 			log.Println("Torrent has", t.ti.Complete, "seeders and", t.ti.Incomplete, "leachers.")
-			peers := t.ti.Peers
-			log.Println("Tracker gave us", len(peers)/6, "peers")
-			newPeerCount := 0
-			for i := 0; i < len(peers); i += 6 {
-				peer := binaryToDottedPort(peers[i : i+6])
-				if _, ok := t.peers[peer]; !ok {
-					newPeerCount++
-					go connectToPeer(peer, conChan)
+			if !trackerLessMode {
+				peers := t.ti.Peers
+				log.Println("Tracker gave us", len(peers)/6, "peers")
+				newPeerCount := 0
+				for i := 0; i < len(peers); i += 6 {
+					peer := nettools.BinaryToDottedPort(peers[i : i+6])
+					if _, ok := t.peers[peer]; !ok {
+						newPeerCount++
+						go connectToPeer(peer, conChan)
+					}
 				}
+				log.Println("Contacting", newPeerCount, "new peers")
+				interval := t.ti.Interval
+				if interval < 120 {
+					interval = 120
+				} else if interval > 24*3600 {
+					interval = 24 * 3600
+				}
+				log.Println("..checking again in", interval, "seconds.")
+				retrackerChan = time.Tick(interval * time.Second)
+				log.Println("Contacting", newPeerCount, "new peers")
 			}
-			log.Println("Contacting", newPeerCount, "new peers")
 			interval := t.ti.Interval
 			if interval < 120 {
 				interval = 120
@@ -365,10 +451,16 @@ func (t *TorrentSession) DoTorrent() (err error) {
 			}
 			log.Println("Peers:", len(t.peers), "downloaded:", t.si.Downloaded,
 				"uploaded:", t.si.Uploaded, "ratio", ratio)
-			// TODO: Remove this hack when we support DHT and/or PEX
-			// In a large well-seeded swarm, try to maintain a reasonable number of peers.
-			if len(t.peers) < 15 && t.goodPieces < t.totalPieces && (t.ti == nil || t.ti.Complete > 100) {
-				t.fetchTrackerInfo("")
+			log.Println("good, total", t.goodPieces, t.totalPieces)
+			if len(t.peers) < TARGET_NUM_PEERS && t.goodPieces < t.totalPieces {
+				if t.m.Info.Private != 1 && useDHT {
+					go t.dht.PeersRequest(t.m.InfoHash, true)
+				}
+				if !trackerLessMode {
+					if t.ti == nil || t.ti.Complete > 100 {
+						t.fetchTrackerInfo("")
+					}
+				}
 			}
 		case _ = <-keepAliveChan:
 			now := time.Now()
@@ -591,6 +683,15 @@ func (t *TorrentSession) DoMessage(p *peerState, message []byte) (err error) {
 	}
 	if len(p.id) == 0 {
 		// This is the header message from the peer.
+		if t.m.Info.Private != 1 && useDHT {
+			// If 128, then it supports DHT.
+			if int(message[7])&0x01 == 0x01 {
+				// It's OK if we know this node already. The DHT engine will
+				// ignore it accordingly.
+				go t.dht.RemoteNodeAcquaintance(p.address)
+			}
+		}
+
 		peersInfoHash := string(message[8:28])
 		if peersInfoHash != t.m.InfoHash {
 			return errors.New("this peer doesn't have the right info hash")
@@ -746,10 +847,10 @@ func (t *TorrentSession) DoMessage(p *peerState, message []byte) (err error) {
 			// TODO: Implement this message.
 			// We see peers sending us 16K byte messages here, so
 			// it seems that we don't understand what this is.
-			log.Println("port len=", len(message))
-			//if len(message) != 3 {
-			//	return os.NewError("Unexpected length")
-			//}
+			if len(message) != 3 {
+				return errors.New(fmt.Sprintf("Unexpected length for port message:", len(message)))
+			}
+			go t.dht.RemoteNodeAcquaintance(p.address)
 		default:
 			return errors.New("Uknown message id")
 		}
@@ -786,95 +887,4 @@ func (t *TorrentSession) isInteresting(p *peerState) bool {
 		}
 	}
 	return false
-}
-
-// TODO: See if we can overlap IO with computation
-
-func checkPieces(fs FileStore, totalLength int64, m *MetaInfo) (good, bad int64, goodBits *Bitset, err error) {
-	pieceLength := m.Info.PieceLength
-	numPieces := (totalLength + pieceLength - 1) / pieceLength
-	goodBits = NewBitset(int(numPieces))
-	ref := m.Info.Pieces
-	if len(ref) != int(numPieces*sha1.Size) {
-		err = errors.New("Incorrect Info.Pieces length")
-		return
-	}
-	currentSums, err := computeSums(fs, totalLength, m.Info.PieceLength)
-	if err != nil {
-		return
-	}
-	for i := int64(0); i < numPieces; i++ {
-		base := i * sha1.Size
-		end := base + sha1.Size
-		if checkEqual(ref[base:end], currentSums[base:end]) {
-			good++
-			goodBits.Set(int(i))
-		} else {
-			bad++
-		}
-	}
-	return
-}
-
-func checkEqual(ref string, current []byte) bool {
-	for i := 0; i < len(current); i++ {
-		if ref[i] != current[i] {
-			return false
-		}
-	}
-	return true
-}
-
-func computeSums(fs FileStore, totalLength int64, pieceLength int64) (sums []byte, err error) {
-	numPieces := (totalLength + pieceLength - 1) / pieceLength
-	sums = make([]byte, sha1.Size*numPieces)
-	hasher := sha1.New()
-	piece := make([]byte, pieceLength)
-	for i := int64(0); i < numPieces; i++ {
-		if i == numPieces-1 {
-			piece = piece[0 : totalLength-i*pieceLength]
-		}
-		_, err = fs.ReadAt(piece, i*pieceLength)
-		if err != nil {
-			return
-		}
-		hasher.Reset()
-		_, err = hasher.Write(piece)
-		if err != nil {
-			return
-		}
-		copy(sums[i*sha1.Size:], hasher.Sum(nil))
-	}
-	return
-}
-
-func checkPiece(fs FileStore, totalLength int64, m *MetaInfo, pieceIndex int) (good bool, err error) {
-	ref := m.Info.Pieces
-	currentSum, err := computePieceSum(fs, totalLength, m.Info.PieceLength, pieceIndex)
-	if err != nil {
-		return
-	}
-	base := pieceIndex * sha1.Size
-	end := base + sha1.Size
-	good = checkEqual(ref[base:end], currentSum)
-	return
-}
-
-func computePieceSum(fs FileStore, totalLength int64, pieceLength int64, pieceIndex int) (sum []byte, err error) {
-	numPieces := (totalLength + pieceLength - 1) / pieceLength
-	hasher := sha1.New()
-	piece := make([]byte, pieceLength)
-	if int64(pieceIndex) == numPieces-1 {
-		piece = piece[0 : totalLength-int64(pieceIndex)*pieceLength]
-	}
-	_, err = fs.ReadAt(piece, int64(pieceIndex)*pieceLength)
-	if err != nil {
-		return
-	}
-	_, err = hasher.Write(piece)
-	if err != nil {
-		return
-	}
-	sum = hasher.Sum(nil)
-	return
 }
