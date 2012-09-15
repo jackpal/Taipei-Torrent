@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/nictuku/Taipei-Torrent/bencode"
+	"github.com/jackpal/Taipei-Torrent/bencode"
 )
 
 type FileDict struct {

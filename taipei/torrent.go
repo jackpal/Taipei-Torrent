@@ -15,8 +15,8 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/nictuku/Taipei-Torrent/dht"
-	"github.com/nictuku/Taipei-Torrent/nettools"
+	"github.com/jackpal/Taipei-Torrent/dht"
+	"github.com/jackpal/Taipei-Torrent/nettools"
 )
 
 const (
