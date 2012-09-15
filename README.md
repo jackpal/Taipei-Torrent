@@ -44,7 +44,7 @@ Download, Install, and Build Instructions
 2. Use the "go" command to download, install, and build the Taipei-Torrent
 app:
 
-    go get github.com/nictuku/Taipei-Torrent
+    go get github.com/jackpal/Taipei-Torrent
 
 Usage Instructions
 ------------------
@@ -55,14 +55,7 @@ or
 
     Taipei-Torrent -help
 
-Build Status
-----------------
-
-Currently ![](http://goci.me/project/image/github.com/nictuku/Taipei-Torrent)
-
-[GoCI project status](http://goci.me/project/github.com/nictuku/Taipei-Torrent)
-
 Related Projects
 ----------------
 
-https://github.com/jackpal/Taipei-Torrent the original project from which this is based.
+https://github.com/nictuku/Taipei-Torrent an active fork.
