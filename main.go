@@ -15,8 +15,13 @@ func main() {
 	flag.Parse()
 
 	args := flag.Args()
-	if len(args) != 1 {
-		log.Println("Torrent file or torrent URL required.")
+	narg := flag.NArg()
+	if narg != 1 {
+		if narg < 1 {
+			log.Println("Too few arguments. Torrent file or torrent URL required.")
+		} else {
+			log.Printf("Too many arguments. (Expected 1): %v", args)
+		}
 		usage()
 	}
 
