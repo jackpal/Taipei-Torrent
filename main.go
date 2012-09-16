@@ -9,10 +9,8 @@ import (
 )
 
 var torrent string
-var debugp bool
 
 func main() {
-	flag.BoolVar(&debugp, "debug", false, "Turn on debugging")
 	flag.Usage = usage
 	flag.Parse()
 
