@@ -7,7 +7,6 @@ import (
 	"io"
 	"io/ioutil"
 	"log"
-	"net/http"
 	"os"
 	"strings"
 	"time"
@@ -55,7 +54,7 @@ func getString(m map[string]interface{}, k string) string {
 func getMetaInfo(torrent string) (metaInfo *MetaInfo, err error) {
 	var input io.ReadCloser
 	if strings.HasPrefix(torrent, "http:") {
-		r, err := http.Get(torrent)
+		r, err := proxyHttpGet(torrent)
 		if err != nil {
 			return nil, err
 		}
@@ -137,7 +136,7 @@ type SessionInfo struct {
 }
 
 func getTrackerInfo(url string) (tr *TrackerResponse, err error) {
-	r, err := http.Get(url)
+	r, err := proxyHttpGet(url)
 	if err != nil {
 		return
 	}

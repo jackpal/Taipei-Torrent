@@ -106,7 +106,7 @@ func (t *TorrentSession) listenForPeerConnections(conChan chan net.Conn) {
 		}
 
 		if err != nil {
-			log.Fatal("net.Listen() gave us an ivalid port: ", err)
+			log.Fatal("net.Listen() gave us an invalid port: ", err)
 		}
 	}
 
@@ -301,7 +301,7 @@ func (t *TorrentSession) fetchTrackerInfo(event string) {
 
 func connectToPeer(peer string, ch chan net.Conn) {
 	// log.Println("Connecting to", peer)
-	conn, err := net.Dial("tcp", peer)
+	conn, err := proxyNetDial("tcp", peer)
 	if err != nil {
 		// log.Println("Failed to connect to", peer, err)
 	} else {
@@ -365,7 +365,10 @@ func (t *TorrentSession) DoTorrent() (err error) {
 	t.trackerInfoChan = make(chan *TrackerResponse)
 
 	conChan := make(chan net.Conn)
-	t.listenForPeerConnections(conChan)
+	if useProxy() {
+		// Only listen for peer connections if not using a proxy.
+		t.listenForPeerConnections(conChan)
+	}
 
 	DHTPeersRequestResults := make(chan map[string][]string)
 	if t.m.Info.Private != 1 && useDHT {
