@@ -9,7 +9,7 @@ import (
 	"time"
 
 	l4g "code.google.com/p/log4go"
-	"github.com/jackpal/Taipei-Torrent/bencode"
+	bencode "code.google.com/p/bencode-go"
 	"github.com/jackpal/Taipei-Torrent/nettools"
 )
 
