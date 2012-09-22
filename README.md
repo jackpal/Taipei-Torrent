@@ -13,11 +13,7 @@ A: jackpal started writing it while visiting Taipei, Taiwan
 
 Q: What is the license?
 
-A: The code in the bencode subdirectory is controlled by the LICENSE file in
-that directory.
-
-The code in the rest of Taipei Torrent is controlled by the LICENSE file in the
-top level.
+A: See the LICENSE file.
 
 Current Status
 --------------
@@ -55,7 +51,16 @@ or
 
     Taipei-Torrent -help
 
+Third-party Packages
+--------------------
+
+http://code.google.com/p/bencode-go - Bencode encoder/decoder
+https://github.com/hailiang/gosocks - SOCKS5 proxy support
+https://github.com/nictuku/dht      - Distributed Hash Table
+https://github.com/nictuku/nettools - Network utilities
+
 Related Projects
 ----------------
 
-https://github.com/nictuku/Taipei-Torrent an active fork.
+https://github.com/nictuku/Taipei-Torrent is an active fork.
+
