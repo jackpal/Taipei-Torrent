@@ -1,4 +1,4 @@
-package taipei
+package main
 
 import (
 	"reflect"

@@ -1,4 +1,4 @@
-package taipei
+package main
 
 // Just enough UPnP to be able to forward ports
 //

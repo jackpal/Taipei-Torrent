@@ -4,8 +4,6 @@ import (
 	"flag"
 	"log"
 	"os"
-
-	"github.com/jackpal/Taipei-Torrent/taipei"
 )
 
 var torrent string
@@ -28,7 +26,7 @@ func main() {
 	torrent = args[0]
 
 	log.Println("Starting.")
-	ts, err := taipei.NewTorrentSession(torrent)
+	ts, err := NewTorrentSession(torrent)
 	if err != nil {
 		log.Println("Could not create torrent session.", err)
 		return
