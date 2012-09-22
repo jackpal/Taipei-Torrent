@@ -1,4 +1,4 @@
-package taipei
+package main
 
 // As defined by the bittorrent protocol, this bitset is big-endian, such that
 // the high bit of the first byte is block 0

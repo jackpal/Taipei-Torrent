@@ -1,5 +1,5 @@
 // Compute missing pieces for a torrent.
-package taipei
+package main
 
 import (
 	"crypto/sha1"
