@@ -247,7 +247,7 @@ func (n *upnpNAT) GetStatusInfo() (err error) {
 }
 
 func (n *upnpNAT) AddPortMapping(protocol string, externalPort, internalPort int, description string, timeout int) (err error) {
-	// A single concatenation would brake ARM compilation.
+	// A single concatenation would break ARM compilation.
 	message := "<u:AddPortMapping xmlns:u=\"urn:schemas-upnp-org:service:WANIPConnection:1\">\r\n" +
 		"<NewRemoteHost></NewRemoteHost><NewExternalPort>" + strconv.Itoa(externalPort)
 	message += "</NewExternalPort><NewProtocol>" + protocol + "</NewProtocol>"
