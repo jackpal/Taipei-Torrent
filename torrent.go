@@ -195,7 +195,7 @@ type TorrentSession struct {
 	goodPieces      int
 	activePieces    map[int]*ActivePiece
 	lastHeartBeat   time.Time
-	dht             *dht.DHTEngine
+	dht             *dht.DHT
 }
 
 func NewTorrentSession(torrent string) (ts *TorrentSession, err error) {
@@ -370,9 +370,7 @@ func (t *TorrentSession) DoTorrent() (err error) {
 		t.listenForPeerConnections(conChan)
 	}
 
-	DHTPeersRequestResults := make(chan map[string][]string)
 	if t.m.Info.Private != 1 && useDHT {
-		DHTPeersRequestResults = t.dht.PeersRequestResults
 		t.dht.PeersRequest(t.m.InfoHash, true)
 	}
 
@@ -384,14 +382,14 @@ func (t *TorrentSession) DoTorrent() (err error) {
 			if !trackerLessMode {
 				t.fetchTrackerInfo("")
 			}
-		case dhtInfoHashPeers := <-DHTPeersRequestResults:
+		case dhtInfoHashPeers := <-t.dht.PeersRequestResults:
 			newPeerCount := 0
 			// key = infoHash. The torrent client currently only
 			// supports one download at a time, so let's assume
 			// it's the case.
 			for _, peers := range dhtInfoHashPeers {
 				for _, peer := range peers {
-					peer = nettools.BinaryToDottedPort(peer)
+					peer = dht.DecodePeerAddress(peer)
 					if _, ok := t.peers[peer]; !ok {
 						newPeerCount++
 						go connectToPeer(peer, conChan)
@@ -691,7 +689,7 @@ func (t *TorrentSession) DoMessage(p *peerState, message []byte) (err error) {
 			if int(message[7])&0x01 == 0x01 {
 				// It's OK if we know this node already. The DHT engine will
 				// ignore it accordingly.
-				go t.dht.RemoteNodeAcquaintance(p.address)
+				go t.dht.AddNode(p.address)
 			}
 		}
 
@@ -853,7 +851,7 @@ func (t *TorrentSession) DoMessage(p *peerState, message []byte) (err error) {
 			if len(message) != 3 {
 				return errors.New(fmt.Sprintf("Unexpected length for port message:", len(message)))
 			}
-			go t.dht.RemoteNodeAcquaintance(p.address)
+			go t.dht.AddNode(p.address)
 		default:
 			return errors.New("Uknown message id")
 		}
