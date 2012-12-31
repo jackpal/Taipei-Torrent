@@ -654,7 +654,7 @@ func (t *TorrentSession) doChoke(p *peerState) (err error) {
 func (t *TorrentSession) removeRequests(p *peerState) (err error) {
 	for k, _ := range p.our_requests {
 		piece := int(k >> 32)
-		begin := int(k)
+		begin := int(k & 0xffffffff)
 		block := begin / STANDARD_BLOCK_LENGTH
 		// log.Println("Forgetting we requested block ", piece, ".", block)
 		t.removeRequest(piece, block)
@@ -675,7 +675,7 @@ func (t *TorrentSession) doCheckRequests(p *peerState) (err error) {
 	for k, v := range p.our_requests {
 		if now.Sub(v).Seconds() > 30 {
 			piece := int(k >> 32)
-			block := int(k) / STANDARD_BLOCK_LENGTH
+			block := int(k&0xffffffff) / STANDARD_BLOCK_LENGTH
 			// log.Println("timing out request of", piece, ".", block)
 			t.removeRequest(piece, block)
 		}
