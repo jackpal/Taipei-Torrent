@@ -194,7 +194,7 @@ type TorrentSession struct {
 	lastPieceLength int
 	goodPieces      int
 	activePieces    map[int]*ActivePiece
-	lastHeartBeat   time.Time
+	heartbeat       chan bool
 	dht             *dht.DHT
 }
 
@@ -342,10 +342,13 @@ func (t *TorrentSession) ClosePeer(peer *peerState) {
 }
 
 func (t *TorrentSession) deadlockDetector() {
+	lastHeartbeat := time.Now()
 	for {
-		time.Sleep(15 * time.Second)
-		age := time.Now().Sub(t.lastHeartBeat)
-		if age > 15*time.Second {
+		select {
+		case <-t.heartbeat:
+			lastHeartbeat = time.Now()
+		case <-time.After(15 * time.Second):
+			age := time.Now().Sub(lastHeartbeat)
 			log.Println("Starvation or deadlock of main thread detected. Look in the stack dump for what DoTorrent() is currently doing.")
 			log.Println("Last heartbeat", age.Seconds(), "seconds ago")
 			panic("Killed by deadlock detector")
@@ -354,7 +357,7 @@ func (t *TorrentSession) deadlockDetector() {
 }
 
 func (t *TorrentSession) DoTorrent() (err error) {
-	t.lastHeartBeat = time.Now()
+	t.heartbeat = make(chan bool, 1)
 	go t.deadlockDetector()
 	log.Println("Fetching torrent.")
 	rechokeChan := time.Tick(1 * time.Second)
@@ -450,7 +453,7 @@ func (t *TorrentSession) DoTorrent() (err error) {
 			t.AddPeer(conn)
 		case _ = <-rechokeChan:
 			// TODO: recalculate who to choke / unchoke
-			t.lastHeartBeat = time.Now()
+			t.heartbeat <- true
 			ratio := float64(0.0)
 			if t.si.Downloaded > 0 {
 				ratio = float64(t.si.Uploaded) / float64(t.si.Downloaded)
