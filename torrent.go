@@ -377,12 +377,17 @@ func (t *TorrentSession) DoTorrent() (err error) {
 	t.fetchTrackerInfo("started")
 
 	for {
+		var peersRequestResults chan map[dht.InfoHash][]string
+		peersRequestResults = nil
+		if t.dht != nil {
+			peersRequestResults = t.dht.PeersRequestResults
+		}
 		select {
 		case _ = <-retrackerChan:
 			if !trackerLessMode {
 				t.fetchTrackerInfo("")
 			}
-		case dhtInfoHashPeers := <-t.dht.PeersRequestResults:
+		case dhtInfoHashPeers := <-peersRequestResults:
 			newPeerCount := 0
 			// key = infoHash. The torrent client currently only
 			// supports one download at a time, so let's assume
