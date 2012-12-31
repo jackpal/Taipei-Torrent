@@ -613,7 +613,8 @@ func (t *TorrentSession) RecordBlock(p *peerState, piece, begin, length uint32) 
 			delete(t.activePieces, int(piece))
 			ok, err = checkPiece(t.fileStore, t.totalSize, t.m, int(piece))
 			if !ok || err != nil {
-				log.Println("Ignoring bad piece", piece, err)
+				log.Println("Closing peer that sent a bad piece", piece, p.id, err)
+				p.Close()
 				return
 			}
 			t.si.Left -= int64(v.pieceLength)
