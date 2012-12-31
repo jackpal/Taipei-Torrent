@@ -4,6 +4,7 @@ package main
 import (
 	"crypto/sha1"
 	"errors"
+	"fmt"
 	"runtime"
 )
 
@@ -23,7 +24,7 @@ func checkPieces(fs FileStore, totalLength int64, m *MetaInfo) (good, bad int, g
 	for i := 0; i < numPieces; i++ {
 		base := i * sha1.Size
 		end := base + sha1.Size
-		if checkEqual(ref[base:end], currentSums[base:end]) {
+		if checkEqual([]byte(ref[base:end]), currentSums[base:end]) {
 			good++
 			goodBits.Set(int(i))
 		} else {
@@ -33,7 +34,7 @@ func checkPieces(fs FileStore, totalLength int64, m *MetaInfo) (good, bad int, g
 	return
 }
 
-func checkEqual(ref string, current []byte) bool {
+func checkEqual(ref, current []byte) bool {
 	for i := 0; i < len(current); i++ {
 		if ref[i] != current[i] {
 			return false
@@ -103,7 +104,11 @@ func checkPiece(fs FileStore, totalLength int64, m *MetaInfo, pieceIndex int) (g
 	}
 	base := pieceIndex * sha1.Size
 	end := base + sha1.Size
-	good = checkEqual(ref[base:end], currentSum)
+	refSha1 := []byte(ref[base:end])
+	good = checkEqual(refSha1, currentSum)
+	if !good {
+		err = fmt.Errorf("reference sha1: %v != piece sha1: %v", refSha1, currentSum)
+	}
 	return
 }
 
