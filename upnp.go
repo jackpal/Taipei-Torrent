@@ -20,11 +20,6 @@ type upnpNAT struct {
 	ourIP      string
 }
 
-type NAT interface {
-	AddPortMapping(protocol string, externalPort, internalPort int, description string, timeout int) (err error)
-	DeletePortMapping(protocol string, externalPort int) (err error)
-}
-
 func Discover() (nat NAT, err error) {
 	ssdp, err := net.ResolveUDPAddr("udp4", "239.255.255.250:1900")
 	if err != nil {
@@ -229,7 +224,11 @@ func soapRequest(url, function, message string) (r *http.Response, err error) {
 	return
 }
 
-func (n *upnpNAT) GetStatusInfo() (err error) {
+type statusInfo struct {
+	externalIpAddress string
+}
+
+func (n *upnpNAT) getStatusInfo() (info statusInfo, err error) {
 
 	message := "<u:GetStatusInfo xmlns:u=\"urn:schemas-upnp-org:service:WANIPConnection:1\">\r\n" +
 		"</u:GetStatusInfo>"
@@ -246,7 +245,16 @@ func (n *upnpNAT) GetStatusInfo() (err error) {
 	return
 }
 
-func (n *upnpNAT) AddPortMapping(protocol string, externalPort, internalPort int, description string, timeout int) (err error) {
+func (n *upnpNAT) GetExternalAddress() (addr net.IP, err error) {
+	info, err := n.getStatusInfo()
+	if err != nil {
+		return
+	}
+	addr = net.ParseIP(info.externalIpAddress)
+	return
+}
+
+func (n *upnpNAT) AddPortMapping(protocol string, externalPort, internalPort int, description string, timeout int) (mappedExternalPort int, err error) {
 	// A single concatenation would break ARM compilation.
 	message := "<u:AddPortMapping xmlns:u=\"urn:schemas-upnp-org:service:WANIPConnection:1\">\r\n" +
 		"<NewRemoteHost></NewRemoteHost><NewExternalPort>" + strconv.Itoa(externalPort)
@@ -266,11 +274,12 @@ func (n *upnpNAT) AddPortMapping(protocol string, externalPort, internalPort int
 
 	// TODO: check response to see if the port was forwarded
 	// log.Println(message, response)
+	mappedExternalPort = externalPort
 	_ = response
 	return
 }
 
-func (n *upnpNAT) DeletePortMapping(protocol string, externalPort int) (err error) {
+func (n *upnpNAT) DeletePortMapping(protocol string, externalPort, internalPort int) (err error) {
 
 	message := "<u:DeletePortMapping xmlns:u=\"urn:schemas-upnp-org:service:WANIPConnection:1\">\r\n" +
 		"<NewRemoteHost></NewRemoteHost><NewExternalPort>" + strconv.Itoa(externalPort) +

@@ -43,6 +43,8 @@ const (
 // Should be overriden by flag. Not thread safe.
 var port int
 var useUPnP bool
+var useNATPMP bool
+var gateway string
 var fileDir string
 var useDHT bool
 var trackerLessMode bool
@@ -57,6 +59,8 @@ func init() {
 	flag.BoolVar(&useDHT, "useDHT", false, "Use DHT to get peers.")
 	flag.BoolVar(&trackerLessMode, "trackerLessMode", false, "Do not get peers from the tracker. Good for "+
 		"testing the DHT mode.")
+	flag.BoolVar(&useNATPMP, "useNATPMP", false, "Use NAT-PMP to open port in firewall.")
+	flag.StringVar(&gateway, "gateway", "", "IP Address of gateway.")
 }
 
 func peerId() string {
@@ -64,28 +68,42 @@ func peerId() string {
 	return sid[0:20]
 }
 
-func chooseListenPort() (listenPort int, err error) {
-	listenPort = port
+// Create a NAT, or nil if none requested or found.
+func createNAT() (nat NAT, err error) {
+	if useUPnP && useNATPMP {
+		err = fmt.Errorf("Cannot specify both -useUPnP and -useNATPMP")
+		return
+	}
+	if useNATPMP {
+		if gateway == "" {
+			err = fmt.Errorf("-useNATPMP requires -gateway")
+			return
+		}
+	}
 	if useUPnP {
 		log.Println("Using UPnP to open port.")
-		// TODO: Look for ports currently in use. Handle collisions.
-		var nat NAT
 		nat, err = Discover()
-		if err != nil {
-			log.Println("Unable to discover NAT:", err)
-			return
+	}
+	if useNATPMP {
+		log.Println("Using NAT-PMP to open port.")
+		gatewayIP := net.ParseIP(gateway)
+		if gatewayIP == nil {
+			err = fmt.Errorf("Could not parse gateway %q", gateway)
 		}
-		// TODO: Check if the port is already mapped by someone else.
-		err2 := nat.DeletePortMapping("TCP", listenPort)
-		if err2 != nil {
-			log.Println("Unable to delete port mapping", err2)
-		}
-		err = nat.AddPortMapping("TCP", listenPort, listenPort,
-			"Taipei-Torrent port "+strconv.Itoa(listenPort), 0)
-		if err != nil {
-			log.Println("Unable to forward listen port", err)
-			return
-		}
+		nat = NewNatPMP(gatewayIP)
+	}
+	return
+}
+
+func chooseListenPort(nat NAT) (listenPort int, err error) {
+	listenPort = port
+
+	// TODO: Unmap port when exiting. (Right now we never exit cleanly.)
+	// TODO: Defend the port, remap when router reboots
+	listenPort, err = nat.AddPortMapping("tcp", listenPort, listenPort,
+		"Taipei-Torrent port "+strconv.Itoa(listenPort), 360000)
+	if err != nil {
+		return
 	}
 	return
 }
@@ -201,9 +219,29 @@ type TorrentSession struct {
 func NewTorrentSession(torrent string) (ts *TorrentSession, err error) {
 
 	var listenPort int
-	if listenPort, err = chooseListenPort(); err != nil {
-		log.Println("Could not choose listen port.")
-		log.Println("Peer connectivity will be affected.")
+
+	var nat NAT
+
+	nat, err = createNAT()
+
+	if err != nil {
+		log.Println("Unable to create NAT:", err)
+		return
+	}
+	if nat == nil {
+		listenPort = port
+	} else {
+		var external net.IP
+		external, err = nat.GetExternalAddress()
+		if err != nil {
+			log.Println("Unable to get external IP address from NAT")
+			return
+		}
+		log.Println("External ip address: ", external)
+		if listenPort, err = chooseListenPort(nat); err != nil {
+			log.Println("Could not choose listen port.", err)
+			log.Println("Peer connectivity will be affected.")
+		}
 	}
 	t := &TorrentSession{peers: make(map[string]*peerState),
 		peerMessageChan: make(chan peerMessage),
