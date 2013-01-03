@@ -253,7 +253,7 @@ func NewTorrentSession(torrent string) (ts *TorrentSession, err error) {
 	log.Printf("Tracker: %v, Comment: %v, InfoHash: %x, Encoding: %v, Private: %v",
 		t.m.Announce, t.m.Comment, t.m.InfoHash, t.m.Encoding, t.m.Info.Private)
 	if e := t.m.Encoding; e != "" && e != "UTF-8" {
-		return nil, errors.New(fmt.Sprintf("Unknown encoding %s", e))
+		return nil, fmt.Errorf("Unknown encoding %s", e)
 	}
 	ext := ".torrent"
 	dir := fileDir
@@ -896,7 +896,7 @@ func (t *TorrentSession) DoMessage(p *peerState, message []byte) (err error) {
 			// We see peers sending us 16K byte messages here, so
 			// it seems that we don't understand what this is.
 			if len(message) != 3 {
-				return errors.New(fmt.Sprintf("Unexpected length for port message:", len(message)))
+				return fmt.Errorf("Unexpected length for port message: %d", len(message))
 			}
 			go t.dht.AddNode(p.address)
 		default:
