@@ -370,6 +370,7 @@ func (t *TorrentSession) AddPeer(conn net.Conn) {
 	go ps.peerWriter(t.peerMessageChan, header[0:])
 	go ps.peerReader(t.peerMessageChan)
 	ps.SetChoke(false) // TODO: better choke policy
+	ps.SendBitfield(t.pieceSet)
 }
 
 func (t *TorrentSession) ClosePeer(peer *peerState) {
@@ -829,9 +830,6 @@ func (t *TorrentSession) DoMessage(p *peerState, message []byte) (err error) {
 			}
 			if int64(begin)+int64(length) > t.m.Info.PieceLength {
 				return errors.New("begin + length out of range.")
-			}
-			if length != STANDARD_BLOCK_LENGTH {
-				return errors.New("Unexpected block length.")
 			}
 			// TODO: Asynchronous
 			// p.AddRequest(index, begin, length)
