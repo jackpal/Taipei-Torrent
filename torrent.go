@@ -406,7 +406,7 @@ func (t *TorrentSession) DoTorrent() (err error) {
 	t.trackerInfoChan = make(chan *TrackerResponse)
 
 	conChan := make(chan net.Conn)
-	if useProxy() {
+	if !useProxy() {
 		// Only listen for peer connections if not using a proxy.
 		t.listenForPeerConnections(conChan)
 	}
