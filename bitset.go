@@ -96,3 +96,7 @@ func (b *Bitset) FindNextClear(index int) int {
 	}
 	return -1
 }
+
+func (b *Bitset) Bytes() []byte {
+	return b.b
+}

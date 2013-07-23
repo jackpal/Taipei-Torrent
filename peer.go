@@ -128,6 +128,13 @@ func (p *peerState) SetInterested(interested bool) {
 	}
 }
 
+func (p *peerState) SendBitfield(bs *Bitset) {
+	msg := make([]byte, len(bs.Bytes())+1)
+	msg[0] = BITFIELD
+	copy(msg[1:], bs.Bytes())
+	p.sendMessage(msg)
+}
+
 func (p *peerState) sendOneCharMessage(b byte) {
 	// log.Println("ocm", b, p.address)
 	p.sendMessage([]byte{b})
@@ -242,7 +249,15 @@ func (p *peerState) peerReader(msgChan chan peerMessage) {
 			// log.Println("Message size too large: ", n)
 			goto exit
 		}
-		buf := make([]byte, n)
+
+		var buf []byte
+		if n == 0 {
+			// keep-alive - we want an empty message
+			buf = make([]byte, 1)
+		} else {
+			buf = make([]byte, n)
+		}
+
 		_, err = io.ReadFull(p.conn, buf)
 		if err != nil {
 			goto exit
