@@ -46,6 +46,7 @@ Usage Instructions
 ------------------
 
     Taipei-Torrent mydownload.torrent
+    Taipei-Torrent --useDHT "magnet:?xt=urn:btih:bbb6db69965af769f664b6636e7914f8735141b3"
 
 or
 

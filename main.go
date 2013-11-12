@@ -42,6 +42,8 @@ func main() {
 	torrent = args[0]
 
 	log.Println("Starting.")
+	var err error
+
 	ts, err := NewTorrentSession(torrent)
 	if err != nil {
 		log.Println("Could not create torrent session.", err)
