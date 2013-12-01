@@ -214,6 +214,7 @@ type TorrentSession struct {
 	activePieces    map[int]*ActivePiece
 	heartbeat       chan bool
 	dht             *dht.DHT
+	quit            chan bool
 }
 
 func NewTorrentSession(torrent string) (ts *TorrentSession, err error) {
@@ -243,9 +244,13 @@ func NewTorrentSession(torrent string) (ts *TorrentSession, err error) {
 			log.Println("Peer connectivity will be affected.")
 		}
 	}
-	t := &TorrentSession{peers: make(map[string]*peerState),
+	t := &TorrentSession{
+		peers:           make(map[string]*peerState),
 		peerMessageChan: make(chan peerMessage),
-		activePieces:    make(map[int]*ActivePiece)}
+		activePieces:    make(map[int]*ActivePiece),
+		quit:            make(chan bool),
+	}
+
 	t.m, err = getMetaInfo(torrent)
 	if err != nil {
 		return
@@ -395,6 +400,10 @@ func (t *TorrentSession) deadlockDetector() {
 	}
 }
 
+func (t *TorrentSession) Quit() {
+	t.quit <- true
+}
+
 func (t *TorrentSession) DoTorrent() (err error) {
 	t.heartbeat = make(chan bool, 1)
 	go t.deadlockDetector()
@@ -528,6 +537,10 @@ func (t *TorrentSession) DoTorrent() (err error) {
 				}
 				peer.keepAlive(now)
 			}
+
+		case _ = <-t.quit:
+			log.Println("Quitting torrent session")
+			return
 		}
 	}
 	return
