@@ -1,9 +1,13 @@
 package main
 
 import (
+	"bytes"
 	"io"
+	"log"
 	"net"
 	"time"
+
+	bencode "code.google.com/p/bencode-go"
 )
 
 const MAX_OUR_REQUESTS = 2
@@ -30,6 +34,8 @@ type peerState struct {
 	peer_interested bool // peer is interested in this client
 	peer_requests   map[uint64]bool
 	our_requests    map[uint64]time.Time // What we requested, when we requested it
+
+	theirExtensions map[string]int
 }
 
 func queueingWriter(in, out chan []byte) {
@@ -132,6 +138,30 @@ func (p *peerState) SendBitfield(bs *Bitset) {
 	msg := make([]byte, len(bs.Bytes())+1)
 	msg[0] = BITFIELD
 	copy(msg[1:], bs.Bytes())
+	p.sendMessage(msg)
+}
+
+func (p *peerState) SendExtensions(port int) {
+
+	handshake := map[string]interface{}{
+		"m": map[string]int{
+			"ut_metadata": 1,
+		},
+		"v": "Taipei-Torrent dev",
+	}
+
+	var buf bytes.Buffer
+	err := bencode.Marshal(&buf, handshake)
+	if err != nil {
+		//log.Println("Error when marshalling extension message")
+		return
+	}
+
+	msg := make([]byte, 2+buf.Len())
+	msg[0] = EXTENSION
+	msg[1] = EXTENSION_HANDSHAKE
+	copy(msg[2:], buf.Bytes())
+
 	p.sendMessage(msg)
 }
 
@@ -268,4 +298,26 @@ func (p *peerState) peerReader(msgChan chan peerMessage) {
 exit:
 	msgChan <- peerMessage{p, nil}
 	// log.Println("peerReader exiting")
+}
+
+func (p *peerState) sendMetadataRequest(piece int) {
+	log.Printf("Sending metadata request for piece %d to %s\n", piece, p.address)
+
+	m := map[string]int{
+		"msg_type": METADATA_REQUEST,
+		"piece":    piece,
+	}
+
+	var raw bytes.Buffer
+	err := bencode.Marshal(&raw, m)
+	if err != nil {
+		return
+	}
+
+	msg := make([]byte, raw.Len()+2)
+	msg[0] = EXTENSION
+	msg[1] = byte(p.theirExtensions["ut_metadata"])
+	copy(msg[2:], raw.Bytes())
+
+	p.sendMessage(msg)
 }

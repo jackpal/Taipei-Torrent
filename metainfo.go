@@ -12,6 +12,7 @@ import (
 	"time"
 
 	bencode "code.google.com/p/bencode-go"
+	"github.com/nictuku/dht"
 )
 
 type FileDict struct {
@@ -60,10 +61,20 @@ func getMetaInfo(torrent string) (metaInfo *MetaInfo, err error) {
 		}
 		input = r.Body
 	} else if strings.HasPrefix(torrent, "magnet:") {
-		input, err = torrentFromMagnet(torrent)
+		magnet, err := parseMagnet(torrent)
 		if err != nil {
-			return
+			log.Println("Couldn't parse magnet: ", err)
+			return nil, err
 		}
+
+		ih, err := dht.DecodeInfoHash(magnet.InfoHashes[0])
+		if err != nil {
+			return nil, err
+		}
+
+		metaInfo = &MetaInfo{InfoHash: string(ih)}
+		return metaInfo, err
+
 	} else {
 		if input, err = os.Open(torrent); err != nil {
 			return
@@ -133,6 +144,18 @@ type SessionInfo struct {
 	Uploaded   int64
 	Downloaded int64
 	Left       int64
+
+	UseDHT      bool
+	FromMagnet  bool
+	HaveTorrent bool
+
+	OurExtensions map[int]string
+	ME            *MetaDataExchange
+}
+
+type MetaDataExchange struct {
+	Transferring bool
+	Pieces       [][]byte
 }
 
 func getTrackerInfo(url string) (tr *TrackerResponse, err error) {
@@ -155,5 +178,24 @@ func getTrackerInfo(url string) (tr *TrackerResponse, err error) {
 		return
 	}
 	tr = &tr2
+	return
+}
+
+func saveMetaInfo(metadata string) (err error) {
+	var info InfoDict
+	err = bencode.Unmarshal(bytes.NewReader([]byte(metadata)), &info)
+	if err != nil {
+		return
+	}
+
+	f, err := os.Create(info.Name + ".torrent")
+	if err != nil {
+		log.Println("Error when opening file for creation: ", err)
+		return
+	}
+	defer f.Close()
+
+	_, err = f.WriteString(metadata)
+
 	return
 }
