@@ -11,7 +11,6 @@ import (
 	"log"
 	"math"
 	"math/rand"
-	"net"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -57,9 +56,6 @@ const (
 )
 
 // Should be overriden by flag. Not thread safe.
-var port int
-var useUPnP bool
-var useNATPMP bool
 var gateway string
 var fileDir string
 var useDHT bool
@@ -70,93 +66,15 @@ func init() {
 	// If the port is 0, picks up a random port - but the DHT will keep
 	// running on port 0 because ListenUDP doesn't do that.
 	// Don't use port 6881 which blacklisted by some trackers.
-	flag.IntVar(&port, "port", 7777, "Port to listen on.")
-	flag.BoolVar(&useUPnP, "useUPnP", false, "Use UPnP to open port in firewall.")
 	flag.BoolVar(&useDHT, "useDHT", false, "Use DHT to get peers.")
 	flag.BoolVar(&trackerLessMode, "trackerLessMode", false, "Do not get peers from the tracker. Good for "+
 		"testing the DHT mode.")
-	flag.BoolVar(&useNATPMP, "useNATPMP", false, "Use NAT-PMP to open port in firewall.")
 	flag.StringVar(&gateway, "gateway", "", "IP Address of gateway.")
 }
 
 func peerId() string {
 	sid := "-tt" + strconv.Itoa(os.Getpid()) + "_" + strconv.FormatInt(rand.Int63(), 10)
 	return sid[0:20]
-}
-
-// Create a NAT, or nil if none requested or found.
-func createNAT() (nat NAT, err error) {
-	if useUPnP && useNATPMP {
-		err = fmt.Errorf("Cannot specify both -useUPnP and -useNATPMP")
-		return
-	}
-	if useNATPMP {
-		if gateway == "" {
-			err = fmt.Errorf("-useNATPMP requires -gateway")
-			return
-		}
-	}
-	if useUPnP {
-		log.Println("Using UPnP to open port.")
-		nat, err = Discover()
-	}
-	if useNATPMP {
-		log.Println("Using NAT-PMP to open port.")
-		gatewayIP := net.ParseIP(gateway)
-		if gatewayIP == nil {
-			err = fmt.Errorf("Could not parse gateway %q", gateway)
-		}
-		nat = NewNatPMP(gatewayIP)
-	}
-	return
-}
-
-func chooseListenPort(nat NAT) (listenPort int, err error) {
-	listenPort = port
-
-	// TODO: Unmap port when exiting. (Right now we never exit cleanly.)
-	// TODO: Defend the port, remap when router reboots
-	listenPort, err = nat.AddPortMapping("tcp", listenPort, listenPort,
-		"Taipei-Torrent port "+strconv.Itoa(listenPort), 360000)
-	if err != nil {
-		return
-	}
-	return
-}
-
-func (t *TorrentSession) listenForPeerConnections(conChan chan net.Conn) {
-	listenString := ":" + strconv.Itoa(t.si.Port)
-	listener, err := net.Listen("tcp", listenString)
-	if err != nil {
-		log.Fatal("Listen failed:", err)
-	}
-
-	// If port was not set by UPnP, and was 0, get the actual port
-	if t.si.Port == 0 {
-		// so we can send it to trackers.
-		_, p, err := net.SplitHostPort(listener.Addr().String())
-		if err == nil {
-			t.si.Port, err = strconv.Atoi(p)
-		}
-
-		if err != nil {
-			log.Fatal("net.Listen() gave us an invalid port: ", err)
-		}
-	}
-
-	log.Println("Listening for peers on port:", t.si.Port)
-	go func() {
-		for {
-			var conn net.Conn
-			conn, err = listener.Accept()
-			if err != nil {
-				log.Println("Listener failed:", err)
-			} else {
-				// log.Println("A peer contacted us", conn.RemoteAddr().String())
-				conChan <- conn
-			}
-		}
-	}()
 }
 
 var kBitTorrentHeader = []byte{'\x13', 'B', 'i', 't', 'T', 'o', 'r',
@@ -233,33 +151,7 @@ type TorrentSession struct {
 	quit            chan bool
 }
 
-func NewTorrentSession(torrent string) (ts *TorrentSession, err error) {
-
-	var listenPort int
-
-	var nat NAT
-
-	nat, err = createNAT()
-
-	if err != nil {
-		log.Println("Unable to create NAT:", err)
-		return
-	}
-	if nat == nil {
-		listenPort = port
-	} else {
-		var external net.IP
-		external, err = nat.GetExternalAddress()
-		if err != nil {
-			log.Println("Unable to get external IP address from NAT")
-			return
-		}
-		log.Println("External ip address: ", external)
-		if listenPort, err = chooseListenPort(nat); err != nil {
-			log.Println("Could not choose listen port.", err)
-			log.Println("Peer connectivity will be affected.")
-		}
-	}
+func NewTorrentSession(torrent string, listenPort int) (ts *TorrentSession, err error) {
 	t := &TorrentSession{
 		peers:           make(map[string]*peerState),
 		peerMessageChan: make(chan peerMessage),
@@ -283,12 +175,13 @@ func NewTorrentSession(torrent string) (ts *TorrentSession, err error) {
 	}
 
 	t.si = &SessionInfo{
-		PeerId:      peerId(),
-		Port:        listenPort,
-		UseDHT:      useDHT,
-		FromMagnet:  fromMagnet,
-		HaveTorrent: false,
-		ME:          &MetaDataExchange{},
+		PeerId:        peerId(),
+		Port:          listenPort,
+		UseDHT:        useDHT,
+		FromMagnet:    fromMagnet,
+		HaveTorrent:   false,
+		ME:            &MetaDataExchange{},
+		OurExtensions: map[int]string{1: "ut_metadat"},
 	}
 
 	if !t.si.FromMagnet {
@@ -398,44 +291,79 @@ func (t *TorrentSession) fetchTrackerInfo(event string) {
 	}()
 }
 
-func connectToPeer(peer string, ch chan net.Conn) {
-	// log.Println("Connecting to", peer)
+func (ts *TorrentSession) connectToPeer(peer string) {
+	//log.Println("Connecting to", peer)
 	conn, err := proxyNetDial("tcp", peer)
 	if err != nil {
 		// log.Println("Failed to connect to", peer, err)
-	} else {
-		// log.Println("Connected to", peer)
-		ch <- conn
-	}
-}
-
-func (t *TorrentSession) AddPeer(conn net.Conn) {
-	peer := conn.RemoteAddr().String()
-	// log.Println("Adding peer", peer)
-	if len(t.peers) >= MAX_NUM_PEERS {
-		log.Println("We have enough peers. Rejecting additional peer", peer)
-		conn.Close()
 		return
 	}
-	ps := NewPeerState(conn)
-	ps.address = peer
+
 	var header [68]byte
 	copy(header[0:], kBitTorrentHeader[0:])
-	if t.si.UseDHT {
+	if ts.si.UseDHT {
 		header[27] = header[27] | 0x01
 	}
 	// Support Extension Protocol (BEP-0010)
 	header[25] |= 0x10
-	t.si.OurExtensions = map[int]string{1: "ut_metadata"}
 
-	copy(header[28:48], string2Bytes(t.m.InfoHash))
-	copy(header[48:68], string2Bytes(t.si.PeerId))
+	copy(header[28:48], string2Bytes(ts.m.InfoHash))
+	copy(header[48:68], string2Bytes(ts.si.PeerId))
+
+	_, err = conn.Write(header[0:])
+	if err != nil {
+		log.Println("Failed to send header to", peer, err)
+		return
+	}
+
+	theirheader, err := readHeader(conn)
+	if err != nil {
+		return
+	}
+
+	peersInfoHash := string(theirheader[8:28])
+	id := string(theirheader[28:48])
+
+	btconn := &btConn{
+		header:   theirheader,
+		infohash: peersInfoHash,
+		id:       id,
+		conn:     conn,
+	}
+	// log.Println("Connected to", peer)
+	ts.AddPeer(btconn)
+}
+
+func (t *TorrentSession) AddPeer(btconn *btConn) {
+	theirheader := btconn.header[20:]
+
+	peer := btconn.conn.RemoteAddr().String()
+	// log.Println("Adding peer", peer)
+	if len(t.peers) >= MAX_NUM_PEERS {
+		log.Println("We have enough peers. Rejecting additional peer", peer)
+		btconn.conn.Close()
+		return
+	}
+	ps := NewPeerState(btconn.conn)
+	ps.address = peer
+	ps.id = btconn.id
+	if t.si.UseDHT {
+		// If 128, then it supports DHT.
+		if int(theirheader[7])&0x01 == 0x01 {
+			// It's OK if we know this node already. The DHT engine will
+			// ignore it accordingly.
+			go t.dht.AddNode(ps.address)
+		}
+	}
 
 	t.peers[peer] = ps
-	go ps.peerWriter(t.peerMessageChan, header[0:])
+	go ps.peerWriter(t.peerMessageChan)
 	go ps.peerReader(t.peerMessageChan)
 	ps.SetChoke(false) // TODO: better choke policy
-	ps.SendExtensions(t.si.Port)
+
+	if int(theirheader[5])&0x10 == 0x10 {
+		ps.SendExtensions(t.si.Port)
+	}
 }
 
 func (t *TorrentSession) ClosePeer(peer *peerState) {
@@ -464,11 +392,15 @@ func (t *TorrentSession) deadlockDetector() {
 	}
 }
 
-func (t *TorrentSession) Quit() {
+func (t *TorrentSession) Quit() (err error) {
 	t.quit <- true
+	for _, peer := range t.peers {
+		t.ClosePeer(peer)
+	}
+	return nil
 }
 
-func (t *TorrentSession) DoTorrent() (err error) {
+func (t *TorrentSession) DoTorrent() {
 	t.heartbeat = make(chan bool, 1)
 	go t.deadlockDetector()
 	log.Println("Fetching torrent.")
@@ -478,12 +410,6 @@ func (t *TorrentSession) DoTorrent() (err error) {
 	retrackerChan := time.Tick(20 * time.Second)
 	keepAliveChan := time.Tick(60 * time.Second)
 	t.trackerInfoChan = make(chan *TrackerResponse)
-
-	conChan := make(chan net.Conn)
-	if !useProxy() {
-		// Only listen for peer connections if not using a proxy.
-		t.listenForPeerConnections(conChan)
-	}
 
 	if t.si.UseDHT {
 		t.dht.PeersRequest(t.m.InfoHash, true)
@@ -514,7 +440,9 @@ func (t *TorrentSession) DoTorrent() (err error) {
 					peer = dht.DecodePeerAddress(peer)
 					if _, ok := t.peers[peer]; !ok {
 						newPeerCount++
-						go connectToPeer(peer, conChan)
+						if t.si.HaveTorrent {
+							go t.connectToPeer(peer)
+						}
 					}
 				}
 			}
@@ -530,7 +458,7 @@ func (t *TorrentSession) DoTorrent() (err error) {
 					peer := nettools.BinaryToDottedPort(peers[i : i+6])
 					if _, ok := t.peers[peer]; !ok {
 						newPeerCount++
-						go connectToPeer(peer, conChan)
+						go t.connectToPeer(peer)
 					}
 				}
 				log.Println("Contacting", newPeerCount, "new peers")
@@ -562,13 +490,6 @@ func (t *TorrentSession) DoTorrent() (err error) {
 					log.Println("Closing peer", peer.address, "because", err2)
 				}
 				t.ClosePeer(peer)
-			}
-		case conn := <-conChan:
-			// Add a new peer only if we are in data transfer mode. If we are
-			// still exchanging metadata, we don't add it (because we're only
-			// getting metadata from 1 peer)
-			if t.si.HaveTorrent || t.si.ME != nil && !t.si.ME.Transferring {
-				t.AddPeer(conn)
 			}
 		case <-rechokeChan:
 			// TODO: recalculate who to choke / unchoke
@@ -614,7 +535,7 @@ func (t *TorrentSession) DoTorrent() (err error) {
 			return
 		}
 	}
-	return
+
 }
 
 func (t *TorrentSession) RequestBlock(p *peerState) (err error) {

@@ -82,6 +82,7 @@ func NewPeerState(conn net.Conn) *peerState {
 }
 
 func (p *peerState) Close() {
+	log.Println("Closing connection to ", p.address)
 	p.conn.Close()
 	// No need to close p.writeChan. Further writes to p.conn will just fail.
 }
@@ -218,16 +219,11 @@ func readNBOUint32(conn net.Conn) (n uint32, err error) {
 // This func is designed to be run as a goroutine. It
 // listens for messages on a channel and sends them to a peer.
 
-func (p *peerState) peerWriter(errorChan chan peerMessage, header []byte) {
-	// log.Println("Writing header.")
-	_, err := p.conn.Write(header)
-	if err != nil {
-		goto exit
-	}
+func (p *peerState) peerWriter(errorChan chan peerMessage) {
 	// log.Println("Writing messages")
 	for msg := range p.writeChan2 {
 		// log.Println("Writing", len(msg), conn.RemoteAddr())
-		err = writeNBOUint32(p.conn, uint32(len(msg)))
+		err := writeNBOUint32(p.conn, uint32(len(msg)))
 		if err != nil {
 			goto exit
 		}
@@ -246,38 +242,16 @@ exit:
 // listens for messages from the peer and forwards them to a channel.
 
 func (p *peerState) peerReader(msgChan chan peerMessage) {
-	// log.Println("Reading header.")
-	var header [68]byte
-	_, err := p.conn.Read(header[0:1])
-	if err != nil {
-		goto exit
-	}
-	if header[0] != 19 {
-		goto exit
-	}
-	_, err = p.conn.Read(header[1:20])
-	if err != nil {
-		goto exit
-	}
-	if string(header[1:20]) != "BitTorrent protocol" {
-		goto exit
-	}
-	// Read rest of header
-	_, err = p.conn.Read(header[20:])
-	if err != nil {
-		goto exit
-	}
-	msgChan <- peerMessage{p, header[20:]}
 	// log.Println("Reading messages")
 	for {
 		var n uint32
-		n, err = readNBOUint32(p.conn)
+		n, err := readNBOUint32(p.conn)
 		if err != nil {
-			goto exit
+			break
 		}
 		if n > 130*1024 {
 			// log.Println("Message size too large: ", n)
-			goto exit
+			break
 		}
 
 		var buf []byte
@@ -290,12 +264,11 @@ func (p *peerState) peerReader(msgChan chan peerMessage) {
 
 		_, err = io.ReadFull(p.conn, buf)
 		if err != nil {
-			goto exit
+			break
 		}
 		msgChan <- peerMessage{p, buf}
 	}
 
-exit:
 	msgChan <- peerMessage{p, nil}
 	// log.Println("peerReader exiting")
 }
