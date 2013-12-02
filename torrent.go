@@ -434,7 +434,7 @@ func (t *TorrentSession) DoTorrent() (err error) {
 			peersRequestResults = t.dht.PeersRequestResults
 		}
 		select {
-		case _ = <-retrackerChan:
+		case <-retrackerChan:
 			if !trackerLessMode {
 				t.fetchTrackerInfo("")
 			}
@@ -499,7 +499,7 @@ func (t *TorrentSession) DoTorrent() (err error) {
 			}
 		case conn := <-conChan:
 			t.AddPeer(conn)
-		case _ = <-rechokeChan:
+		case <-rechokeChan:
 			// TODO: recalculate who to choke / unchoke
 			t.heartbeat <- true
 			ratio := float64(0.0)
@@ -519,7 +519,7 @@ func (t *TorrentSession) DoTorrent() (err error) {
 					}
 				}
 			}
-		case _ = <-keepAliveChan:
+		case <-keepAliveChan:
 			now := time.Now()
 			for _, peer := range t.peers {
 				if peer.lastReadTime.Second() != 0 && now.Sub(peer.lastReadTime) > 3*time.Minute {
@@ -538,7 +538,7 @@ func (t *TorrentSession) DoTorrent() (err error) {
 				peer.keepAlive(now)
 			}
 
-		case _ = <-t.quit:
+		case <-t.quit:
 			log.Println("Quitting torrent session")
 			return
 		}

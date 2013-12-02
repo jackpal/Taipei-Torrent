@@ -9,8 +9,8 @@ import (
 )
 
 var (
-	cpuprofile = flag.String("cpuprofile", "", "write cpu profile to file")
-	memprofile = flag.String("memprofile", "", "write mem profile to file")
+	cpuprofile = flag.String("cpuprofile", "", "If not empty, collects CPU profile samples and writes the profile to the given file before the program exits")
+	memprofile = flag.String("memprofile", "", "If not empty, writes memory heap allocations to the given file before the program exits")
 )
 
 var torrent string
