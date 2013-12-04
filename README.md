@@ -9,7 +9,7 @@ FAQ:
 
 Q: Why call it Taipei Torrent?
 
-A: jackpal started writing it while visiting Taipei, Taiwan
+A: I started writing it while visiting Taipei, Taiwan
 
 Q: What is the license?
 
@@ -23,7 +23,6 @@ Tested on Windows, Linux and Mac OSX.
 Development Roadmap
 -------------------
 
-+  Support magnet links
 +  Implement choke/unchoke logic
 +  Full UPnP support (need to be able to search for an unused listener port,
    detect we have already acquired the port,
@@ -35,7 +34,7 @@ Development Roadmap
 Download, Install, and Build Instructions
 -----------------------------------------
 
-1. Download and install the Go One environment from http://golang.org
+1. Download and install the Go tools from http://golang.org
 
 2. Use the "go" command to download, install, and build the Taipei-Torrent
 app:
