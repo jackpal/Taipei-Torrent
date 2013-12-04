@@ -3,13 +3,16 @@ package main
 import (
 	"crypto/sha1"
 	"fmt"
-	"io"
+	_ "io"
 	"net/url"
 	"strings"
+
+	_ "github.com/nictuku/dht"
 )
 
 type Magnet struct {
 	InfoHashes []string
+	Names      []string
 }
 
 func parseMagnet(s string) (Magnet, error) {
@@ -23,7 +26,7 @@ func parseMagnet(s string) (Magnet, error) {
 	//
 	// xt: exact topic.
 	//   ~ urn: uniform resource name.
-	//   ~ btih: bittorrent infohash. 
+	//   ~ btih: bittorrent infohash.
 	// dn: display name (optional).
 	// tr: address tracker (optional).
 	u, err := url.Parse(s)
@@ -47,25 +50,12 @@ func parseMagnet(s string) (Magnet, error) {
 		}
 		infoHashes = append(infoHashes, s[1])
 	}
-	return Magnet{infoHashes}, nil
-}
 
-// torrentFromMagnet fetches the content of a torrent meta file from the magnet
-// uri. It only uses the first infohash found in the URI.
-func torrentFromMagnet(uri string) (torrentBody io.ReadCloser, err error) {
-	m, err := parseMagnet(uri)
-	if err != nil {
-		return nil, err
+	var names []string
+	n, ok := u.Query()["dn"]
+	if ok {
+		names = n
 	}
-	if len(m.InfoHashes) == 0 {
-		return nil, fmt.Errorf("No bittorrent infohashes found in the magnet link %v.", uri)
-	}
-	ih := m.InfoHashes[0]
-	return nil, fmt.Errorf("Not supported. Would have downloaded torrent file with hash %v", ih)
 
-	// Start a torrent session to download the magnet file.
-	//
-	// References:
-	// - http://bittorrent.org/beps/bep_0009.html
-	// TODO: Refactor the torrent code to support multiple sessions per client.
+	return Magnet{InfoHashes: infoHashes, Names: names}, nil
 }
