@@ -9,7 +9,7 @@ FAQ:
 
 Q: Why call it Taipei Torrent?
 
-A: I started writing it while visiting Taipei, Taiwan
+A: I (jackpal) started writing it while visiting Taipei, Taiwan
 
 Q: What is the license?
 
