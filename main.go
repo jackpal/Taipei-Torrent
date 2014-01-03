@@ -39,35 +39,58 @@ func main() {
 		defer pprof.StopCPUProfile()
 	}
 
-	torrent = args[0]
+	if *memprofile != "" {
+		defer func(file string) {
+			memf, err := os.Create(file)
+			if err != nil {
+				log.Fatal(err)
+			}
+			pprof.WriteHeapProfile(memf)
+		}(*memprofile)
+	}
 
 	log.Println("Starting.")
-	var err error
 
-	ts, err := NewTorrentSession(torrent)
+	conChan, listenPort, err := listenForPeerConnections()
+	if err != nil {
+		log.Fatal("Couldn't listen for peers connection: ", err)
+	}
+	quitChan := listenSigInt()
+
+	torrent = args[0]
+	ts, err := NewTorrentSession(torrent, listenPort)
 	if err != nil {
 		log.Println("Could not create torrent session.", err)
 		return
 	}
+	torrentSessions := make(map[string]*TorrentSession)
+	torrentSessions[ts.m.InfoHash] = ts
 
-	go func() {
-		<-listenSigInt()
-		ts.Quit()
-	}()
+	log.Printf("Starting torrent session for %x", ts.m.InfoHash)
 
-	err = ts.DoTorrent()
-	if err != nil {
-		log.Println("Failed: ", err)
-	} else {
-		log.Println("Done")
+	for _, ts := range torrentSessions {
+		go ts.DoTorrent()
 	}
 
-	if *memprofile != "" {
-		memf, err := os.Create(*memprofile)
-		if err != nil {
-			log.Fatal(err)
+mainLoop:
+	for {
+		select {
+		case <-quitChan:
+			for _, ts := range torrentSessions {
+				err := ts.Quit()
+				if err != nil {
+					log.Println("Failed: ", err)
+				} else {
+					log.Println("Done")
+				}
+			}
+			break mainLoop
+		case c := <-conChan:
+			log.Printf("New bt connection for ih %x", c.infohash)
+			if ts, ok := torrentSessions[c.infohash]; ok {
+				ts.AddPeer(c)
+			}
 		}
-		pprof.WriteHeapProfile(memf)
 	}
 
 }
