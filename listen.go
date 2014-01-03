@@ -1,7 +1,6 @@
 package main
 
 import (
-	"errors"
 	"flag"
 	"fmt"
 	"log"
@@ -101,7 +100,7 @@ func createListener() (listener net.Listener, err error) {
 // createPortMapping creates a NAT port mapping, or nil if none requested or found.
 func createPortMapping() (nat NAT, err error) {
 	if *useUPnP && *useNATPMP {
-		err = errors.New("Cannot specify both -useUPnP and -useNATPMP")
+		err = fmt.Errorf("Cannot specify both -useUPnP and -useNATPMP")
 		return
 	}
 	if *useUPnP {
@@ -110,7 +109,7 @@ func createPortMapping() (nat NAT, err error) {
 	}
 	if *useNATPMP {
 		if gateway == "" {
-			err = errors.New("-useNATPMP requires -gateway")
+			err = fmt.Errorf("-useNATPMP requires -gateway")
 			return
 		}
 		log.Println("Using NAT-PMP to open port.")
