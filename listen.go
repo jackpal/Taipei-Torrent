@@ -10,14 +10,15 @@ import (
 )
 
 var (
-	// If the port is 0, picks up a random port - but the DHT will keep
-	// running on port 0 because ListenUDP doesn't do that.
-	// Don't use port 6881 which blacklisted by some trackers.
+	// If the port is 0, picks up a random port. Don't use port 6881 which
+	// blacklisted by some trackers.
 	port      = flag.Int("port", 7777, "Port to listen on.")
 	useUPnP   = flag.Bool("useUPnP", false, "Use UPnP to open port in firewall.")
 	useNATPMP = flag.Bool("useNATPMP", false, "Use NAT-PMP to open port in firewall.")
 )
 
+// btConn wraps an incoming network connection and contains metadata that helps
+// identify which active torrentSession it's relevant for.
 type btConn struct {
 	conn     net.Conn
 	header   []byte
@@ -25,42 +26,40 @@ type btConn struct {
 	id       string
 }
 
+// listenForPeerConnections listens on a TCP port for incoming connections and
+// demuxes them to the appropriate active torrentSession based on the InfoHash
+// in the header.
 func listenForPeerConnections() (conChan chan *btConn, listenPort int, err error) {
-
-	listener, err := getListener()
+	listener, err := createListener()
 	if err != nil {
 		return
 	}
-
 	conChan = make(chan *btConn)
-
 	_, portstring, err := net.SplitHostPort(listener.Addr().String())
 	if err != nil {
+		log.Printf("Listener failed while finding the host/port for %v: %v", portstring, err)
 		return
 	}
 	listenPort, err = strconv.Atoi(portstring)
 	if err != nil {
+		log.Printf("Listener failed while converting %v to integer: %v", portstring, err)
 		return
 	}
-
 	go func() {
 		for {
 			var conn net.Conn
 			conn, err := listener.Accept()
 			if err != nil {
-				log.Println("Listener failed:", err)
+				log.Println("Listener accept failed:", err)
 				continue
 			}
-
 			header, err := readHeader(conn)
 			if err != nil {
 				log.Println("Error reading header: ", err)
 				continue
 			}
-
 			peersInfoHash := string(header[8:28])
 			id := string(header[28:48])
-
 			conChan <- &btConn{
 				header:   header,
 				infohash: peersInfoHash,
@@ -69,25 +68,20 @@ func listenForPeerConnections() (conChan chan *btConn, listenPort int, err error
 			}
 		}
 	}()
-
 	return
 }
 
-func getListener() (listener net.Listener, err error) {
-	var listenPort int
-	nat, err := createNAT()
-
+func createListener() (listener net.Listener, err error) {
+	nat, err := createPortMapping()
 	if err != nil {
-		log.Println("Unable to create NAT:", err)
+		err = fmt.Errorf("Unable to create NAT: %v", err)
 		return
 	}
-	if nat == nil {
-		listenPort = *port
-	} else {
+	listenPort := *port
+	if nat != nil {
 		var external net.IP
-		external, err = nat.GetExternalAddress()
-		if err != nil {
-			log.Println("Unable to get external IP address from NAT")
+		if external, err = nat.GetExternalAddress(); err != nil {
+			err = fmt.Errorf("Unable to get external IP address from NAT: %v", err)
 			return
 		}
 		log.Println("External ip address: ", external)
@@ -96,35 +90,29 @@ func getListener() (listener net.Listener, err error) {
 			log.Println("Peer connectivity will be affected.")
 		}
 	}
-
-	listenString := ":" + strconv.Itoa(listenPort)
-	listener, err = net.Listen("tcp", listenString)
+	listener, err = net.ListenTCP("tcp", &net.TCPAddr{Port: listenPort})
 	if err != nil {
 		log.Fatal("Listen failed:", err)
 	}
-
 	log.Println("Listening for peers on port:", listenPort)
-
 	return
 }
 
-// Create a NAT, or nil if none requested or found.
-func createNAT() (nat NAT, err error) {
+// createPortMapping creates a NAT port mapping, or nil if none requested or found.
+func createPortMapping() (nat NAT, err error) {
 	if *useUPnP && *useNATPMP {
 		err = errors.New("Cannot specify both -useUPnP and -useNATPMP")
 		return
-	}
-	if *useNATPMP {
-		if gateway == "" {
-			err = errors.New("-useNATPMP requires -gateway")
-			return
-		}
 	}
 	if *useUPnP {
 		log.Println("Using UPnP to open port.")
 		nat, err = Discover()
 	}
 	if *useNATPMP {
+		if gateway == "" {
+			err = errors.New("-useNATPMP requires -gateway")
+			return
+		}
 		log.Println("Using NAT-PMP to open port.")
 		gatewayIP := net.ParseIP(gateway)
 		if gatewayIP == nil {
@@ -137,7 +125,6 @@ func createNAT() (nat NAT, err error) {
 
 func chooseListenPort(nat NAT) (listenPort int, err error) {
 	listenPort = *port
-
 	// TODO: Unmap port when exiting. (Right now we never exit cleanly.)
 	// TODO: Defend the port, remap when router reboots
 	listenPort, err = nat.AddPortMapping("tcp", listenPort, listenPort,
@@ -152,28 +139,27 @@ func readHeader(conn net.Conn) (header []byte, err error) {
 	header = make([]byte, 68)
 	_, err = conn.Read(header[0:1])
 	if err != nil {
-		log.Println("Couldn't read 1st byte")
+		err = fmt.Errorf("Couldn't read 1st byte: %v", err)
 		return
 	}
 	if header[0] != 19 {
-		log.Println("First byte is not 19")
+		err = fmt.Errorf("First byte is not 19")
 		return
 	}
 	_, err = conn.Read(header[1:20])
 	if err != nil {
-		log.Println("Couldn't read magic string")
+		err = fmt.Errorf("Couldn't read magic string: %v", err)
 		return
 	}
 	if string(header[1:20]) != "BitTorrent protocol" {
-		log.Println("Magic string is not correct: ", string(header[1:20]))
+		err = fmt.Errorf("Magic string is not correct: %v", string(header[1:20]))
 		return
 	}
 	// Read rest of header
 	_, err = conn.Read(header[20:])
 	if err != nil {
-		log.Println("Couldn't read rest of header")
+		err = fmt.Errorf("Couldn't read rest of header")
 		return
 	}
-
 	return
 }
