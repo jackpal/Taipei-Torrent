@@ -187,12 +187,6 @@ func NewTorrentSession(torrent string, listenPort int) (ts *TorrentSession, err 
 	if !t.si.FromMagnet {
 		t.load()
 	}
-
-	if t.si.UseDHT {
-		log.Println("Waiting 5 seconds for the DHT to fill")
-		time.Sleep(5 * time.Second)
-	}
-
 	return t, err
 }
 
