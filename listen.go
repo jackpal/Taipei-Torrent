@@ -11,7 +11,7 @@ import (
 
 var (
 	// If the port is 0, picks up a random port. Don't use port 6881 which
-	// blacklisted by some trackers.
+	// is blacklisted by some trackers.
 	port      = flag.Int("port", 7777, "Port to listen on.")
 	useUPnP   = flag.Bool("useUPnP", false, "Use UPnP to open port in firewall.")
 	useNATPMP = flag.Bool("useNATPMP", false, "Use NAT-PMP to open port in firewall.")
