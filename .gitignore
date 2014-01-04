@@ -1,6 +1,5 @@
 *~
 *.[56ao]
 Taipei-Torrent
-testData/downloads
-testData/file
+testData
 *.exe
