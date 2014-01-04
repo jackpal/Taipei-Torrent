@@ -1,5 +1,9 @@
 package main
 
+// Listen for new external connections, at the daemon level. They are
+// first verified for bittorrent correctness, and then passed to the
+// relevant torrent session.
+
 import (
 	"errors"
 	"flag"
@@ -10,24 +14,33 @@ import (
 )
 
 var (
-	// If the port is 0, picks up a random port - but the DHT will keep
-	// running on port 0 because ListenUDP doesn't do that.
+	// If the port is 0, picks up a random port
 	// Don't use port 6881 which blacklisted by some trackers.
 	port      = flag.Int("port", 7777, "Port to listen on.")
 	useUPnP   = flag.Bool("useUPnP", false, "Use UPnP to open port in firewall.")
 	useNATPMP = flag.Bool("useNATPMP", false, "Use NAT-PMP to open port in firewall.")
 )
 
+// A bittorrent connection to a remote peer. This is mostly used for
+// initializing connections (wheter incoming or outgoing); once
+// handshake is successful, only the raw TCP connection is used.
 type btConn struct {
-	conn     net.Conn
-	header   []byte
+
+	// The underlying TCP connection
+	conn net.Conn
+
+	// The bittorrent header. Must be valid for Bittorrent
+	header []byte
+
+	// The infohash advertised in the header
 	infohash string
-	id       string
+
+	// The peer id
+	id string
 }
 
 func listenForPeerConnections() (conChan chan *btConn, listenPort int, err error) {
-
-	listener, err := getListener()
+	listener, err := createListener()
 	if err != nil {
 		return
 	}
@@ -73,7 +86,7 @@ func listenForPeerConnections() (conChan chan *btConn, listenPort int, err error
 	return
 }
 
-func getListener() (listener net.Listener, err error) {
+func createListener() (listener net.Listener, err error) {
 	var listenPort int
 	nat, err := createNAT()
 
@@ -97,8 +110,7 @@ func getListener() (listener net.Listener, err error) {
 		}
 	}
 
-	listenString := ":" + strconv.Itoa(listenPort)
-	listener, err = net.Listen("tcp", listenString)
+	listener, err = net.ListenTCP("tcp", &net.TCPAddr{Port: listenPort})
 	if err != nil {
 		log.Fatal("Listen failed:", err)
 	}
