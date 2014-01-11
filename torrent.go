@@ -214,7 +214,11 @@ func (t *TorrentSession) load() {
 	ext := ".torrent"
 	dir := fileDir
 	if len(t.m.Info.Files) != 0 {
-		dir += "/" + filepath.Base(torrent)
+		torrentName := t.m.Info.Name
+		if torrentName == "" {
+			torrentName = filepath.Base(torrent)
+		}
+		dir += "/" + torrentName
 		if dir[len(dir)-len(ext):] == ext {
 			dir = dir[:len(dir)-len(ext)]
 		}
