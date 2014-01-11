@@ -13,6 +13,7 @@ import (
 	"math/rand"
 	"net/url"
 	"os"
+	"path"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -218,7 +219,9 @@ func (t *TorrentSession) load() {
 		if torrentName == "" {
 			torrentName = filepath.Base(torrent)
 		}
-		dir += "/" + torrentName
+		// canonicalize the torrent path and make sure it doesn't start with ".."
+		torrentName = path.Clean("/" + torrentName)
+		dir += torrentName
 		if dir[len(dir)-len(ext):] == ext {
 			dir = dir[:len(dir)-len(ext)]
 		}

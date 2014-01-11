@@ -76,7 +76,10 @@ func NewFileStore(info *InfoDict, storePath string) (f FileStore, totalSize int6
 	fs.offsets = make([]int64, numFiles)
 	for i, _ := range info.Files {
 		src := &info.Files[i]
-		fullPath := path.Join(storePath, path.Clean(path.Join(src.Path...)))
+		// Clean the source path before appending to the storePath. This
+		// ensures that source paths that start with ".." can't escape.
+		cleanSrcPath := path.Clean("/" + path.Join(src.Path...))[1:]
+		fullPath := path.Join(storePath, cleanSrcPath)
 		err = ensureDirectory(fullPath)
 		if err != nil {
 			return
