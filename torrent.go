@@ -354,6 +354,10 @@ func (t *TorrentSession) AddPeer(btconn *btConn) {
 		}
 	}
 
+	// By default, a peer has no pieces. If it has pieces, it should send
+	// a BITFIELD message as a first message
+	ps.have = NewBitset(t.totalPieces)
+
 	t.peers[peer] = ps
 	go ps.peerWriter(t.peerMessageChan)
 	go ps.peerReader(t.peerMessageChan)
