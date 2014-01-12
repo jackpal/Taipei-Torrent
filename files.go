@@ -16,7 +16,7 @@ type FileStore interface {
 
 type fileEntry struct {
 	length int64
-	fd     *os.File
+	name   string
 }
 
 type fileStore struct {
@@ -26,14 +26,15 @@ type fileStore struct {
 
 func (fe *fileEntry) open(name string, length int64) (err error) {
 	fe.length = length
+	fe.name = name
 	st, err := os.Stat(name)
 	if err != nil && os.IsNotExist(err) {
-		fe.fd, err = os.Create(name)
+		f, err := os.Create(name)
+		defer f.Close()
 		if err != nil {
-			return
+			return err
 		}
 	} else {
-		fe.fd, err = os.OpenFile(name, os.O_RDWR, 0600)
 		if st.Size() == length {
 			return
 		}
@@ -44,6 +45,24 @@ func (fe *fileEntry) open(name string, length int64) (err error) {
 		err = errors.New("Could not truncate file.")
 	}
 	return
+}
+
+func (fe *fileEntry) ReadAt(p []byte, off int64) (n int, err error) {
+	file, err := os.OpenFile(fe.name, os.O_RDWR, 0600)
+	if err != nil {
+		return
+	}
+	defer file.Close()
+	return file.ReadAt(p, off)
+}
+
+func (fe *fileEntry) WriteAt(p []byte, off int64) (n int, err error) {
+	file, err := os.OpenFile(fe.name, os.O_RDWR, 0600)
+	if err != nil {
+		return
+	}
+	defer file.Close()
+	return file.WriteAt(p, off)
 }
 
 func ensureDirectory(fullPath string) (err error) {
@@ -123,9 +142,8 @@ func (f *fileStore) ReadAt(p []byte, off int64) (n int, err error) {
 			if space < chunk {
 				chunk = space
 			}
-			fd := entry.fd
 			var nThisTime int
-			nThisTime, err = fd.ReadAt(p[0:chunk], itemOffset)
+			nThisTime, err = entry.ReadAt(p[0:chunk], itemOffset)
 			n = n + nThisTime
 			if err != nil {
 				return
@@ -154,9 +172,8 @@ func (f *fileStore) WriteAt(p []byte, off int64) (n int, err error) {
 			if space < chunk {
 				chunk = space
 			}
-			fd := entry.fd
 			var nThisTime int
-			nThisTime, err = fd.WriteAt(p[0:chunk], itemOffset)
+			nThisTime, err = entry.WriteAt(p[0:chunk], itemOffset)
 			n += nThisTime
 			if err != nil {
 				return
@@ -181,12 +198,5 @@ func (f *fileStore) WriteAt(p []byte, off int64) (n int, err error) {
 }
 
 func (f *fileStore) Close() (err error) {
-	for i, _ := range f.files {
-		fd := f.files[i].fd
-		if fd != nil {
-			fd.Close()
-			f.files[i].fd = nil
-		}
-	}
 	return
 }
