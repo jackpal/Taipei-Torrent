@@ -118,9 +118,9 @@ func (p *peerState) RemoveRequest() (index, begin, length uint32, ok bool) {
 func (p *peerState) SetChoke(choke bool) {
 	if choke != p.am_choking {
 		p.am_choking = choke
-		b := byte(1)
+		b := byte(UNCHOKE)
 		if choke {
-			b = 0
+			b = CHOKE
 			p.peer_requests = make(map[uint64]bool, MAX_PEER_REQUESTS)
 		}
 		p.sendOneCharMessage(b)
@@ -131,9 +131,9 @@ func (p *peerState) SetInterested(interested bool) {
 	if interested != p.am_interested {
 		// log.Println("SetInterested", interested, p.address)
 		p.am_interested = interested
-		b := byte(3)
+		b := byte(NOT_INTERESTED)
 		if interested {
-			b = 2
+			b = INTERESTED
 		}
 		p.sendOneCharMessage(b)
 	}
