@@ -833,7 +833,7 @@ func (t *TorrentSession) generalMessage(message []byte, p *peerState) (err error
 		}
 	case BITFIELD:
 		// log.Println("bitfield", p.address)
-		if p.have != nil {
+		if !p.can_receive_bitfield {
 			return errors.New("Late bitfield operation")
 		}
 		p.have = NewBitsetFromBytes(t.totalPieces, message[1:])
@@ -938,6 +938,10 @@ func (t *TorrentSession) generalMessage(message []byte, p *peerState) (err error
 		}
 	default:
 		return errors.New(fmt.Sprintf("Uknown message id: %d\n", messageId))
+	}
+
+	if messageId != EXTENSION {
+		p.can_receive_bitfield = false
 	}
 
 	return

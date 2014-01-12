@@ -35,6 +35,9 @@ type peerState struct {
 	peer_requests   map[uint64]bool
 	our_requests    map[uint64]time.Time // What we requested, when we requested it
 
+	// This field tells if the peer can send a bitfield or not
+	can_receive_bitfield bool
+
 	theirExtensions map[string]int
 }
 
@@ -77,8 +80,9 @@ func NewPeerState(conn net.Conn) *peerState {
 	go queueingWriter(writeChan, writeChan2)
 	return &peerState{writeChan: writeChan, writeChan2: writeChan2, conn: conn,
 		am_choking: true, peer_choking: true,
-		peer_requests: make(map[uint64]bool, MAX_PEER_REQUESTS),
-		our_requests:  make(map[uint64]time.Time, MAX_OUR_REQUESTS)}
+		peer_requests:        make(map[uint64]bool, MAX_PEER_REQUESTS),
+		our_requests:         make(map[uint64]time.Time, MAX_OUR_REQUESTS),
+		can_receive_bitfield: true}
 }
 
 func (p *peerState) Close() {
