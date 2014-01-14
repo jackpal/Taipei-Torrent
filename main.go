@@ -88,7 +88,7 @@ mainLoop:
 		case c := <-conChan:
 			log.Printf("New bt connection for ih %x", c.infohash)
 			if ts, ok := torrentSessions[c.infohash]; ok {
-				ts.AddPeer(c)
+				ts.AcceptNewPeer(c)
 			}
 		}
 	}

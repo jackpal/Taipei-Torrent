@@ -134,8 +134,8 @@ func chooseListenPort(nat NAT) (listenPort int, err error) {
 	return
 }
 
-func readHeader(conn net.Conn) (header []byte, err error) {
-	header = make([]byte, 68)
+func readHeader(conn net.Conn) (h []byte, err error) {
+	header := make([]byte, 68)
 	_, err = conn.Read(header[0:1])
 	if err != nil {
 		err = fmt.Errorf("Couldn't read 1st byte: %v", err)
@@ -160,5 +160,8 @@ func readHeader(conn net.Conn) (header []byte, err error) {
 		err = fmt.Errorf("Couldn't read rest of header")
 		return
 	}
+
+	h = make([]byte, 48)
+	copy(h, header[20:])
 	return
 }

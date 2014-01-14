@@ -226,18 +226,18 @@ func readNBOUint32(conn net.Conn) (n uint32, err error) {
 func (p *peerState) peerWriter(errorChan chan peerMessage) {
 	// log.Println("Writing messages")
 	for msg := range p.writeChan2 {
-		// log.Println("Writing", len(msg), conn.RemoteAddr())
+		// log.Println("Writing", uint32(len(msg)), p.conn.RemoteAddr())
 		err := writeNBOUint32(p.conn, uint32(len(msg)))
 		if err != nil {
-			goto exit
+			log.Println(err)
+			break
 		}
 		_, err = p.conn.Write(msg)
 		if err != nil {
 			// log.Println("Failed to write a message", p.address, len(msg), msg, err)
-			goto exit
+			break
 		}
 	}
-exit:
 	// log.Println("peerWriter exiting")
 	errorChan <- peerMessage{p, nil}
 }
