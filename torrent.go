@@ -150,6 +150,7 @@ type TorrentSession struct {
 	heartbeat       chan bool
 	dht             *dht.DHT
 	quit            chan bool
+	trackerLessMode bool
 }
 
 func NewTorrentSession(torrent string, listenPort int) (ts *TorrentSession, err error) {
@@ -212,6 +213,12 @@ func (t *TorrentSession) load() {
 		return
 	}
 
+	if t.m.Announce == "" {
+		t.trackerLessMode = true
+	} else {
+		t.trackerLessMode = trackerLessMode
+	}
+
 	ext := ".torrent"
 	dir := fileDir
 	if len(t.m.Info.Files) != 0 {
@@ -232,6 +239,9 @@ func (t *TorrentSession) load() {
 		return
 	}
 	t.lastPieceLength = int(t.totalSize % t.m.Info.PieceLength)
+	if t.lastPieceLength == 0 { // last piece is a full piece
+		t.lastPieceLength = int(t.m.Info.PieceLength)
+	}
 
 	start := time.Now()
 	good, bad, pieceSet, err := checkPieces(t.fileStore, t.totalSize, t.m)
@@ -292,16 +302,13 @@ func (t *TorrentSession) fetchTrackerInfo(event string) {
 	}()
 }
 
-func (ts *TorrentSession) connectToPeer(peer string) {
-	//log.Println("Connecting to", peer)
-	conn, err := proxyNetDial("tcp", peer)
-	if err != nil {
-		// log.Println("Failed to connect to", peer, err)
-		return
+func (ts *TorrentSession) Header() (header []byte) {
+	if torrentHeader != nil {
+		return torrentHeader
 	}
 
-	var header [68]byte
-	copy(header[0:], kBitTorrentHeader[0:])
+	header = make([]byte, 68)
+	copy(header, kBitTorrentHeader[0:])
 	if ts.si.UseDHT {
 		header[27] = header[27] | 0x01
 	}
@@ -311,7 +318,26 @@ func (ts *TorrentSession) connectToPeer(peer string) {
 	copy(header[28:48], string2Bytes(ts.m.InfoHash))
 	copy(header[48:68], string2Bytes(ts.si.PeerId))
 
-	_, err = conn.Write(header[0:])
+	torrentHeader = header
+
+	return
+}
+
+// Try to connect if the peer is not already in our peers
+func (ts *TorrentSession) hintNewPeer(peer string) {
+	if _, ok := ts.peers[peer]; !ok {
+		go ts.connectToPeer(peer)
+	}
+}
+
+func (ts *TorrentSession) connectToPeer(peer string) {
+	conn, err := proxyNetDial("tcp", peer)
+	if err != nil {
+		// log.Println("Failed to connect to", peer, err)
+		return
+	}
+
+	_, err = conn.Write(ts.Header())
 	if err != nil {
 		log.Println("Failed to send header to", peer, err)
 		return
@@ -335,8 +361,22 @@ func (ts *TorrentSession) connectToPeer(peer string) {
 	ts.AddPeer(btconn)
 }
 
+func (t *TorrentSession) AcceptNewPeer(btconn *btConn) {
+	_, err := btconn.conn.Write(t.Header())
+	if err != nil {
+		return
+	}
+	t.AddPeer(btconn)
+}
+
 func (t *TorrentSession) AddPeer(btconn *btConn) {
-	theirheader := btconn.header[20:]
+	for _, p := range t.peers {
+		if p.id == btconn.id {
+			return
+		}
+	}
+
+	theirheader := btconn.header
 
 	peer := btconn.conn.RemoteAddr().String()
 	// log.Println("Adding peer", peer)
@@ -364,10 +404,11 @@ func (t *TorrentSession) AddPeer(btconn *btConn) {
 	t.peers[peer] = ps
 	go ps.peerWriter(t.peerMessageChan)
 	go ps.peerReader(t.peerMessageChan)
-	ps.SetChoke(false) // TODO: better choke policy
 
 	if int(theirheader[5])&0x10 == 0x10 {
 		ps.SendExtensions(t.si.Port)
+	} else {
+		ps.SendBitfield(t.pieceSet)
 	}
 }
 
@@ -420,7 +461,7 @@ func (t *TorrentSession) DoTorrent() {
 		t.dht.PeersRequest(t.m.InfoHash, true)
 	}
 
-	if !trackerLessMode && t.si.HaveTorrent {
+	if !t.trackerLessMode && t.si.HaveTorrent {
 		t.fetchTrackerInfo("started")
 	}
 
@@ -432,7 +473,7 @@ func (t *TorrentSession) DoTorrent() {
 		}
 		select {
 		case <-retrackerChan:
-			if !trackerLessMode {
+			if !t.trackerLessMode {
 				t.fetchTrackerInfo("")
 			}
 		case dhtInfoHashPeers := <-peersRequestResults:
@@ -455,7 +496,7 @@ func (t *TorrentSession) DoTorrent() {
 		case ti := <-t.trackerInfoChan:
 			t.ti = ti
 			log.Println("Torrent has", t.ti.Complete, "seeders and", t.ti.Incomplete, "leachers.")
-			if !trackerLessMode {
+			if !t.trackerLessMode {
 				peers := t.ti.Peers
 				log.Println("Tracker gave us", len(peers)/6, "peers")
 				newPeerCount := 0
@@ -510,7 +551,7 @@ func (t *TorrentSession) DoTorrent() {
 				if t.si.UseDHT {
 					go t.dht.PeersRequest(t.m.InfoHash, true)
 				}
-				if !trackerLessMode {
+				if !t.trackerLessMode {
 					if t.ti == nil || t.ti.Complete > 100 {
 						t.fetchTrackerInfo("")
 					}
@@ -615,9 +656,9 @@ func (t *TorrentSession) RequestBlock2(p *peerState, piece int, endGame bool) (e
 func (t *TorrentSession) requestBlockImp(p *peerState, piece int, block int, request bool) {
 	begin := block * STANDARD_BLOCK_LENGTH
 	req := make([]byte, 13)
-	opcode := byte(6)
+	opcode := byte(REQUEST)
 	if !request {
-		opcode = byte(8) // Cancel
+		opcode = byte(CANCEL)
 	}
 	length := STANDARD_BLOCK_LENGTH
 	if piece == t.totalPieces-1 {
@@ -674,7 +715,9 @@ func (t *TorrentSession) RecordBlock(p *peerState, piece, begin, length uint32) 
 			t.goodPieces++
 			log.Println("Have", t.goodPieces, "of", t.totalPieces, "pieces.")
 			if t.goodPieces == t.totalPieces {
-				t.fetchTrackerInfo("completed")
+				if !t.trackerLessMode {
+					t.fetchTrackerInfo("completed")
+				}
 				// TODO: Drop connections to all seeders.
 			}
 			for _, p := range t.peers {
@@ -685,7 +728,7 @@ func (t *TorrentSession) RecordBlock(p *peerState, piece, begin, length uint32) 
 					} else {
 						// log.Println("...telling ", p)
 						haveMsg := make([]byte, 5)
-						haveMsg[0] = 4
+						haveMsg[0] = HAVE
 						uint32ToBytes(haveMsg[1:5], uint32(piece))
 						p.sendMessage(haveMsg)
 					}
@@ -740,35 +783,14 @@ func (t *TorrentSession) DoMessage(p *peerState, message []byte) (err error) {
 	if message == nil {
 		return io.EOF // The reader or writer goroutine has exited
 	}
-	if len(p.id) == 0 {
-		// This is the header message from the peer.
-		if t.si.UseDHT {
-			// If 128, then it supports DHT.
-			if int(message[7])&0x01 == 0x01 {
-				// It's OK if we know this node already. The DHT engine will
-				// ignore it accordingly.
-				go t.dht.AddNode(p.address)
-			}
-		}
+	if len(message) == 0 { // keep alive
+		return
+	}
 
-		peersInfoHash := string(message[8:28])
-		if peersInfoHash != t.m.InfoHash {
-			return errors.New("this peer doesn't have the right info hash")
-		}
-		p.id = string(message[28:48])
-		if int(message[5])&0x10 == 0x10 {
-			p.SendExtensions(t.si.Port)
-		}
+	if t.si.HaveTorrent {
+		err = t.generalMessage(message, p)
 	} else {
-		if len(message) == 0 { // keep alive
-			return
-		}
-
-		if t.si.HaveTorrent {
-			err = t.generalMessage(message, p)
-		} else {
-			err = t.extensionMessage(message, p)
-		}
+		err = t.extensionMessage(message, p)
 	}
 	return
 }
@@ -833,9 +855,11 @@ func (t *TorrentSession) generalMessage(message []byte, p *peerState) (err error
 		}
 	case BITFIELD:
 		// log.Println("bitfield", p.address)
-		if p.have != nil {
+		if !p.can_receive_bitfield {
 			return errors.New("Late bitfield operation")
 		}
+		p.SetChoke(false) // TODO: better choke policy
+
 		p.have = NewBitsetFromBytes(t.totalPieces, message[1:])
 		if p.have == nil {
 			return errors.New("Invalid bitfield data.")
@@ -938,6 +962,10 @@ func (t *TorrentSession) generalMessage(message []byte, p *peerState) (err error
 		}
 	default:
 		return errors.New(fmt.Sprintf("Uknown message id: %d\n", messageId))
+	}
+
+	if messageId != EXTENSION {
+		p.can_receive_bitfield = false
 	}
 
 	return
@@ -1075,9 +1103,9 @@ func (t *TorrentSession) DoMetadata(msg []byte, p *peerState) {
 
 func (t *TorrentSession) sendRequest(peer *peerState, index, begin, length uint32) (err error) {
 	if !peer.am_choking {
-		// log.Println("Sending block", index, begin)
+		// log.Println("Sending block", index, begin, length)
 		buf := make([]byte, length+9)
-		buf[0] = 7
+		buf[0] = PIECE
 		uint32ToBytes(buf[1:5], index)
 		uint32ToBytes(buf[5:9], begin)
 		_, err = t.fileStore.ReadAt(buf[9:],

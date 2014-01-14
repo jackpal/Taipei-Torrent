@@ -35,6 +35,9 @@ type peerState struct {
 	peer_requests   map[uint64]bool
 	our_requests    map[uint64]time.Time // What we requested, when we requested it
 
+	// This field tells if the peer can send a bitfield or not
+	can_receive_bitfield bool
+
 	theirExtensions map[string]int
 }
 
@@ -77,8 +80,9 @@ func NewPeerState(conn net.Conn) *peerState {
 	go queueingWriter(writeChan, writeChan2)
 	return &peerState{writeChan: writeChan, writeChan2: writeChan2, conn: conn,
 		am_choking: true, peer_choking: true,
-		peer_requests: make(map[uint64]bool, MAX_PEER_REQUESTS),
-		our_requests:  make(map[uint64]time.Time, MAX_OUR_REQUESTS)}
+		peer_requests:        make(map[uint64]bool, MAX_PEER_REQUESTS),
+		our_requests:         make(map[uint64]time.Time, MAX_OUR_REQUESTS),
+		can_receive_bitfield: true}
 }
 
 func (p *peerState) Close() {
@@ -114,9 +118,9 @@ func (p *peerState) RemoveRequest() (index, begin, length uint32, ok bool) {
 func (p *peerState) SetChoke(choke bool) {
 	if choke != p.am_choking {
 		p.am_choking = choke
-		b := byte(1)
+		b := byte(UNCHOKE)
 		if choke {
-			b = 0
+			b = CHOKE
 			p.peer_requests = make(map[uint64]bool, MAX_PEER_REQUESTS)
 		}
 		p.sendOneCharMessage(b)
@@ -127,9 +131,9 @@ func (p *peerState) SetInterested(interested bool) {
 	if interested != p.am_interested {
 		// log.Println("SetInterested", interested, p.address)
 		p.am_interested = interested
-		b := byte(3)
+		b := byte(NOT_INTERESTED)
 		if interested {
-			b = 2
+			b = INTERESTED
 		}
 		p.sendOneCharMessage(b)
 	}
@@ -222,18 +226,18 @@ func readNBOUint32(conn net.Conn) (n uint32, err error) {
 func (p *peerState) peerWriter(errorChan chan peerMessage) {
 	// log.Println("Writing messages")
 	for msg := range p.writeChan2 {
-		// log.Println("Writing", len(msg), conn.RemoteAddr())
+		// log.Println("Writing", uint32(len(msg)), p.conn.RemoteAddr())
 		err := writeNBOUint32(p.conn, uint32(len(msg)))
 		if err != nil {
-			goto exit
+			log.Println(err)
+			break
 		}
 		_, err = p.conn.Write(msg)
 		if err != nil {
 			// log.Println("Failed to write a message", p.address, len(msg), msg, err)
-			goto exit
+			break
 		}
 	}
-exit:
 	// log.Println("peerWriter exiting")
 	errorChan <- peerMessage{p, nil}
 }
