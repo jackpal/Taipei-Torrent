@@ -137,6 +137,7 @@ type TorrentSession struct {
 	m               *MetaInfo
 	si              *SessionInfo
 	ti              *TrackerResponse
+	torrentHeader   []byte
 	fileStore       FileStore
 	trackerInfoChan chan *TrackerResponse
 	peers           map[string]*peerState
@@ -303,8 +304,8 @@ func (t *TorrentSession) fetchTrackerInfo(event string) {
 }
 
 func (ts *TorrentSession) Header() (header []byte) {
-	if torrentHeader != nil {
-		return torrentHeader
+	if ts.torrentHeader != nil {
+		return ts.torrentHeader
 	}
 
 	header = make([]byte, 68)
@@ -318,7 +319,7 @@ func (ts *TorrentSession) Header() (header []byte) {
 	copy(header[28:48], string2Bytes(ts.m.InfoHash))
 	copy(header[48:68], string2Bytes(ts.si.PeerId))
 
-	torrentHeader = header
+	ts.torrentHeader = header
 
 	return
 }
