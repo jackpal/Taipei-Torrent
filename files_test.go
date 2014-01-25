@@ -3,14 +3,14 @@ package main
 import (
 	"crypto/sha1"
 	"fmt"
-	"os"
 	"testing"
 )
 
 type testFile struct {
 	path    string
 	fileLen int64
-	hash    string
+	// SHA1 of fileLen bytes.
+	hash string
 	// SHA1 of the first 25 bytes only.
 	hashPieceA string
 	// SHA1 of bytes 25-49
@@ -18,21 +18,18 @@ type testFile struct {
 }
 
 var tests []testFile = []testFile{{
-	"testData/file",
-	1024,
-	"A0AD08765665C1339E2F829F4EBFF598B355A62B",
-	// dd if=testdata/file bs=25 count=1 | shasum
-	"4582F29D1C80210E6B1D4BACF772572E6F4518FB",
-	// dd if=testdata/file bs=25 count=1 skip=1 | shasum
-	"2676C88B22E905E9DC0BD437533ED69E5D899EF4",
+	"testData/testFile",
+	8054,
+	// shasum testData/testFile | tr "[a-z]" "[A-Z]"
+	"BC6314A1D1D36EC6C0888AF9DBD3B5E826612ADA",
+	// dd if=testData/testFile bs=25 count=1 | shasum | tr "[a-z]" "[A-Z]"
+	"F072A5A05C7ED8EECFFB6524FBFA89CA725A66C3",
+	// dd if=testData/testFile bs=25 count=1 skip=1 | shasum | tr "[a-z]" "[A-Z]"
+	"859CF11E055E61296F42EEB5BB19E598626A5173",
 }}
 
 func mkFileStore(tf testFile) (fs *fileStore, err error) {
-	fd, err := os.Open(tf.path)
-	if err != nil {
-		return fs, err
-	}
-	f := fileEntry{tf.fileLen, fd}
+	f := fileEntry{tf.fileLen, tf.path}
 	return &fileStore{[]int64{0}, []fileEntry{f}}, nil
 }
 
