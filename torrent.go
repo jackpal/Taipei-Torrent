@@ -834,7 +834,11 @@ func (t *TorrentSession) generalMessage(message []byte, p *peerState) (err error
 			return errors.New("Unexpected length")
 		}
 		p.peer_interested = true
-		// TODO: Consider unchoking
+
+		// TODO: Consider better unchoking policy (this is needed for
+		// clients like Transmission who don't send a BITFIELD so we have to
+		// unchoke them at this moment)
+		p.SetChoke(false)
 	case NOT_INTERESTED:
 		// log.Println("not interested", p)
 		if len(message) != 1 {
