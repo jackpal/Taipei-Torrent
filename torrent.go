@@ -164,11 +164,14 @@ func NewTorrentSession(torrent string, listenPort int) (ts *TorrentSession, err 
 
 	if useDHT {
 		// TODO: UPnP UDP port mapping.
-		if t.dht, err = dht.NewDHTNode(listenPort, TARGET_NUM_PEERS, true); err != nil {
+		cfg := dht.NewConfig()
+		cfg.Port = listenPort
+		cfg.NumTargetPeers = TARGET_NUM_PEERS
+		if t.dht, err = dht.New(cfg); err != nil {
 			log.Println("DHT node creation error", err)
 			return
 		}
-		go t.dht.DoDHT()
+		go t.dht.Run()
 	}
 
 	fromMagnet := strings.HasPrefix(torrent, "magnet:")
@@ -443,6 +446,9 @@ func (t *TorrentSession) Quit() (err error) {
 	t.quit <- true
 	for _, peer := range t.peers {
 		t.ClosePeer(peer)
+	}
+	if t.dht != nil {
+		t.dht.Stop()
 	}
 	return nil
 }
