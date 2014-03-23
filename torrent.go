@@ -447,6 +447,9 @@ func (t *TorrentSession) Quit() (err error) {
 	for _, peer := range t.peers {
 		t.ClosePeer(peer)
 	}
+	if t.dht != nil {
+		t.dht.Stop()
+	}
 	return nil
 }
 
