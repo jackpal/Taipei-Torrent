@@ -11,7 +11,6 @@ import (
 	"log"
 	"math"
 	"math/rand"
-	"net/url"
 	"os"
 	"path"
 	"path/filepath"
@@ -134,24 +133,25 @@ func (a *ActivePiece) isComplete() bool {
 }
 
 type TorrentSession struct {
-	m               *MetaInfo
-	si              *SessionInfo
-	ti              *TrackerResponse
-	torrentHeader   []byte
-	fileStore       FileStore
-	trackerInfoChan chan *TrackerResponse
-	peers           map[string]*peerState
-	peerMessageChan chan peerMessage
-	pieceSet        *Bitset // The pieces we have
-	totalPieces     int
-	totalSize       int64
-	lastPieceLength int
-	goodPieces      int
-	activePieces    map[int]*ActivePiece
-	heartbeat       chan bool
-	dht             *dht.DHT
-	quit            chan bool
-	trackerLessMode bool
+	m                 *MetaInfo
+	si                *SessionInfo
+	ti                *TrackerResponse
+	torrentHeader     []byte
+	fileStore         FileStore
+	trackerReportChan chan ClientStatusReport
+	trackerInfoChan   chan *TrackerResponse
+	peers             map[string]*peerState
+	peerMessageChan   chan peerMessage
+	pieceSet          *Bitset // The pieces we have
+	totalPieces       int
+	totalSize         int64
+	lastPieceLength   int
+	goodPieces        int
+	activePieces      map[int]*ActivePiece
+	heartbeat         chan bool
+	dht               *dht.DHT
+	quit              chan bool
+	trackerLessMode   bool
 }
 
 func NewTorrentSession(torrent string, listenPort int) (ts *TorrentSession, err error) {
@@ -212,7 +212,7 @@ func (t *TorrentSession) load() {
 	var err error
 
 	log.Printf("Tracker: %v, Comment: %v, InfoHash: %x, Encoding: %v, Private: %v",
-		t.m.Announce, t.m.Comment, t.m.InfoHash, t.m.Encoding, t.m.Info.Private)
+		t.m.AnnounceList, t.m.Comment, t.m.InfoHash, t.m.Encoding, t.m.Info.Private)
 	if e := t.m.Encoding; e != "" && e != "UTF-8" {
 		return
 	}
@@ -270,40 +270,8 @@ func (t *TorrentSession) load() {
 func (t *TorrentSession) fetchTrackerInfo(event string) {
 	m, si := t.m, t.si
 	log.Println("Stats: Uploaded", si.Uploaded, "Downloaded", si.Downloaded, "Left", si.Left)
-	u, err := url.Parse(m.Announce)
-	if err != nil {
-		log.Println("Error: Invalid announce URL(", m.Announce, "):", err)
-	}
-	uq := u.Query()
-	uq.Add("info_hash", m.InfoHash)
-	uq.Add("peer_id", si.PeerId)
-	uq.Add("port", strconv.Itoa(si.Port))
-	uq.Add("uploaded", strconv.FormatInt(si.Uploaded, 10))
-	uq.Add("downloaded", strconv.FormatInt(si.Downloaded, 10))
-	uq.Add("left", strconv.FormatInt(si.Left, 10))
-	uq.Add("compact", "1")
-
-	if event != "" {
-		uq.Add("event", event)
-	}
-
-	// This might reorder the existing query string in the Announce url
-	// I worry this might break some broken trackers that don't parse URLs
-	// properly.
-
-	u.RawQuery = uq.Encode()
-
-	ch := t.trackerInfoChan
-	go func() {
-		ti, err := getTrackerInfo(u.String())
-		if ti == nil || err != nil {
-			log.Println("Error: Could not fetch tracker info:", err)
-		} else if ti.FailureReason != "" {
-			log.Println("Error: Tracker returned failure reason:", ti.FailureReason)
-		} else {
-			ch <- ti
-		}
-	}()
+	t.trackerReportChan <- ClientStatusReport{
+		event, m.InfoHash, si.PeerId, si.Port, si.Uploaded, si.Downloaded, si.Left}
 }
 
 func (ts *TorrentSession) Header() (header []byte) {
@@ -458,11 +426,16 @@ func (t *TorrentSession) DoTorrent() {
 	go t.deadlockDetector()
 	log.Println("Fetching torrent.")
 	rechokeChan := time.Tick(1 * time.Second)
-	// Start out polling tracker every 20 seconds untill we get a response.
-	// Maybe be exponential backoff here?
-	retrackerChan := time.Tick(20 * time.Second)
 	keepAliveChan := time.Tick(60 * time.Second)
-	t.trackerInfoChan = make(chan *TrackerResponse)
+	var retrackerChan <-chan time.Time
+	if !t.trackerLessMode {
+		// Start out polling tracker every 20 seconds until we get a response.
+		// Maybe be exponential backoff here?
+		retrackerChan = time.Tick(20 * time.Second)
+		t.trackerInfoChan = make(chan *TrackerResponse)
+		t.trackerReportChan = make(chan ClientStatusReport)
+		startTrackerClient(t.m.Announce, t.m.AnnounceList, t.trackerInfoChan, t.trackerReportChan)
+	}
 
 	if t.si.UseDHT {
 		t.dht.PeersRequest(t.m.InfoHash, true)

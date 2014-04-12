@@ -37,7 +37,8 @@ type MetaInfo struct {
 	Info         InfoDict
 	InfoHash     string
 	Announce     string
-	CreationDate string "creation date"
+	AnnounceList [][]string "announce-list"
+	CreationDate string     "creation date"
 	Comment      string
 	CreatedBy    string "created by"
 	Encoding     string
@@ -50,6 +51,29 @@ func getString(m map[string]interface{}, k string) string {
 		}
 	}
 	return ""
+}
+
+// Parse a list of list of strings structure, filtering out anything that's
+// not a string, and filtering out empty lists. May return nil.
+func getSliceSliceString(m map[string]interface{}, k string) (aas [][]string) {
+	if a, ok := m[k]; ok {
+		if b, ok := a.([]interface{}); ok {
+			for _, c := range b {
+				if d, ok := c.([]interface{}); ok {
+					var sliceOfStrings []string
+					for _, e := range d {
+						if f, ok := e.(string); ok {
+							sliceOfStrings = append(sliceOfStrings, f)
+						}
+					}
+					if len(sliceOfStrings) > 0 {
+						aas = append(aas, sliceOfStrings)
+					}
+				}
+			}
+		}
+	}
+	return
 }
 
 func getMetaInfo(torrent string) (metaInfo *MetaInfo, err error) {
@@ -118,6 +142,7 @@ func getMetaInfo(torrent string) (metaInfo *MetaInfo, err error) {
 
 	m2.InfoHash = string(hash.Sum(nil))
 	m2.Announce = getString(topMap, "announce")
+	m2.AnnounceList = getSliceSliceString(topMap, "announce-list")
 	m2.CreationDate = getString(topMap, "creation date")
 	m2.Comment = getString(topMap, "comment")
 	m2.CreatedBy = getString(topMap, "created by")
