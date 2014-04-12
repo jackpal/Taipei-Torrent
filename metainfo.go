@@ -161,6 +161,7 @@ type TrackerResponse struct {
 	Complete       int
 	Incomplete     int
 	Peers          string
+	Peers6         string
 }
 
 type SessionInfo struct {

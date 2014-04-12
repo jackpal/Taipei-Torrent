@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"math/rand"
+	"net"
 	"net/url"
 	"strconv"
 )
@@ -74,7 +75,7 @@ func queryTrackers(announceList [][]string, report ClientStatusReport) (tr *Trac
 			}
 		}
 	}
-	log.Println("Error: Did not successfully contact a tracker %v", announceList)
+	log.Println("Error: Did not successfully contact a tracker:", announceList)
 	return
 }
 
@@ -94,6 +95,16 @@ func queryTracker(report ClientStatusReport, trackerUrl string) (tr *TrackerResp
 	uq.Add("left", strconv.FormatInt(report.Left, 10))
 	uq.Add("compact", "1")
 
+	// Don't report IPv6 address, the user might prefer to keep
+	// that information private when communicating with IPv4 hosts.
+	if false {
+		ipv6Address, err := findLocalIPV6AddressFor(u.Host)
+		if err == nil {
+			log.Println("our ipv6", ipv6Address)
+			uq.Add("ipv6", ipv6Address)
+		}
+	}
+
 	if report.Event != "" {
 		uq.Add("event", report.Event)
 	}
@@ -109,6 +120,29 @@ func queryTracker(report ClientStatusReport, trackerUrl string) (tr *TrackerResp
 	} else if tr.FailureReason != "" {
 		log.Println("Error: Tracker returned failure reason:", tr.FailureReason)
 		err = fmt.Errorf("tracker failure %s", tr.FailureReason)
+	}
+	return
+}
+
+func findLocalIPV6AddressFor(hostAddr string) (local string, err error) {
+	// Figure out our IPv6 address to talk to a given host.
+	host, hostPort, err := net.SplitHostPort(hostAddr)
+	if err != nil {
+		host = hostAddr
+		hostPort = "1234"
+	}
+	dummyAddr := net.JoinHostPort(host, hostPort)
+	log.Println("Looking for host ", dummyAddr)
+	conn, err := net.Dial("udp6", dummyAddr)
+	if err != nil {
+		log.Println("No IPV6 for host ", host, err)
+		return "", err
+	}
+	defer conn.Close()
+	localAddr := conn.LocalAddr()
+	local, _, err = net.SplitHostPort(localAddr.String())
+	if err != nil {
+		local = localAddr.String()
 	}
 	return
 }
