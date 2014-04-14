@@ -12,7 +12,6 @@ import (
 var (
 	cpuprofile = flag.String("cpuprofile", "", "If not empty, collects CPU profile samples and writes the profile to the given file before the program exits")
 	memprofile = flag.String("memprofile", "", "If not empty, writes memory heap allocations to the given file before the program exits")
-	useLPD     = flag.Bool("useLPD", true, "Use Local Peer Discovery")
 )
 
 var torrent string
@@ -74,7 +73,7 @@ func main() {
 		go ts.DoTorrent()
 	}
 
-	var lpd *Announcer
+	lpd := &Announcer{}
 	if *useLPD {
 		lpd = startLPD(torrentSessions, listenPort)
 	}

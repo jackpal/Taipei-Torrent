@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"flag"
 	"fmt"
 	"log"
 	"net"
@@ -10,6 +11,7 @@ import (
 	"time"
 )
 
+var useLPD = flag.Bool("useLPD", false, "Use Local Peer Discovery")
 var (
 	request_template = "BT-SEARCH * HTTP/1.1\r\n" +
 		"Host: 239.192.152.143:6771\r\n" +
@@ -106,7 +108,7 @@ func (lpd *Announcer) Announce(ih string) {
 			log.Println(err)
 		}
 
-		ticker := time.NewTicker(5 * time.Second)
+		ticker := time.NewTicker(5 * time.Minute)
 		lpd.activeAnnounces[ih] = ticker
 
 		for _ = range ticker.C {
@@ -121,5 +123,6 @@ func (lpd *Announcer) Announce(ih string) {
 func (lpd *Announcer) StopAnnouncing(ih string) {
 	if ticker, ok := lpd.activeAnnounces[ih]; ok {
 		ticker.Stop()
+		delete(lpd.activeAnnounces, ih)
 	}
 }
