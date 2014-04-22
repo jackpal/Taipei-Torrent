@@ -188,7 +188,7 @@ func NewTorrentSession(torrent string, listenPort int) (ts *TorrentSession, err 
 		FromMagnet:    fromMagnet,
 		HaveTorrent:   false,
 		ME:            &MetaDataExchange{},
-		OurExtensions: map[int]string{1: "ut_metadat"},
+		OurExtensions: map[int]string{1: "ut_metadata"},
 	}
 
 	if !t.si.FromMagnet {
