@@ -94,22 +94,23 @@ func Discover() (nat NAT, err error) {
 }
 
 type Service struct {
-	ServiceType string
-	ControlURL  string
+	ServiceType string `xml:"serviceType"`
+	ControlURL  string `xml:"controlURL"`
 }
 
 type DeviceList struct {
-	Device []Device
+	Device []Device `xml:"device"`
 }
 
 type ServiceList struct {
-	Service []Service
+	Service []Service `xml:"service"`
 }
 
 type Device struct {
-	DeviceType  string
-	DeviceList  DeviceList
-	ServiceList ServiceList
+	XMLName xml.Name `xml:"device"`
+	DeviceType  string `xml:"deviceType"`
+	DeviceList  DeviceList `xml:"deviceList"`
+	ServiceList ServiceList `xml:"serviceList"`
 }
 
 type Root struct {
