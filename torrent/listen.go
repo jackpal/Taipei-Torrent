@@ -1,4 +1,4 @@
-package main
+package torrent
 
 import (
 	"flag"
@@ -21,15 +21,15 @@ var (
 type btConn struct {
 	conn     net.Conn
 	header   []byte
-	infohash string
+	Infohash string
 	id       string
 }
 
 // listenForPeerConnections listens on a TCP port for incoming connections and
 // demuxes them to the appropriate active torrentSession based on the InfoHash
 // in the header.
-func listenForPeerConnections() (conChan chan *btConn, listenPort int, err error) {
-	listener, err := createListener()
+func ListenForPeerConnections() (conChan chan *btConn, listenPort int, err error) {
+	listener, err := CreateListener()
 	if err != nil {
 		return
 	}
@@ -61,7 +61,7 @@ func listenForPeerConnections() (conChan chan *btConn, listenPort int, err error
 			id := string(header[28:48])
 			conChan <- &btConn{
 				header:   header,
-				infohash: peersInfoHash,
+				Infohash: peersInfoHash,
 				id:       id,
 				conn:     conn,
 			}
@@ -70,8 +70,8 @@ func listenForPeerConnections() (conChan chan *btConn, listenPort int, err error
 	return
 }
 
-func createListener() (listener net.Listener, err error) {
-	nat, err := createPortMapping()
+func CreateListener() (listener net.Listener, err error) {
+	nat, err := CreatePortMapping()
 	if err != nil {
 		err = fmt.Errorf("Unable to create NAT: %v", err)
 		return
@@ -98,7 +98,7 @@ func createListener() (listener net.Listener, err error) {
 }
 
 // createPortMapping creates a NAT port mapping, or nil if none requested or found.
-func createPortMapping() (nat NAT, err error) {
+func CreatePortMapping() (nat NAT, err error) {
 	if *useUPnP && *useNATPMP {
 		err = fmt.Errorf("Cannot specify both -useUPnP and -useNATPMP")
 		return

@@ -1,4 +1,4 @@
-package main
+package torrent
 
 import (
 	natpmp "code.google.com/p/go-nat-pmp"

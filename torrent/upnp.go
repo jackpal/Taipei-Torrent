@@ -1,4 +1,4 @@
-package main
+package torrent
 
 // Just enough UPnP to be able to forward ports
 //

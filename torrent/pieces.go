@@ -1,5 +1,5 @@
 // Compute missing pieces for a torrent.
-package main
+package torrent
 
 import (
 	"crypto/sha1"

@@ -1,4 +1,4 @@
-package main
+package torrent
 
 import (
 	"bufio"
@@ -134,7 +134,7 @@ func (a *ActivePiece) isComplete() bool {
 }
 
 type TorrentSession struct {
-	m                 *MetaInfo
+	M                 *MetaInfo
 	si                *SessionInfo
 	ti                *TrackerResponse
 	torrentHeader     []byte
@@ -153,6 +153,7 @@ type TorrentSession struct {
 	dht               *dht.DHT
 	quit              chan bool
 	trackerLessMode   bool
+	torrentFile       string
 }
 
 func NewTorrentSession(torrent string, listenPort int) (ts *TorrentSession, err error) {
@@ -161,6 +162,7 @@ func NewTorrentSession(torrent string, listenPort int) (ts *TorrentSession, err 
 		peerMessageChan: make(chan peerMessage),
 		activePieces:    make(map[int]*ActivePiece),
 		quit:            make(chan bool),
+		torrentFile:     torrent,
 	}
 
 	if useDHT {
@@ -176,7 +178,7 @@ func NewTorrentSession(torrent string, listenPort int) (ts *TorrentSession, err 
 	}
 
 	fromMagnet := strings.HasPrefix(torrent, "magnet:")
-	t.m, err = getMetaInfo(torrent)
+	t.M, err = getMetaInfo(torrent)
 	if err != nil {
 		return
 	}
@@ -205,7 +207,7 @@ func (t *TorrentSession) reload(metadata string) {
 		return
 	}
 
-	t.m.Info = info
+	t.M.Info = info
 	t.load()
 }
 
@@ -213,12 +215,12 @@ func (t *TorrentSession) load() {
 	var err error
 
 	log.Printf("Tracker: %v, Comment: %v, InfoHash: %x, Encoding: %v, Private: %v",
-		t.m.AnnounceList, t.m.Comment, t.m.InfoHash, t.m.Encoding, t.m.Info.Private)
-	if e := t.m.Encoding; e != "" && e != "UTF-8" {
+		t.M.AnnounceList, t.M.Comment, t.M.InfoHash, t.M.Encoding, t.M.Info.Private)
+	if e := t.M.Encoding; e != "" && e != "UTF-8" {
 		return
 	}
 
-	if t.m.Announce == "" {
+	if t.M.Announce == "" {
 		t.trackerLessMode = true
 	} else {
 		t.trackerLessMode = trackerLessMode
@@ -226,10 +228,10 @@ func (t *TorrentSession) load() {
 
 	ext := ".torrent"
 	dir := fileDir
-	if len(t.m.Info.Files) != 0 {
-		torrentName := t.m.Info.Name
+	if len(t.M.Info.Files) != 0 {
+		torrentName := t.M.Info.Name
 		if torrentName == "" {
-			torrentName = filepath.Base(torrent)
+			torrentName = filepath.Base(t.torrentFile)
 		}
 		// canonicalize the torrent path and make sure it doesn't start with ".."
 		torrentName = path.Clean("/" + torrentName)
@@ -239,17 +241,17 @@ func (t *TorrentSession) load() {
 		}
 	}
 
-	t.fileStore, t.totalSize, err = NewFileStore(&t.m.Info, dir)
+	t.fileStore, t.totalSize, err = NewFileStore(&t.M.Info, dir)
 	if err != nil {
 		return
 	}
-	t.lastPieceLength = int(t.totalSize % t.m.Info.PieceLength)
+	t.lastPieceLength = int(t.totalSize % t.M.Info.PieceLength)
 	if t.lastPieceLength == 0 { // last piece is a full piece
-		t.lastPieceLength = int(t.m.Info.PieceLength)
+		t.lastPieceLength = int(t.M.Info.PieceLength)
 	}
 
 	start := time.Now()
-	good, bad, pieceSet, err := checkPieces(t.fileStore, t.totalSize, t.m)
+	good, bad, pieceSet, err := checkPieces(t.fileStore, t.totalSize, t.M)
 	end := time.Now()
 	log.Printf("Computed missing pieces (%.2f seconds)", end.Sub(start).Seconds())
 	if err != nil {
@@ -260,16 +262,16 @@ func (t *TorrentSession) load() {
 	t.goodPieces = good
 	log.Println("Good pieces:", good, "Bad pieces:", bad)
 
-	left := int64(bad) * int64(t.m.Info.PieceLength)
+	left := int64(bad) * int64(t.M.Info.PieceLength)
 	if !t.pieceSet.IsSet(t.totalPieces - 1) {
-		left = left - t.m.Info.PieceLength + int64(t.lastPieceLength)
+		left = left - t.M.Info.PieceLength + int64(t.lastPieceLength)
 	}
 
 	t.si.HaveTorrent = true
 }
 
 func (t *TorrentSession) fetchTrackerInfo(event string) {
-	m, si := t.m, t.si
+	m, si := t.M, t.si
 	log.Println("Stats: Uploaded", si.Uploaded, "Downloaded", si.Downloaded, "Left", si.Left)
 	t.trackerReportChan <- ClientStatusReport{
 		event, m.InfoHash, si.PeerId, si.Port, si.Uploaded, si.Downloaded, si.Left}
@@ -288,7 +290,7 @@ func (ts *TorrentSession) Header() (header []byte) {
 	// Support Extension Protocol (BEP-0010)
 	header[25] |= 0x10
 
-	copy(header[28:48], string2Bytes(ts.m.InfoHash))
+	copy(header[28:48], string2Bytes(ts.M.InfoHash))
 	copy(header[48:68], string2Bytes(ts.si.PeerId))
 
 	ts.torrentHeader = header
@@ -297,7 +299,7 @@ func (ts *TorrentSession) Header() (header []byte) {
 }
 
 // Try to connect if the peer is not already in our peers
-func (ts *TorrentSession) hintNewPeer(peer string) {
+func (ts *TorrentSession) HintNewPeer(peer string) {
 	if _, ok := ts.peers[peer]; !ok {
 		go ts.connectToPeer(peer)
 	}
@@ -326,7 +328,7 @@ func (ts *TorrentSession) connectToPeer(peer string) {
 
 	btconn := &btConn{
 		header:   theirheader,
-		infohash: peersInfoHash,
+		Infohash: peersInfoHash,
 		id:       id,
 		conn:     conn,
 	}
@@ -435,11 +437,11 @@ func (t *TorrentSession) DoTorrent() {
 		retrackerChan = time.Tick(20 * time.Second)
 		t.trackerInfoChan = make(chan *TrackerResponse)
 		t.trackerReportChan = make(chan ClientStatusReport)
-		startTrackerClient(t.m.Announce, t.m.AnnounceList, t.trackerInfoChan, t.trackerReportChan)
+		startTrackerClient(t.M.Announce, t.M.AnnounceList, t.trackerInfoChan, t.trackerReportChan)
 	}
 
 	if t.si.UseDHT {
-		t.dht.PeersRequest(t.m.InfoHash, true)
+		t.dht.PeersRequest(t.M.InfoHash, true)
 	}
 
 	if !t.trackerLessMode && t.si.HaveTorrent {
@@ -552,7 +554,7 @@ func (t *TorrentSession) DoTorrent() {
 			log.Println("good, total", t.goodPieces, t.totalPieces)
 			if len(t.peers) < TARGET_NUM_PEERS && t.goodPieces < t.totalPieces {
 				if t.si.UseDHT {
-					go t.dht.PeersRequest(t.m.InfoHash, true)
+					go t.dht.PeersRequest(t.M.InfoHash, true)
 				}
 				if !t.trackerLessMode {
 					if t.ti == nil || t.ti.Complete > 100 {
@@ -610,7 +612,7 @@ func (t *TorrentSession) RequestBlock(p *peerState) (err error) {
 		}
 	}
 	if piece >= 0 {
-		pieceLength := int(t.m.Info.PieceLength)
+		pieceLength := int(t.M.Info.PieceLength)
 		if piece == t.totalPieces-1 {
 			pieceLength = t.lastPieceLength
 		}
@@ -707,7 +709,7 @@ func (t *TorrentSession) RecordBlock(p *peerState, piece, begin, length uint32) 
 		t.si.Downloaded += int64(length)
 		if v.isComplete() {
 			delete(t.activePieces, int(piece))
-			ok, err = checkPiece(t.fileStore, t.totalSize, t.m, int(piece))
+			ok, err = checkPiece(t.fileStore, t.totalSize, t.M, int(piece))
 			if !ok || err != nil {
 				log.Println("Closing peer that sent a bad piece", piece, p.id, err)
 				p.Close()
@@ -886,10 +888,10 @@ func (t *TorrentSession) generalMessage(message []byte, p *peerState) (err error
 		if !t.pieceSet.IsSet(int(index)) {
 			return errors.New("we don't have that piece.")
 		}
-		if int64(begin) >= t.m.Info.PieceLength {
+		if int64(begin) >= t.M.Info.PieceLength {
 			return errors.New("begin out of range.")
 		}
-		if int64(begin)+int64(length) > t.m.Info.PieceLength {
+		if int64(begin)+int64(length) > t.M.Info.PieceLength {
 			return errors.New("begin + length out of range.")
 		}
 		// TODO: Asynchronous
@@ -910,16 +912,16 @@ func (t *TorrentSession) generalMessage(message []byte, p *peerState) (err error
 			// We already have that piece, keep going
 			break
 		}
-		if int64(begin) >= t.m.Info.PieceLength {
+		if int64(begin) >= t.M.Info.PieceLength {
 			return errors.New("begin out of range.")
 		}
-		if int64(begin)+int64(length) > t.m.Info.PieceLength {
+		if int64(begin)+int64(length) > t.M.Info.PieceLength {
 			return errors.New("begin + length out of range.")
 		}
 		if length > 128*1024 {
 			return errors.New("Block length too large.")
 		}
-		globalOffset := int64(index)*t.m.Info.PieceLength + int64(begin)
+		globalOffset := int64(index)*t.M.Info.PieceLength + int64(begin)
 		_, err = t.fileStore.WriteAt(message[9:], globalOffset)
 		if err != nil {
 			return err
@@ -940,10 +942,10 @@ func (t *TorrentSession) generalMessage(message []byte, p *peerState) (err error
 		if !t.pieceSet.IsSet(int(index)) {
 			return errors.New("we don't have that piece.")
 		}
-		if int64(begin) >= t.m.Info.PieceLength {
+		if int64(begin) >= t.M.Info.PieceLength {
 			return errors.New("begin out of range.")
 		}
-		if int64(begin)+int64(length) > t.m.Info.PieceLength {
+		if int64(begin)+int64(length) > t.M.Info.PieceLength {
 			return errors.New("begin + length out of range.")
 		}
 		if length != STANDARD_BLOCK_LENGTH {
@@ -1090,9 +1092,9 @@ func (t *TorrentSession) DoMetadata(msg []byte, p *peerState) {
 		sha := sha1.New()
 		sha.Write(b)
 		actual := string(sha.Sum(nil))
-		if actual != t.m.InfoHash {
+		if actual != t.M.InfoHash {
 			log.Println("Invalid metadata")
-			log.Printf("Expected %s, got %s\n", t.m.InfoHash, actual)
+			log.Printf("Expected %s, got %s\n", t.M.InfoHash, actual)
 		}
 
 		metadata := string(b)
@@ -1116,7 +1118,7 @@ func (t *TorrentSession) sendRequest(peer *peerState, index, begin, length uint3
 		uint32ToBytes(buf[1:5], index)
 		uint32ToBytes(buf[5:9], begin)
 		_, err = t.fileStore.ReadAt(buf[9:],
-			int64(index)*t.m.Info.PieceLength+int64(begin))
+			int64(index)*t.M.Info.PieceLength+int64(begin))
 		if err != nil {
 			return
 		}
