@@ -259,6 +259,9 @@ func soapRequest(url, function, message, domain string) (r *http.Response, err e
 	// log.Stderr("soapRequest ", req)
 
 	r, err = http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
 	/*if r.Body != nil {
 		defer r.Body.Close()
 	}*/
