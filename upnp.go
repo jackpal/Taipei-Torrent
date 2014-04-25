@@ -7,19 +7,19 @@ import (
 	"bytes"
 	"encoding/xml"
 	"errors"
+	"io/ioutil"
 	"net"
 	"net/http"
 	"os"
 	"strconv"
 	"strings"
 	"time"
-	"io/ioutil"
 )
 
 type upnpNAT struct {
 	serviceURL string
 	ourIP      string
-	urnDomain string
+	urnDomain  string
 }
 
 func Discover() (nat NAT, err error) {
@@ -103,18 +103,18 @@ type Envelope struct {
 	Soap    *SoapBody
 }
 type SoapBody struct {
-	XMLName   xml.Name `xml:"http://schemas.xmlsoap.org/soap/envelope/ Body"`
+	XMLName    xml.Name `xml:"http://schemas.xmlsoap.org/soap/envelope/ Body"`
 	ExternalIP *ExternalIPAddressResponse
 }
 
 type ExternalIPAddressResponse struct {
-	XMLName xml.Name `xml:"GetExternalIPAddressResponse"`
-	IPAddress string `xml:"NewExternalIPAddress"`
+	XMLName   xml.Name `xml:"GetExternalIPAddressResponse"`
+	IPAddress string   `xml:"NewExternalIPAddress"`
 }
 
 type ExternalIPAddress struct {
 	XMLName xml.Name `xml:"NewExternalIPAddress"`
-	IP string
+	IP      string
 }
 
 type Service struct {
@@ -131,9 +131,9 @@ type ServiceList struct {
 }
 
 type Device struct {
-	XMLName xml.Name `xml:"device"`
-	DeviceType  string `xml:"deviceType"`
-	DeviceList  DeviceList `xml:"deviceList"`
+	XMLName     xml.Name    `xml:"device"`
+	DeviceType  string      `xml:"deviceType"`
+	DeviceList  DeviceList  `xml:"deviceList"`
 	ServiceList ServiceList `xml:"serviceList"`
 }
 
@@ -236,7 +236,7 @@ func soapRequest(url, function, message, domain string) (r *http.Response, err e
 	req.Header.Set("Content-Type", "text/xml ; charset=\"utf-8\"")
 	req.Header.Set("User-Agent", "Darwin/10.0.0, UPnP/1.0, MiniUPnPc/1.3")
 	//req.Header.Set("Transfer-Encoding", "chunked")
-	req.Header.Set("SOAPAction", "\"urn:" + domain + ":service:WANIPConnection:1#"+function+"\"")
+	req.Header.Set("SOAPAction", "\"urn:"+domain+":service:WANIPConnection:1#"+function+"\"")
 	req.Header.Set("Connection", "Close")
 	req.Header.Set("Cache-Control", "no-cache")
 	req.Header.Set("Pragma", "no-cache")
@@ -278,7 +278,6 @@ func (n *upnpNAT) getExternalIPAddress() (info statusInfo, err error) {
 	data, err := ioutil.ReadAll(response.Body)
 	reader := bytes.NewReader(data)
 	xml.NewDecoder(reader).Decode(&envelope)
-
 
 	info = statusInfo{envelope.Soap.ExternalIP.IPAddress}
 
