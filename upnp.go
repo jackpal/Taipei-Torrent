@@ -10,7 +10,6 @@ import (
 	"io/ioutil"
 	"net"
 	"net/http"
-	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -84,12 +83,12 @@ func Discover() (nat NAT, err error) {
 			if err != nil {
 				return
 			}
-			var ourIP string
-			ourIP, err = getOurIP()
+			var ourIP net.IP
+			ourIP, err = localIPv4()
 			if err != nil {
 				return
 			}
-			nat = &upnpNAT{serviceURL: serviceURL, ourIP: ourIP, urnDomain: urnDomain}
+			nat = &upnpNAT{serviceURL: serviceURL, ourIP: ourIP.String(), urnDomain: urnDomain}
 			return
 		}
 	}
@@ -160,12 +159,29 @@ func getChildService(d *Device, serviceType string) *Service {
 	return nil
 }
 
-func getOurIP() (ip string, err error) {
-	hostname, err := os.Hostname()
+func localIPv4() (net.IP, error) {
+	tt, err := net.Interfaces()
 	if err != nil {
-		return
+		return nil, err
 	}
-	return net.LookupCNAME(hostname)
+	for _, t := range tt {
+		aa, err := t.Addrs()
+		if err != nil {
+			return nil, err
+		}
+		for _, a := range aa {
+			ipnet, ok := a.(*net.IPNet)
+			if !ok {
+				continue
+			}
+			v4 := ipnet.IP.To4()
+			if v4 == nil || v4[0] == 127 { // loopback address
+				continue
+			}
+			return v4, nil
+		}
+	}
+	return nil, errors.New("cannot find local IP address")
 }
 
 func getServiceURL(rootURL string) (url, urnDomain string, err error) {
