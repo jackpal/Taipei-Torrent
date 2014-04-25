@@ -78,8 +78,7 @@ func Discover() (nat NAT, err error) {
 			if endIndex < 0 {
 				continue
 			}
-
-			locURL := loc[0:endIndex]
+			locURL := strings.TrimSpace(loc[0:endIndex])
 			var serviceURL, urnDomain string
 			serviceURL, urnDomain, err = getServiceURL(locURL)
 			if err != nil {
