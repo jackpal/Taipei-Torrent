@@ -3,7 +3,7 @@ package main
 import (
 	"encoding/hex"
 	"flag"
-	taipei "github.com/jackpal/Taipei-Torrent/torrent"
+	"github.com/jackpal/Taipei-Torrent/torrent"
 	"log"
 	"os"
 	"os/signal"
@@ -13,10 +13,8 @@ import (
 var (
 	cpuprofile = flag.String("cpuprofile", "", "If not empty, collects CPU profile samples and writes the profile to the given file before the program exits")
 	memprofile = flag.String("memprofile", "", "If not empty, writes memory heap allocations to the given file before the program exits")
-	useLPD = flag.Bool("useLPD", false, "Use Local Peer Discovery")
+	useLPD     = flag.Bool("useLPD", false, "Use Local Peer Discovery")
 )
-
-var torrent string
 
 func main() {
 	flag.Usage = usage
@@ -54,19 +52,19 @@ func main() {
 
 	log.Println("Starting.")
 
-	conChan, listenPort, err := taipei.ListenForPeerConnections()
+	conChan, listenPort, err := torrent.ListenForPeerConnections()
 	if err != nil {
 		log.Fatal("Couldn't listen for peers connection: ", err)
 	}
 	quitChan := listenSigInt()
 
-	torrent = args[0]
-	ts, err := taipei.NewTorrentSession(torrent, listenPort)
+	torrentFile := args[0]
+	ts, err := torrent.NewTorrentSession(torrentFile, listenPort)
 	if err != nil {
 		log.Println("Could not create torrent session.", err)
 		return
 	}
-	torrentSessions := make(map[string]*taipei.TorrentSession)
+	torrentSessions := make(map[string]*torrent.TorrentSession)
 	torrentSessions[ts.M.InfoHash] = ts
 
 	log.Printf("Starting torrent session for %x", ts.M.InfoHash)
@@ -75,7 +73,7 @@ func main() {
 		go ts.DoTorrent()
 	}
 
-	lpd := &taipei.Announcer{}
+	lpd := &torrent.Announcer{}
 	if *useLPD {
 		lpd = startLPD(torrentSessions, listenPort)
 	}
@@ -114,7 +112,7 @@ mainLoop:
 }
 
 func usage() {
-	log.Printf("usage: Taipei-Torrent [options] (torrent-file | torrent-url)")
+	log.Printf("usage: torrent.Torrent [options] (torrent-file | torrent-url)")
 
 	flag.PrintDefaults()
 	os.Exit(2)
@@ -126,8 +124,8 @@ func listenSigInt() chan os.Signal {
 	return c
 }
 
-func startLPD(torrentSessions map[string]*taipei.TorrentSession, listenPort int) (lpd *taipei.Announcer) {
-	lpd, err := taipei.NewAnnouncer(listenPort)
+func startLPD(torrentSessions map[string]*torrent.TorrentSession, listenPort int) (lpd *torrent.Announcer) {
+	lpd, err := torrent.NewAnnouncer(listenPort)
 	if err != nil {
 		log.Println("Couldn't listen for Local Peer Discoveries: ", err)
 		return
