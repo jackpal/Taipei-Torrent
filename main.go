@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/hex"
 	"flag"
+	taipei "github.com/jackpal/Taipei-Torrent/torrent"
 	"log"
 	"os"
 	"os/signal"
@@ -12,6 +13,7 @@ import (
 var (
 	cpuprofile = flag.String("cpuprofile", "", "If not empty, collects CPU profile samples and writes the profile to the given file before the program exits")
 	memprofile = flag.String("memprofile", "", "If not empty, writes memory heap allocations to the given file before the program exits")
+	useLPD = flag.Bool("useLPD", false, "Use Local Peer Discovery")
 )
 
 var torrent string
@@ -52,28 +54,28 @@ func main() {
 
 	log.Println("Starting.")
 
-	conChan, listenPort, err := listenForPeerConnections()
+	conChan, listenPort, err := taipei.ListenForPeerConnections()
 	if err != nil {
 		log.Fatal("Couldn't listen for peers connection: ", err)
 	}
 	quitChan := listenSigInt()
 
 	torrent = args[0]
-	ts, err := NewTorrentSession(torrent, listenPort)
+	ts, err := taipei.NewTorrentSession(torrent, listenPort)
 	if err != nil {
 		log.Println("Could not create torrent session.", err)
 		return
 	}
-	torrentSessions := make(map[string]*TorrentSession)
-	torrentSessions[ts.m.InfoHash] = ts
+	torrentSessions := make(map[string]*taipei.TorrentSession)
+	torrentSessions[ts.M.InfoHash] = ts
 
-	log.Printf("Starting torrent session for %x", ts.m.InfoHash)
+	log.Printf("Starting torrent session for %x", ts.M.InfoHash)
 
 	for _, ts := range torrentSessions {
 		go ts.DoTorrent()
 	}
 
-	lpd := &Announcer{}
+	lpd := &taipei.Announcer{}
 	if *useLPD {
 		lpd = startLPD(torrentSessions, listenPort)
 	}
@@ -92,19 +94,19 @@ mainLoop:
 			}
 			break mainLoop
 		case c := <-conChan:
-			log.Printf("New bt connection for ih %x", c.infohash)
-			if ts, ok := torrentSessions[c.infohash]; ok {
+			log.Printf("New bt connection for ih %x", c.Infohash)
+			if ts, ok := torrentSessions[c.Infohash]; ok {
 				ts.AcceptNewPeer(c)
 			}
-		case announce := <-lpd.announces:
-			hexhash, err := hex.DecodeString(announce.infohash)
+		case announce := <-lpd.Announces:
+			hexhash, err := hex.DecodeString(announce.Infohash)
 			if err != nil {
 				log.Println("Err with hex-decoding:", err)
 				break
 			}
 			if ts, ok := torrentSessions[string(hexhash)]; ok {
-				log.Printf("Received LPD announce for ih %s", announce.infohash)
-				ts.hintNewPeer(announce.peer)
+				log.Printf("Received LPD announce for ih %s", announce.Infohash)
+				ts.HintNewPeer(announce.Peer)
 			}
 		}
 	}
@@ -124,14 +126,14 @@ func listenSigInt() chan os.Signal {
 	return c
 }
 
-func startLPD(torrentSessions map[string]*TorrentSession, listenPort int) (lpd *Announcer) {
-	lpd, err := NewAnnouncer(listenPort)
+func startLPD(torrentSessions map[string]*taipei.TorrentSession, listenPort int) (lpd *taipei.Announcer) {
+	lpd, err := taipei.NewAnnouncer(listenPort)
 	if err != nil {
 		log.Println("Couldn't listen for Local Peer Discoveries: ", err)
 		return
 	} else {
 		for _, ts := range torrentSessions {
-			lpd.Announce(ts.m.InfoHash)
+			lpd.Announce(ts.M.InfoHash)
 		}
 	}
 	return

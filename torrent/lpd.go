@@ -1,9 +1,8 @@
-package main
+package torrent
 
 import (
 	"bufio"
 	"bytes"
-	"flag"
 	"fmt"
 	"log"
 	"net"
@@ -11,7 +10,6 @@ import (
 	"time"
 )
 
-var useLPD = flag.Bool("useLPD", false, "Use Local Peer Discovery")
 var (
 	request_template = "BT-SEARCH * HTTP/1.1\r\n" +
 		"Host: 239.192.152.143:6771\r\n" +
@@ -20,8 +18,8 @@ var (
 )
 
 type Announce struct {
-	peer     string
-	infohash string
+	Peer     string
+	Infohash string
 }
 
 type Announcer struct {
@@ -29,7 +27,7 @@ type Announcer struct {
 	addr   *net.UDPAddr
 	conn   *net.UDPConn
 
-	announces       chan *Announce
+	Announces       chan *Announce
 	activeAnnounces map[string]*time.Ticker
 }
 
@@ -49,7 +47,7 @@ func NewAnnouncer(listenPort int) (lpd *Announcer, err error) {
 		btPort:          listenPort,
 		addr:            addr,
 		conn:            conn,
-		announces:       make(chan *Announce),
+		Announces:       make(chan *Announce),
 		activeAnnounces: activeAnnounces,
 	}
 
@@ -93,7 +91,7 @@ func (lpd *Announcer) run() {
 			log.Println(err)
 			continue
 		}
-		lpd.announces <- &Announce{addr.String(), ih}
+		lpd.Announces <- &Announce{addr.String(), ih}
 	}
 }
 
