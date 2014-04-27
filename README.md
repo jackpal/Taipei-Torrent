@@ -64,11 +64,6 @@ https://github.com/nictuku/dht      - Distributed Hash Table
 
 https://github.com/nictuku/nettools - Network utilities
 
-Related Projects
-----------------
-
-https://github.com/nictuku/Taipei-Torrent is an active fork.
-
 Google+ Community
 -----------------
 
