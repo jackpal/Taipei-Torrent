@@ -90,6 +90,8 @@ func queryTracker(report ClientStatusReport, trackerUrl string) (tr *TrackerResp
 	}
 	switch u.Scheme {
 	case "http":
+		fallthrough
+	case "https":
 		return queryHTTPTracker(report, u)
 	case "udp":
 		return queryUDPTracker(report, u)
