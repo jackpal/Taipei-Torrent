@@ -164,8 +164,8 @@ func NewTorrentSession(torrent string, listenPort uint16) (ts *TorrentSession, e
 		quit:            make(chan bool),
 		torrentFile:     torrent,
 	}
-
-	if useDHT {
+	dhtAllowed := useDHT && t.M.Info.Private == 0
+	if dhtAllowed {
 		// TODO: UPnP UDP port mapping.
 		cfg := dht.NewConfig()
 		cfg.Port = int(listenPort)
@@ -186,7 +186,7 @@ func NewTorrentSession(torrent string, listenPort uint16) (ts *TorrentSession, e
 	t.si = &SessionInfo{
 		PeerId:        peerId(),
 		Port:          listenPort,
-		UseDHT:        useDHT,
+		UseDHT:        dhtAllowed,
 		FromMagnet:    fromMagnet,
 		HaveTorrent:   false,
 		ME:            &MetaDataExchange{},
