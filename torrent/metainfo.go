@@ -9,7 +9,6 @@ import (
 	"log"
 	"os"
 	"strings"
-	"time"
 
 	bencode "code.google.com/p/bencode-go"
 	"github.com/nictuku/dht"
@@ -155,21 +154,21 @@ func getMetaInfo(torrent string) (metaInfo *MetaInfo, err error) {
 type TrackerResponse struct {
 	FailureReason  string "failure reason"
 	WarningMessage string "warning message"
-	Interval       time.Duration
-	MinInterval    time.Duration "min interval"
-	TrackerId      string        "tracker id"
-	Complete       int
-	Incomplete     int
+	Interval       uint
+	MinInterval    uint   "min interval"
+	TrackerId      string "tracker id"
+	Complete       uint
+	Incomplete     uint
 	Peers          string
 	Peers6         string
 }
 
 type SessionInfo struct {
 	PeerId     string
-	Port       int
-	Uploaded   int64
-	Downloaded int64
-	Left       int64
+	Port       uint16
+	Uploaded   uint64
+	Downloaded uint64
+	Left       uint64
 
 	UseDHT      bool
 	FromMagnet  bool

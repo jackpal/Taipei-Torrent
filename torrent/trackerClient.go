@@ -1,12 +1,15 @@
 package torrent
 
 import (
+	"bytes"
+	"encoding/binary"
 	"fmt"
 	"log"
 	"math/rand"
 	"net"
 	"net/url"
 	"strconv"
+	"time"
 )
 
 // Code to talk to trackers.
@@ -16,10 +19,10 @@ type ClientStatusReport struct {
 	Event      string
 	InfoHash   string
 	PeerId     string
-	Port       int
-	Uploaded   int64
-	Downloaded int64
-	Left       int64
+	Port       uint16
+	Uploaded   uint64
+	Downloaded uint64
+	Left       uint64
 }
 
 func startTrackerClient(announce string, announceList [][]string, trackerInfoChan chan *TrackerResponse, reports chan ClientStatusReport) {
@@ -85,14 +88,24 @@ func queryTracker(report ClientStatusReport, trackerUrl string) (tr *TrackerResp
 		log.Println("Error: Invalid announce URL(", trackerUrl, "):", err)
 		return
 	}
+	switch u.Scheme {
+	case "http":
+		return queryHTTPTracker(report, u)
+	case "udp":
+		return queryUDPTracker(report, u)
+	default:
+		return nil, fmt.Errorf("Unknown scheme %v in %v", u.Scheme, trackerUrl)
+	}
+}
 
+func queryHTTPTracker(report ClientStatusReport, u *url.URL) (tr *TrackerResponse, err error) {
 	uq := u.Query()
 	uq.Add("info_hash", report.InfoHash)
 	uq.Add("peer_id", report.PeerId)
-	uq.Add("port", strconv.Itoa(report.Port))
-	uq.Add("uploaded", strconv.FormatInt(report.Uploaded, 10))
-	uq.Add("downloaded", strconv.FormatInt(report.Downloaded, 10))
-	uq.Add("left", strconv.FormatInt(report.Left, 10))
+	uq.Add("port", strconv.FormatUint(uint64(report.Port), 10))
+	uq.Add("uploaded", strconv.FormatUint(report.Uploaded, 10))
+	uq.Add("downloaded", strconv.FormatUint(report.Downloaded, 10))
+	uq.Add("left", strconv.FormatUint(report.Left, 10))
 	uq.Add("compact", "1")
 
 	// Don't report IPv6 address, the user might prefer to keep
@@ -144,5 +157,247 @@ func findLocalIPV6AddressFor(hostAddr string) (local string, err error) {
 	if err != nil {
 		local = localAddr.String()
 	}
+	return
+}
+
+func queryUDPTracker(report ClientStatusReport, u *url.URL) (tr *TrackerResponse, err error) {
+	serverAddr, err := net.ResolveUDPAddr("udp", u.Host)
+	if err != nil {
+		return
+	}
+	con, err := net.DialUDP("udp", nil, serverAddr)
+	if err != nil {
+		return
+	}
+	defer func() { con.Close() }()
+
+	var connectionID uint64
+	for retry := uint(0); retry < uint(8); retry++ {
+		err = con.SetDeadline(time.Now().Add(15 * (1 << retry) * time.Second))
+		if err != nil {
+			return
+		}
+
+		connectionID, err = connectToUDPTracker(con)
+		if err == nil {
+			break
+		}
+		if nerr, ok := err.(net.Error); ok && nerr.Timeout() {
+			continue
+		}
+		if err != nil {
+			return
+		}
+	}
+
+	return getAnnouncementFromUDPTracker(con, connectionID, report)
+}
+
+func connectToUDPTracker(con *net.UDPConn) (connectionID uint64, err error) {
+	var connectionRequest_connectionID uint64 = 0x41727101980
+	var action uint32 = 0
+	transactionID := rand.Uint32()
+
+	connectionRequest := new(bytes.Buffer)
+	err = binary.Write(connectionRequest, binary.BigEndian, connectionRequest_connectionID)
+	if err != nil {
+		return
+	}
+	err = binary.Write(connectionRequest, binary.BigEndian, action)
+	if err != nil {
+		return
+	}
+	err = binary.Write(connectionRequest, binary.BigEndian, transactionID)
+	if err != nil {
+		return
+	}
+
+	_, err = con.Write(connectionRequest.Bytes())
+	if err != nil {
+		return
+	}
+
+	connectionResponseBytes := make([]byte, 16)
+
+	var connectionResponseLen int
+	connectionResponseLen, err = con.Read(connectionResponseBytes)
+	if err != nil {
+		return
+	}
+	if connectionResponseLen != 16 {
+		err = fmt.Errorf("Unexpected response size %d", connectionResponseLen)
+		return
+	}
+	connectionResponse := bytes.NewBuffer(connectionResponseBytes)
+	var connectionResponseAction uint32
+	err = binary.Read(connectionResponse, binary.BigEndian, &connectionResponseAction)
+	if err != nil {
+		return
+	}
+	if connectionResponseAction != 0 {
+		err = fmt.Errorf("Unexpected response action %d", connectionResponseAction)
+		return
+	}
+	var connectionResponseTransactionID uint32
+	err = binary.Read(connectionResponse, binary.BigEndian, &connectionResponseTransactionID)
+	if err != nil {
+		return
+	}
+	if connectionResponseTransactionID != transactionID {
+		err = fmt.Errorf("Unexpected response transactionID %x != %x",
+			connectionResponseTransactionID, transactionID)
+		return
+	}
+
+	err = binary.Read(connectionResponse, binary.BigEndian, &connectionID)
+	if err != nil {
+		return
+	}
+	return
+}
+
+func getAnnouncementFromUDPTracker(con *net.UDPConn, connectionID uint64, report ClientStatusReport) (tr *TrackerResponse, err error) {
+	transactionID := rand.Uint32()
+
+	announcementRequest := new(bytes.Buffer)
+	err = binary.Write(announcementRequest, binary.BigEndian, connectionID)
+	if err != nil {
+		return
+	}
+	var action uint32 = 1
+	err = binary.Write(announcementRequest, binary.BigEndian, action)
+	if err != nil {
+		return
+	}
+	err = binary.Write(announcementRequest, binary.BigEndian, transactionID)
+	if err != nil {
+		return
+	}
+	err = binary.Write(announcementRequest, binary.BigEndian, []byte(report.InfoHash))
+	if err != nil {
+		return
+	}
+	err = binary.Write(announcementRequest, binary.BigEndian, []byte(report.PeerId))
+	if err != nil {
+		return
+	}
+	err = binary.Write(announcementRequest, binary.BigEndian, report.Downloaded)
+	if err != nil {
+		return
+	}
+	err = binary.Write(announcementRequest, binary.BigEndian, report.Left)
+	if err != nil {
+		return
+	}
+	err = binary.Write(announcementRequest, binary.BigEndian, report.Uploaded)
+	if err != nil {
+		return
+	}
+	var event uint32 = 0
+	switch report.Event {
+	case "":
+		event = 0
+	case "completed":
+		event = 1
+	case "started":
+		event = 2
+	case "stopped":
+		event = 3
+	default:
+		err = fmt.Errorf("Unknown event string %v", report.Event)
+		return
+	}
+	err = binary.Write(announcementRequest, binary.BigEndian, event)
+	if err != nil {
+		return
+	}
+	var ipAddress uint32 = 0
+	err = binary.Write(announcementRequest, binary.BigEndian, ipAddress)
+	if err != nil {
+		return
+	}
+	var key uint32 = 0
+	err = binary.Write(announcementRequest, binary.BigEndian, key)
+	if err != nil {
+		return
+	}
+
+	const peerRequestCount = 10
+	var numWant uint32 = peerRequestCount
+	err = binary.Write(announcementRequest, binary.BigEndian, numWant)
+	if err != nil {
+		return
+	}
+	err = binary.Write(announcementRequest, binary.BigEndian, report.Port)
+	if err != nil {
+		return
+	}
+
+	_, err = con.Write(announcementRequest.Bytes())
+	if err != nil {
+		return
+	}
+
+	const minimumResponseLen = 20
+	const peerDataSize = 6
+	expectedResponseLen := minimumResponseLen + peerDataSize*peerRequestCount
+	responseBytes := make([]byte, expectedResponseLen)
+
+	var responseLen int
+	responseLen, err = con.Read(responseBytes)
+	if err != nil {
+		return
+	}
+	if responseLen < minimumResponseLen {
+		err = fmt.Errorf("Unexpected response size %d", responseLen)
+		return
+	}
+	response := bytes.NewBuffer(responseBytes)
+	var responseAction uint32
+	err = binary.Read(response, binary.BigEndian, &responseAction)
+	if err != nil {
+		return
+	}
+	if action != 1 {
+		err = fmt.Errorf("Unexpected response action %d", action)
+		return
+	}
+	var responseTransactionID uint32
+	err = binary.Read(response, binary.BigEndian, &responseTransactionID)
+	if err != nil {
+		return
+	}
+	if transactionID != responseTransactionID {
+		err = fmt.Errorf("Unexpected response transactionID %x", responseTransactionID)
+		return
+	}
+	var interval uint32
+	err = binary.Read(response, binary.BigEndian, &interval)
+	if err != nil {
+		return
+	}
+	var leechers uint32
+	err = binary.Read(response, binary.BigEndian, &leechers)
+	if err != nil {
+		return
+	}
+	var seeders uint32
+	err = binary.Read(response, binary.BigEndian, &seeders)
+	if err != nil {
+		return
+	}
+
+	peerCount := (responseLen - minimumResponseLen) / peerDataSize
+	peerDataBytes := make([]byte, peerDataSize*peerCount)
+	err = binary.Read(response, binary.BigEndian, &peerDataBytes)
+	if err != nil {
+		return
+	}
+
+	tr = &TrackerResponse{
+		Interval:   uint(interval),
+		Complete:   uint(seeders),
+		Incomplete: uint(leechers),
+		Peers:      string(peerDataBytes)}
 	return
 }

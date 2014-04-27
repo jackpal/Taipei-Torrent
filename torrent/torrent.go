@@ -156,7 +156,7 @@ type TorrentSession struct {
 	torrentFile       string
 }
 
-func NewTorrentSession(torrent string, listenPort int) (ts *TorrentSession, err error) {
+func NewTorrentSession(torrent string, listenPort uint16) (ts *TorrentSession, err error) {
 	t := &TorrentSession{
 		peers:           make(map[string]*peerState),
 		peerMessageChan: make(chan peerMessage),
@@ -168,7 +168,7 @@ func NewTorrentSession(torrent string, listenPort int) (ts *TorrentSession, err 
 	if useDHT {
 		// TODO: UPnP UDP port mapping.
 		cfg := dht.NewConfig()
-		cfg.Port = listenPort
+		cfg.Port = int(listenPort)
 		cfg.NumTargetPeers = TARGET_NUM_PEERS
 		if t.dht, err = dht.New(cfg); err != nil {
 			log.Println("DHT node creation error", err)
@@ -513,24 +513,18 @@ func (t *TorrentSession) DoTorrent() {
 					}
 				}
 				log.Println("Contacting", newPeerCount, "new peers")
-				interval := t.ti.Interval
-				if interval < 120 {
-					interval = 120
-				} else if interval > 24*3600 {
-					interval = 24 * 3600
-				}
-				log.Println("..checking again in", interval, "seconds.")
-				retrackerChan = time.Tick(interval * time.Second)
-				log.Println("Contacting", newPeerCount, "new peers")
 			}
+
 			interval := t.ti.Interval
-			if interval < 120 {
-				interval = 120
-			} else if interval > 24*3600 {
-				interval = 24 * 3600
+			minInterval := uint(120)
+			maxInterval := uint(24 * 3600)
+			if interval < minInterval {
+				interval = minInterval
+			} else if interval > maxInterval {
+				interval = maxInterval
 			}
-			log.Println("..checking again in", interval.String())
-			retrackerChan = time.Tick(interval * time.Second)
+			log.Println("..checking again in", interval, "seconds.")
+			retrackerChan = time.Tick(time.Duration(interval) * time.Second)
 
 		case pm := <-t.peerMessageChan:
 			peer, message := pm.peer, pm.message
@@ -706,7 +700,7 @@ func (t *TorrentSession) RecordBlock(p *peerState, piece, begin, length uint32) 
 				}
 			}
 		}
-		t.si.Downloaded += int64(length)
+		t.si.Downloaded += uint64(length)
 		if v.isComplete() {
 			delete(t.activePieces, int(piece))
 			ok, err = checkPiece(t.fileStore, t.totalSize, t.M, int(piece))
@@ -715,7 +709,7 @@ func (t *TorrentSession) RecordBlock(p *peerState, piece, begin, length uint32) 
 				p.Close()
 				return
 			}
-			t.si.Left -= int64(v.pieceLength)
+			t.si.Left -= uint64(v.pieceLength)
 			t.pieceSet.Set(int(piece))
 			t.goodPieces++
 			log.Println("Have", t.goodPieces, "of", t.totalPieces, "pieces.")
@@ -1123,7 +1117,7 @@ func (t *TorrentSession) sendRequest(peer *peerState, index, begin, length uint3
 			return
 		}
 		peer.sendMessage(buf)
-		t.si.Uploaded += int64(length)
+		t.si.Uploaded += uint64(length)
 	}
 	return
 }

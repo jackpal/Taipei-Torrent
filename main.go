@@ -124,7 +124,7 @@ func listenSigInt() chan os.Signal {
 	return c
 }
 
-func startLPD(torrentSessions map[string]*torrent.TorrentSession, listenPort int) (lpd *torrent.Announcer) {
+func startLPD(torrentSessions map[string]*torrent.TorrentSession, listenPort uint16) (lpd *torrent.Announcer) {
 	lpd, err := torrent.NewAnnouncer(listenPort)
 	if err != nil {
 		log.Println("Couldn't listen for Local Peer Discoveries: ", err)

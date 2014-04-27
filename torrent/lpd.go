@@ -13,7 +13,7 @@ import (
 var (
 	request_template = "BT-SEARCH * HTTP/1.1\r\n" +
 		"Host: 239.192.152.143:6771\r\n" +
-		"Port: %d\r\n" +
+		"Port: %u\r\n" +
 		"Infohash: %X\r\n\r\n"
 )
 
@@ -23,7 +23,7 @@ type Announce struct {
 }
 
 type Announcer struct {
-	btPort int
+	btPort uint16
 	addr   *net.UDPAddr
 	conn   *net.UDPConn
 
@@ -31,7 +31,7 @@ type Announcer struct {
 	activeAnnounces map[string]*time.Ticker
 }
 
-func NewAnnouncer(listenPort int) (lpd *Announcer, err error) {
+func NewAnnouncer(listenPort uint16) (lpd *Announcer, err error) {
 	addr, err := net.ResolveUDPAddr("udp4", "239.192.152.143:6771")
 	if err != nil {
 		return

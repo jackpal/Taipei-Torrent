@@ -146,7 +146,7 @@ func (p *peerState) SendBitfield(bs *Bitset) {
 	p.sendMessage(msg)
 }
 
-func (p *peerState) SendExtensions(port int) {
+func (p *peerState) SendExtensions(port uint16) {
 
 	handshake := map[string]interface{}{
 		"m": map[string]int{
