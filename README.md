@@ -69,3 +69,8 @@ Related Projects
 
 https://github.com/nictuku/Taipei-Torrent is an active fork.
 
+Google+ Community
+-----------------
+
+https://plus.google.com/u/0/communities/100997865549971977580
+
