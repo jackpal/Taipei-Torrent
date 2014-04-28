@@ -13,7 +13,9 @@ import (
 )
 
 // Code to talk to trackers.
-// Implements BEP 12 Multitracker Metadata Extension
+// Implements:
+//  BEP 12 Multitracker Metadata Extension
+//  BEP 15 UDP Tracker Protocol
 
 type ClientStatusReport struct {
 	Event      string
