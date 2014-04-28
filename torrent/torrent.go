@@ -399,6 +399,10 @@ func (t *TorrentSession) ClosePeer(peer *peerState) {
 }
 
 func (t *TorrentSession) deadlockDetector() {
+	// Wait for a heartbeat before we start deadlock detection.
+	// This handle the case where it takes a long time to find
+	// a tracker.
+	<-t.heartbeat
 	lastHeartbeat := time.Now()
 	for {
 		select {
