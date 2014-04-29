@@ -286,13 +286,11 @@ func (ts *TorrentSession) setHeader() {
 	}
 	// Support Extension Protocol (BEP-0010)
 	header[25] |= 0x10
-
 	copy(header[28:48], string2Bytes(ts.M.InfoHash))
 	copy(header[48:68], string2Bytes(ts.si.PeerId))
-
 	ts.torrentHeader = header
-
 }
+
 func (ts *TorrentSession) Header() (header []byte) {
 	return ts.torrentHeader
 }
