@@ -192,6 +192,7 @@ func NewTorrentSession(torrent string, listenPort uint16) (ts *TorrentSession, e
 		ME:            &MetaDataExchange{},
 		OurExtensions: map[int]string{1: "ut_metadata"},
 	}
+	t.setHeader()
 
 	if !t.si.FromMagnet {
 		t.load()
@@ -277,25 +278,21 @@ func (t *TorrentSession) fetchTrackerInfo(event string) {
 		event, m.InfoHash, si.PeerId, si.Port, si.Uploaded, si.Downloaded, si.Left}
 }
 
-func (ts *TorrentSession) Header() (header []byte) {
-	if ts.torrentHeader != nil {
-		return ts.torrentHeader
-	}
-
-	header = make([]byte, 68)
+func (ts *TorrentSession) setHeader() {
+	header := make([]byte, 68)
 	copy(header, kBitTorrentHeader[0:])
 	if ts.si.UseDHT {
 		header[27] = header[27] | 0x01
 	}
 	// Support Extension Protocol (BEP-0010)
 	header[25] |= 0x10
-
 	copy(header[28:48], string2Bytes(ts.M.InfoHash))
 	copy(header[48:68], string2Bytes(ts.si.PeerId))
-
 	ts.torrentHeader = header
+}
 
-	return
+func (ts *TorrentSession) Header() (header []byte) {
+	return ts.torrentHeader
 }
 
 // Try to connect if the peer is not already in our peers
