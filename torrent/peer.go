@@ -24,7 +24,6 @@ type peerState struct {
 	id              string
 	writeChan       chan []byte
 	writeChan2      chan []byte
-	lastWriteTime   time.Time
 	lastReadTime    time.Time
 	have            *Bitset // What the peer has told us it has
 	conn            net.Conn
@@ -177,14 +176,10 @@ func (p *peerState) sendOneCharMessage(b byte) {
 
 func (p *peerState) sendMessage(b []byte) {
 	p.writeChan <- b
-	p.lastWriteTime = time.Now()
 }
 
 func (p *peerState) keepAlive(now time.Time) {
-	if now.Sub(p.lastWriteTime) >= 2*time.Minute {
-		// log.Stderr("Sending keep alive", p)
-		p.sendMessage([]byte{})
-	}
+	p.sendMessage([]byte{})
 }
 
 // There's two goroutines per peer, one to read data from the peer, the other to
@@ -225,7 +220,21 @@ func readNBOUint32(conn net.Conn) (n uint32, err error) {
 
 func (p *peerState) peerWriter(errorChan chan peerMessage) {
 	// log.Println("Writing messages")
+	var lastWriteTime time.Time
+
 	for msg := range p.writeChan2 {
+		now := time.Now()
+		if len(msg) == 0 {
+			// This is a keep-alive message.
+			if now.Sub(lastWriteTime) < 2*time.Minute {
+				// Don't need to send keep-alive because we have recently sent a
+				// message to this peer.
+				continue
+			}
+			// log.Stderr("Sending keep alive", p)
+		}
+		lastWriteTime = now
+
 		// log.Println("Writing", uint32(len(msg)), p.conn.RemoteAddr())
 		err := writeNBOUint32(p.conn, uint32(len(msg)))
 		if err != nil {
