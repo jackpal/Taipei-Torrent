@@ -166,6 +166,11 @@ func NewTorrentSession(torrent string, listenPort uint16) (ts *TorrentSession, e
 		quit:            make(chan bool),
 		torrentFile:     torrent,
 	}
+	fromMagnet := strings.HasPrefix(torrent, "magnet:")
+	t.M, err = getMetaInfo(torrent)
+	if err != nil {
+		return
+	}
 	dhtAllowed := useDHT && t.M.Info.Private == 0
 	if dhtAllowed {
 		// TODO: UPnP UDP port mapping.
@@ -179,11 +184,6 @@ func NewTorrentSession(torrent string, listenPort uint16) (ts *TorrentSession, e
 		go t.dht.Run()
 	}
 
-	fromMagnet := strings.HasPrefix(torrent, "magnet:")
-	t.M, err = getMetaInfo(torrent)
-	if err != nil {
-		return
-	}
 
 	t.si = &SessionInfo{
 		PeerId:        peerId(),
