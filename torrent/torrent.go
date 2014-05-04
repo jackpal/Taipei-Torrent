@@ -141,6 +141,8 @@ type TorrentSession struct {
 	fileStore         FileStore
 	trackerReportChan chan ClientStatusReport
 	trackerInfoChan   chan *TrackerResponse
+	hintNewPeerChan   chan string
+	addPeerChan       chan *btConn
 	peers             map[string]*peerState
 	peerMessageChan   chan peerMessage
 	pieceSet          *Bitset // The pieces we have
@@ -295,8 +297,13 @@ func (ts *TorrentSession) Header() (header []byte) {
 	return ts.torrentHeader
 }
 
-// Try to connect if the peer is not already in our peers
+// Try to connect if the peer is not already in our peers.
+// Can be called from any goroutine.
 func (ts *TorrentSession) HintNewPeer(peer string) {
+	ts.hintNewPeerChan <- peer
+}
+
+func (ts *TorrentSession) hintNewPeerImp(peer string) {
 	if _, ok := ts.peers[peer]; !ok {
 		go ts.connectToPeer(peer)
 	}
@@ -341,7 +348,12 @@ func (t *TorrentSession) AcceptNewPeer(btconn *btConn) {
 	t.AddPeer(btconn)
 }
 
+// Can be called from any goroutine
 func (t *TorrentSession) AddPeer(btconn *btConn) {
+	t.addPeerChan <- btconn
+}
+
+func (t *TorrentSession) addPeerImp(btconn *btConn) {
 	for _, p := range t.peers {
 		if p.id == btconn.id {
 			return
@@ -432,6 +444,8 @@ func (t *TorrentSession) DoTorrent() {
 	rechokeChan := time.Tick(1 * time.Second)
 	keepAliveChan := time.Tick(60 * time.Second)
 	var retrackerChan <-chan time.Time
+	t.hintNewPeerChan = make(chan string)
+	t.addPeerChan = make(chan *btConn)
 	if !t.trackerLessMode {
 		// Start out polling tracker every 20 seconds until we get a response.
 		// Maybe be exponential backoff here?
@@ -456,6 +470,10 @@ func (t *TorrentSession) DoTorrent() {
 			peersRequestResults = t.dht.PeersRequestResults
 		}
 		select {
+		case hintNewPeer := <-t.hintNewPeerChan:
+			t.hintNewPeerImp(hintNewPeer)
+		case btconn := <-t.addPeerChan:
+			t.addPeerImp(btconn)
 		case <-retrackerChan:
 			if !t.trackerLessMode {
 				t.fetchTrackerInfo("")
