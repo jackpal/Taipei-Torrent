@@ -37,8 +37,28 @@ func startTrackerClient(announce string, announceList [][]string, trackerInfoCha
 		announceList = shuffleAnnounceList(announceList)
 	}
 
+	// Discard status old status reports if they are produced more quickly than they can
+	// be consumed.
+	recentReports := make(chan ClientStatusReport)
 	go func() {
-		for report := range reports {
+		for {
+			// Wait until we have a report.
+			recentReport := <-reports
+			for {
+				select {
+				case recentReport = <-reports:
+					// discard the old report, keep the new one.
+					continue
+				case recentReports <- recentReport:
+					// send the latest report, then wait for new report.
+					break
+				}
+			}
+		}
+	}()
+
+	go func() {
+		for report := range recentReports {
 			tr := queryTrackers(announceList, report)
 			if tr != nil {
 				trackerInfoChan <- tr
