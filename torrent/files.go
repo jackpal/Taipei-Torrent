@@ -3,88 +3,41 @@ package torrent
 import (
 	"errors"
 	"io"
-	"os"
-	"path"
-	"strings"
 )
 
+// Interface for a file.
+type File interface {
+	io.ReaderAt
+	io.WriterAt
+	io.Closer
+}
+
+// Interface for a file system. A file system contains files.
+type FileSystem interface {
+	Open(path []string, length int64) (file File, err error)
+}
+
+// A torrent file store.
 type FileStore interface {
 	io.ReaderAt
 	io.WriterAt
 	io.Closer
 }
 
+type fileStore struct {
+	fileSystem FileSystem
+	offsets    []int64
+	files      []fileEntry // Stored in increasing globalOffset order
+}
+
 type fileEntry struct {
 	length int64
-	name   string
+	file   File
 }
 
-type fileStore struct {
-	offsets []int64
-	files   []fileEntry // Stored in increasing globalOffset order
-}
-
-func (fe *fileEntry) open(name string, length int64) (err error) {
-	fe.length = length
-	fe.name = name
-	st, err := os.Stat(name)
-	if err != nil && os.IsNotExist(err) {
-		f, err := os.Create(name)
-		defer f.Close()
-		if err != nil {
-			return err
-		}
-	} else {
-		if st.Size() == length {
-			return
-		}
-	}
-	err = os.Truncate(name, length)
-	if err != nil {
-		return
-		err = errors.New("Could not truncate file.")
-	}
-	return
-}
-
-func (fe *fileEntry) ReadAt(p []byte, off int64) (n int, err error) {
-	file, err := os.OpenFile(fe.name, os.O_RDWR, 0600)
-	if err != nil {
-		return
-	}
-	defer file.Close()
-	return file.ReadAt(p, off)
-}
-
-func (fe *fileEntry) WriteAt(p []byte, off int64) (n int, err error) {
-	file, err := os.OpenFile(fe.name, os.O_RDWR, 0600)
-	if err != nil {
-		return
-	}
-	defer file.Close()
-	return file.WriteAt(p, off)
-}
-
-func ensureDirectory(fullPath string) (err error) {
-	fullPath = path.Clean(fullPath)
-	if !strings.HasPrefix(fullPath, "/") {
-		// Transform into absolute path.
-		var cwd string
-		if cwd, err = os.Getwd(); err != nil {
-			return
-		}
-		fullPath = cwd + "/" + fullPath
-	}
-	base, _ := path.Split(fullPath)
-	if base == "" {
-		panic("Programming error: could not find base directory for absolute path " + fullPath)
-	}
-	err = os.MkdirAll(base, 0755)
-	return
-}
-
-func NewFileStore(info *InfoDict, storePath string) (f FileStore, totalSize int64, err error) {
-	fs := new(fileStore)
+func NewFileStore(info *InfoDict, fileSystem FileSystem) (f FileStore, totalSize int64, err error) {
+	fs := &fileStore{}
+	fs.fileSystem = fileSystem
 	numFiles := len(info.Files)
 	if numFiles == 0 {
 		// Create dummy Files structure.
@@ -95,18 +48,13 @@ func NewFileStore(info *InfoDict, storePath string) (f FileStore, totalSize int6
 	fs.offsets = make([]int64, numFiles)
 	for i, _ := range info.Files {
 		src := &info.Files[i]
-		// Clean the source path before appending to the storePath. This
-		// ensures that source paths that start with ".." can't escape.
-		cleanSrcPath := path.Clean("/" + path.Join(src.Path...))[1:]
-		fullPath := path.Join(storePath, cleanSrcPath)
-		err = ensureDirectory(fullPath)
+		var file File
+		file, err = fs.fileSystem.Open(src.Path, src.Length)
 		if err != nil {
 			return
 		}
-		err = fs.files[i].open(fullPath, src.Length)
-		if err != nil {
-			return
-		}
+		fs.files[i].file = file
+		fs.files[i].length = src.Length
 		fs.offsets[i] = totalSize
 		totalSize += src.Length
 	}
@@ -143,7 +91,7 @@ func (f *fileStore) ReadAt(p []byte, off int64) (n int, err error) {
 				chunk = space
 			}
 			var nThisTime int
-			nThisTime, err = entry.ReadAt(p[0:chunk], itemOffset)
+			nThisTime, err = entry.file.ReadAt(p[0:chunk], itemOffset)
 			n = n + nThisTime
 			if err != nil {
 				return
@@ -173,7 +121,7 @@ func (f *fileStore) WriteAt(p []byte, off int64) (n int, err error) {
 				chunk = space
 			}
 			var nThisTime int
-			nThisTime, err = entry.WriteAt(p[0:chunk], itemOffset)
+			nThisTime, err = entry.file.WriteAt(p[0:chunk], itemOffset)
 			n += nThisTime
 			if err != nil {
 				return
@@ -198,5 +146,11 @@ func (f *fileStore) WriteAt(p []byte, off int64) (n int, err error) {
 }
 
 func (f *fileStore) Close() (err error) {
+	for _, fileEntry := range f.files {
+		fileErr := fileEntry.file.Close()
+		if fileErr != nil && err == nil {
+			err = fileErr
+		}
+	}
 	return
 }

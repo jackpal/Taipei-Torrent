@@ -244,7 +244,13 @@ func (t *TorrentSession) load() {
 		}
 	}
 
-	t.fileStore, t.totalSize, err = NewFileStore(&t.M.Info, dir)
+	var fileSystem FileSystem
+	fileSystem, err = NewOSFileSystem(dir)
+	if err != nil {
+		return
+	}
+
+	t.fileStore, t.totalSize, err = NewFileStore(&t.M.Info, fileSystem)
 	if err != nil {
 		return
 	}
