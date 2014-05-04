@@ -10,12 +10,12 @@ import (
 type File interface {
 	io.ReaderAt
 	io.WriterAt
-	io.Closer
 }
 
 // Interface for a file system. A file system contains files.
 type FileSystem interface {
 	Open(path []string, length int64) (file File, err error)
+	io.Closer
 }
 
 // A torrent file store.
@@ -52,6 +52,7 @@ func NewFileStore(info *InfoDict, fileSystem FileSystem) (f FileStore, totalSize
 		var file File
 		file, err = fs.fileSystem.Open(src.Path, src.Length)
 		if err != nil {
+			fs.fileSystem.Close()
 			return
 		}
 		fs.files[i].file = file
@@ -147,11 +148,5 @@ func (f *fileStore) WriteAt(p []byte, off int64) (n int, err error) {
 }
 
 func (f *fileStore) Close() (err error) {
-	for _, fileEntry := range f.files {
-		fileErr := fileEntry.file.Close()
-		if fileErr != nil && err == nil {
-			err = fileErr
-		}
-	}
-	return
+	return f.fileSystem.Close()
 }

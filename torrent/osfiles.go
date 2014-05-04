@@ -36,6 +36,10 @@ func (o *osFileSystem) Open(name []string, length int64) (file File, err error) 
 	return
 }
 
+func (o *osFileSystem) Close() (err error) {
+	return
+}
+
 func ensureDirectory(fullPath string) (err error) {
 	fullPath = path.Clean(fullPath)
 	if !strings.HasPrefix(fullPath, "/") {
@@ -92,8 +96,4 @@ func (o *osFile) WriteAt(p []byte, off int64) (n int, err error) {
 	}
 	defer file.Close()
 	return file.WriteAt(p, off)
-}
-
-func (o *osFile) Close() (err error) {
-	return
 }
