@@ -41,6 +41,7 @@ func startTrackerClient(announce string, announceList [][]string, trackerInfoCha
 	// be consumed.
 	recentReports := make(chan ClientStatusReport)
 	go func() {
+	outerLoop:
 		for {
 			// Wait until we have a report.
 			recentReport := <-reports
@@ -51,7 +52,7 @@ func startTrackerClient(announce string, announceList [][]string, trackerInfoCha
 					continue
 				case recentReports <- recentReport:
 					// send the latest report, then wait for new report.
-					break
+					continue outerLoop
 				}
 			}
 		}
