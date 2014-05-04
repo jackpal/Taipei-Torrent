@@ -313,9 +313,18 @@ func (ts *TorrentSession) HintNewPeer(peer string) {
 }
 
 func (ts *TorrentSession) hintNewPeerImp(peer string) {
-	if _, ok := ts.peers[peer]; !ok {
+	if ts.mightAcceptPeer(peer) {
 		go ts.connectToPeer(peer)
 	}
+}
+
+func (ts *TorrentSession) mightAcceptPeer(peer string) bool {
+	if len(ts.peers) < MAX_NUM_PEERS {
+		if _, ok := ts.peers[peer]; !ok {
+			return true
+		}
+	}
+	return false
 }
 
 func (ts *TorrentSession) connectToPeer(peer string) {
@@ -495,7 +504,7 @@ func (t *TorrentSession) DoTorrent() {
 			for _, peers := range dhtInfoHashPeers {
 				for _, peer := range peers {
 					peer = dht.DecodePeerAddress(peer)
-					if _, ok := t.peers[peer]; !ok {
+					if t.mightAcceptPeer(peer) {
 						newPeerCount++
 						if t.si.HaveTorrent {
 							go t.connectToPeer(peer)
@@ -516,7 +525,7 @@ func (t *TorrentSession) DoTorrent() {
 						log.Println("Tracker gave us", len(peers)/peerLen, "peers")
 						for i := 0; i < len(peers); i += peerLen {
 							peer := nettools.BinaryToDottedPort(peers[i : i+peerLen])
-							if _, ok := t.peers[peer]; !ok {
+							if t.mightAcceptPeer(peer) {
 								newPeerCount++
 								go t.connectToPeer(peer)
 							}
@@ -533,7 +542,7 @@ func (t *TorrentSession) DoTorrent() {
 							host := net.IP(peerEntry[0:16])
 							port := int((uint(peerEntry[16]) << 8) | uint(peerEntry[17]))
 							peer := net.JoinHostPort(host.String(), strconv.Itoa(port))
-							if _, ok := t.peers[peer]; !ok {
+							if t.mightAcceptPeer(peer) {
 								newPeerCount++
 								go t.connectToPeer(peer)
 							}
