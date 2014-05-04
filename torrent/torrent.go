@@ -263,14 +263,23 @@ func (t *TorrentSession) load() {
 	t.pieceSet = pieceSet
 	t.totalPieces = good + bad
 	t.goodPieces = good
-	log.Println("Good pieces:", good, "Bad pieces:", bad)
 
-	left := int64(bad) * int64(t.M.Info.PieceLength)
+	left := uint64(bad) * uint64(t.M.Info.PieceLength)
 	if !t.pieceSet.IsSet(t.totalPieces - 1) {
-		left = left - t.M.Info.PieceLength + int64(t.lastPieceLength)
+		left = left - uint64(t.M.Info.PieceLength) + uint64(t.lastPieceLength)
 	}
+	t.si.Left = left
+
+	log.Println("Good pieces:", good, "Bad pieces:", bad, "Bytes left:", left)
 
 	t.si.HaveTorrent = true
+}
+
+func (t *TorrentSession) pieceLength(piece int) int {
+	if piece < t.totalPieces-1 {
+		return int(t.M.Info.PieceLength)
+	}
+	return t.lastPieceLength
 }
 
 func (t *TorrentSession) fetchTrackerInfo(event string) {
@@ -625,10 +634,7 @@ func (t *TorrentSession) RequestBlock(p *peerState) (err error) {
 		}
 	}
 	if piece >= 0 {
-		pieceLength := int(t.M.Info.PieceLength)
-		if piece == t.totalPieces-1 {
-			pieceLength = t.lastPieceLength
-		}
+		pieceLength := t.pieceLength(piece)
 		pieceCount := (pieceLength + STANDARD_BLOCK_LENGTH - 1) / STANDARD_BLOCK_LENGTH
 		t.activePieces[piece] = &ActivePiece{make([]int, pieceCount), pieceLength}
 		return t.RequestBlock2(p, piece, false)
