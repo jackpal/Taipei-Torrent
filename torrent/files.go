@@ -6,6 +6,7 @@ import (
 )
 
 // Interface for a file.
+// Multiple goroutines may access a File at the same time.
 type File interface {
 	io.ReaderAt
 	io.WriterAt

@@ -7,12 +7,12 @@ import (
 	"strings"
 )
 
-// a torrent file system that is backed by real OS files
+// a torrent FileSystem that is backed by real OS files
 type osFileSystem struct {
 	storePath string
 }
 
-// A torrent file that is backed by an OS file
+// A torrent File that is backed by an OS file
 type osFile struct {
 	filePath string
 }
