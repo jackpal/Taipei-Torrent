@@ -784,7 +784,12 @@ func (t *TorrentSession) RecordBlock(p *peerState, piece, begin, length uint32) 
 			t.si.Left -= uint64(v.pieceLength)
 			t.pieceSet.Set(int(piece))
 			t.goodPieces++
-			log.Println("Have", t.goodPieces, "of", t.totalPieces, "pieces.")
+			var percentComplete float32 = 0
+			if t.totalPieces > 0 {
+				percentComplete = float32(t.goodPieces*100) / float32(t.totalPieces)
+			}
+			log.Println("Have", t.goodPieces, "of", t.totalPieces,
+				"pieces", percentComplete, "% complete.")
 			if t.goodPieces == t.totalPieces {
 				if !t.trackerLessMode {
 					t.fetchTrackerInfo("completed")
