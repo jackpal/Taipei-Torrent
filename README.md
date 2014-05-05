@@ -23,7 +23,6 @@ Tested on Windows, Linux and Mac OSX.
 Development Roadmap
 -------------------
 
-+  Implement choke/unchoke logic
 +  Full UPnP support (need to be able to search for an unused listener port,
    detect we have already acquired the port,
    release the listener port when we quit.)
