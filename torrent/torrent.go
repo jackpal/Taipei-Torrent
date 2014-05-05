@@ -468,7 +468,7 @@ func (t *TorrentSession) DoTorrent() {
 	t.heartbeat = make(chan bool, 1)
 	go t.deadlockDetector()
 	log.Println("Fetching torrent.")
-	rechokeChan := time.Tick(1 * time.Second)
+	heartbeatChan := time.Tick(1 * time.Second)
 	keepAliveChan := time.Tick(60 * time.Second)
 	var retrackerChan <-chan time.Time
 	t.hintNewPeerChan = make(chan string)
@@ -584,8 +584,7 @@ func (t *TorrentSession) DoTorrent() {
 				}
 				t.ClosePeer(peer)
 			}
-		case <-rechokeChan:
-			// TODO: recalculate who to choke / unchoke
+		case <-heartbeatChan:
 			t.heartbeat <- true
 			ratio := float64(0.0)
 			if t.si.Downloaded > 0 {
@@ -933,8 +932,6 @@ func (t *TorrentSession) generalMessage(message []byte, p *peerState) (err error
 		if !p.can_receive_bitfield {
 			return errors.New("Late bitfield operation")
 		}
-		p.SetChoke(false) // TODO: better choke policy
-
 		p.have = NewBitsetFromBytes(t.totalPieces, message[1:])
 		if p.have == nil {
 			return errors.New("Invalid bitfield data.")
