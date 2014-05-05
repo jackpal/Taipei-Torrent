@@ -13,7 +13,7 @@ type Choker interface {
 	DownloadBPS() float32 // bps
 }
 
-type chokePolicy interface {
+type ChokePolicy interface {
 	// Only pass in interested peers.
 	// mutate the chokers into a list where the first N are to be unchoked.
 	Choke(chokers []Choker) (unchokeCount int, err error)

@@ -134,37 +134,41 @@ func (a *ActivePiece) isComplete() bool {
 }
 
 type TorrentSession struct {
-	M                 *MetaInfo
-	si                *SessionInfo
-	ti                *TrackerResponse
-	torrentHeader     []byte
-	fileStore         FileStore
-	trackerReportChan chan ClientStatusReport
-	trackerInfoChan   chan *TrackerResponse
-	hintNewPeerChan   chan string
-	addPeerChan       chan *btConn
-	peers             map[string]*peerState
-	peerMessageChan   chan peerMessage
-	pieceSet          *Bitset // The pieces we have
-	totalPieces       int
-	totalSize         int64
-	lastPieceLength   int
-	goodPieces        int
-	activePieces      map[int]*ActivePiece
-	heartbeat         chan bool
-	dht               *dht.DHT
-	quit              chan bool
-	trackerLessMode   bool
-	torrentFile       string
+	M                    *MetaInfo
+	si                   *SessionInfo
+	ti                   *TrackerResponse
+	torrentHeader        []byte
+	fileStore            FileStore
+	trackerReportChan    chan ClientStatusReport
+	trackerInfoChan      chan *TrackerResponse
+	hintNewPeerChan      chan string
+	addPeerChan          chan *btConn
+	peers                map[string]*peerState
+	peerMessageChan      chan peerMessage
+	pieceSet             *Bitset // The pieces we have
+	totalPieces          int
+	totalSize            int64
+	lastPieceLength      int
+	goodPieces           int
+	activePieces         map[int]*ActivePiece
+	heartbeat            chan bool
+	dht                  *dht.DHT
+	quit                 chan bool
+	trackerLessMode      bool
+	torrentFile          string
+	chokePolicy          ChokePolicy
+	chokePolicyHeartbeat <-chan time.Time
 }
 
 func NewTorrentSession(torrent string, listenPort uint16) (ts *TorrentSession, err error) {
 	t := &TorrentSession{
-		peers:           make(map[string]*peerState),
-		peerMessageChan: make(chan peerMessage),
-		activePieces:    make(map[int]*ActivePiece),
-		quit:            make(chan bool),
-		torrentFile:     torrent,
+		peers:                make(map[string]*peerState),
+		peerMessageChan:      make(chan peerMessage),
+		activePieces:         make(map[int]*ActivePiece),
+		quit:                 make(chan bool),
+		torrentFile:          torrent,
+		chokePolicy:          &ClassicChokePolicy{},
+		chokePolicyHeartbeat: time.Tick(10 * time.Second),
 	}
 	fromMagnet := strings.HasPrefix(torrent, "magnet:")
 	t.M, err = getMetaInfo(torrent)
@@ -183,7 +187,6 @@ func NewTorrentSession(torrent string, listenPort uint16) (ts *TorrentSession, e
 		}
 		go t.dht.Run()
 	}
-
 
 	t.si = &SessionInfo{
 		PeerId:        peerId(),
@@ -494,6 +497,8 @@ func (t *TorrentSession) DoTorrent() {
 			peersRequestResults = t.dht.PeersRequestResults
 		}
 		select {
+		case <-t.chokePolicyHeartbeat:
+			t.chokePeers()
 		case hintNewPeer := <-t.hintNewPeerChan:
 			t.hintNewPeerImp(hintNewPeer)
 		case btconn := <-t.addPeerChan:
@@ -623,7 +628,34 @@ func (t *TorrentSession) DoTorrent() {
 			return
 		}
 	}
+}
 
+func (t *TorrentSession) chokePeers() (err error) {
+	log.Printf("Choking peers")
+	peers := t.peers
+	chokers := make([]Choker, 0, len(peers))
+	for _, peer := range peers {
+		if peer.peer_interested {
+			peer.computeDownloadRate()
+			log.Printf("%s %g bps", peer.address, peer.DownloadBPS())
+			chokers = append(chokers, Choker(peer))
+		}
+	}
+	var unchokeCount int
+	unchokeCount, err = t.chokePolicy.Choke(chokers)
+	if err != nil {
+		return
+	}
+	for i, c := range chokers {
+		shouldChoke := i >= unchokeCount
+		if peer, ok := c.(*peerState); ok {
+			if shouldChoke != peer.am_choking {
+				log.Printf("Changing choke status %v -> %v", peer.address, shouldChoke)
+				peer.SetChoke(shouldChoke)
+			}
+		}
+	}
+	return
 }
 
 func (t *TorrentSession) RequestBlock(p *peerState) (err error) {
@@ -872,11 +904,6 @@ func (t *TorrentSession) generalMessage(message []byte, p *peerState) (err error
 			return errors.New("Unexpected length")
 		}
 		p.peer_interested = true
-
-		// TODO: Consider better unchoking policy (this is needed for
-		// clients like Transmission who don't send a BITFIELD so we have to
-		// unchoke them at this moment)
-		p.SetChoke(false)
 	case NOT_INTERESTED:
 		// log.Println("not interested", p)
 		if len(message) != 1 {
@@ -960,6 +987,7 @@ func (t *TorrentSession) generalMessage(message []byte, p *peerState) (err error
 		if err != nil {
 			return err
 		}
+		p.creditDownload(int64(length))
 		t.RecordBlock(p, index, begin, uint32(length))
 		err = t.RequestBlock(p)
 	case CANCEL:

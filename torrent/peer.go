@@ -38,6 +38,21 @@ type peerState struct {
 	can_receive_bitfield bool
 
 	theirExtensions map[string]int
+
+	downloaded Accumulator
+}
+
+func (p *peerState) creditDownload(length int64) {
+	p.downloaded.Add(time.Now(), length)
+}
+
+func (p *peerState) computeDownloadRate() {
+	// Has the side effect of computing the download rate.
+	p.downloaded.GetRate(time.Now())
+}
+
+func (p *peerState) DownloadBPS() float32 {
+	return float32(p.downloaded.GetRateNoUpdate())
 }
 
 func queueingWriter(in, out chan []byte) {
