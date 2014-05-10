@@ -605,7 +605,7 @@ func (t *TorrentSession) DoTorrent() {
 				log.Println("Achieved target seed ratio", seedRatio)
 				return
 			}
-			if len(t.peers) < TARGET_NUM_PEERS && t.goodPieces < t.totalPieces {
+			if len(t.peers) < TARGET_NUM_PEERS && (t.totalPieces == 0 || t.goodPieces < t.totalPieces) {
 				if t.si.UseDHT {
 					go t.dht.PeersRequest(t.M.InfoHash, true)
 				}
