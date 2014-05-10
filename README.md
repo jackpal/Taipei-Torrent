@@ -28,7 +28,6 @@ Development Roadmap
    release the listener port when we quit.)
 +  Clean up source code
 +  Deal with TODOs
-+  Add a way of quitting other than typing control-C
 
 Download, Install, and Build Instructions
 -----------------------------------------
