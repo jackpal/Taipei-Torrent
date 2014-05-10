@@ -58,6 +58,8 @@ func main() {
 	}
 	quitChan := listenSigInt()
 
+	doneChan := make(chan *torrent.TorrentSession)
+
 	torrentFile := args[0]
 	ts, err := torrent.NewTorrentSession(torrentFile, listenPort)
 	if err != nil {
@@ -70,7 +72,10 @@ func main() {
 	log.Printf("Starting torrent session for %x", ts.M.InfoHash)
 
 	for _, ts := range torrentSessions {
-		go ts.DoTorrent()
+		go func() {
+			ts.DoTorrent()
+			doneChan <- ts
+		}()
 	}
 
 	lpd := &torrent.Announcer{}
@@ -81,6 +86,11 @@ func main() {
 mainLoop:
 	for {
 		select {
+		case ts := <-doneChan:
+			delete(torrentSessions, ts.M.InfoHash)
+			if len(torrentSessions) == 0 {
+				break mainLoop
+			}
 		case <-quitChan:
 			for _, ts := range torrentSessions {
 				err := ts.Quit()
@@ -90,7 +100,6 @@ mainLoop:
 					log.Println("Done")
 				}
 			}
-			break mainLoop
 		case c := <-conChan:
 			log.Printf("New bt connection for ih %x", c.Infohash)
 			if ts, ok := torrentSessions[c.Infohash]; ok {

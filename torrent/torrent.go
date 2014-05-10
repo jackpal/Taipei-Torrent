@@ -61,6 +61,7 @@ var gateway string
 var fileDir string
 var useDHT bool
 var trackerLessMode bool
+var seedRatio float64
 
 func init() {
 	flag.StringVar(&fileDir, "fileDir", ".", "path to directory where files are stored")
@@ -71,6 +72,7 @@ func init() {
 	flag.BoolVar(&trackerLessMode, "trackerLessMode", false, "Do not get peers from the tracker. Good for "+
 		"testing the DHT mode.")
 	flag.StringVar(&gateway, "gateway", "", "IP Address of gateway.")
+	flag.Float64Var(&seedRatio, "seedRatio", math.Inf(0), "Seed until ratio >= this value before quitting.")
 }
 
 func peerId() string {
@@ -455,13 +457,17 @@ func (t *TorrentSession) deadlockDetector() {
 
 func (t *TorrentSession) Quit() (err error) {
 	t.quit <- true
+	return
+}
+
+func (t *TorrentSession) Shutdown() (err error) {
 	for _, peer := range t.peers {
 		t.ClosePeer(peer)
 	}
 	if t.dht != nil {
 		t.dht.Stop()
 	}
-	return nil
+	return
 }
 
 func (t *TorrentSession) DoTorrent() {
@@ -489,6 +495,8 @@ func (t *TorrentSession) DoTorrent() {
 	if !t.trackerLessMode && t.si.HaveTorrent {
 		t.fetchTrackerInfo("started")
 	}
+
+	defer t.Shutdown()
 
 	for {
 		var peersRequestResults chan map[dht.InfoHash][]string
@@ -593,6 +601,10 @@ func (t *TorrentSession) DoTorrent() {
 			log.Println("Peers:", len(t.peers), "downloaded:", t.si.Downloaded,
 				"uploaded:", t.si.Uploaded, "ratio", ratio)
 			log.Println("good, total", t.goodPieces, t.totalPieces)
+			if t.goodPieces == t.totalPieces && ratio >= seedRatio {
+				log.Println("Achieved target seed ratio", seedRatio)
+				return
+			}
 			if len(t.peers) < TARGET_NUM_PEERS && t.goodPieces < t.totalPieces {
 				if t.si.UseDHT {
 					go t.dht.PeersRequest(t.M.InfoHash, true)
