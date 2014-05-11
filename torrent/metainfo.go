@@ -210,7 +210,15 @@ func (f *FileStoreFileAdapter) ReadAt(p []byte, off int64) (n int, err error) {
 }
 
 func (f *FileStoreFileAdapter) WriteAt(p []byte, off int64) (n int, err error) {
-	err = fmt.Errorf("Can't write -- this is a read-only file.")
+	// Writes must match existing data exactly.
+	q := make([]byte, len(p))
+	_, err = f.ReadAt(q, off)
+	if err != nil {
+		return
+	}
+	if bytes.Compare(p, q) != 0 {
+		err = fmt.Errorf("New data does not match original data.")
+	}
 	return
 }
 
