@@ -5,6 +5,7 @@ import (
 	"crypto/md5"
 	"crypto/sha1"
 	"errors"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"log"
@@ -176,16 +177,60 @@ func (OSMetaInfoFileSystem) Stat(name string) (os.FileInfo, error) {
 	return os.Stat(name)
 }
 
+// Adapt a MetaInfoFileSystem into a torrent file store FileSystem
+type FileStoreFileSystemAdapter struct {
+	m MetaInfoFileSystem
+}
+
+type FileStoreFileAdapter struct {
+	f MetaInfoFile
+}
+
+func (f *FileStoreFileSystemAdapter) Open(name []string, length int64) (file File, err error) {
+	var ff MetaInfoFile
+	ff, err = f.m.Open(path.Join(name...))
+	if err != nil {
+		return
+	}
+	stat, err := ff.Stat()
+	if err != nil {
+		return
+	}
+	actualSize := stat.Size()
+	if actualSize != length {
+		err = fmt.Errorf("Unexpected file size %v. Expected %v", actualSize, length)
+		return
+	}
+	file = &FileStoreFileAdapter{ff}
+	return
+}
+
+func (f *FileStoreFileAdapter) ReadAt(p []byte, off int64) (n int, err error) {
+	return f.f.ReadAt(p, off)
+}
+
+func (f *FileStoreFileAdapter) WriteAt(p []byte, off int64) (n int, err error) {
+	err = fmt.Errorf("Can't write -- this is a read-only file.")
+	return
+}
+
+func (f *FileStoreFileAdapter) Close() (err error) {
+	return f.f.Close()
+}
+
 // Create a MetaInfo for a given file and file system.
-func CreateMetaInfoFromFileSystem(fs MetaInfoFileSystem, root string, pieceLength uint, wantMD5Sum bool) (metaInfo *MetaInfo, err error) {
+func CreateMetaInfoFromFileSystem(fs MetaInfoFileSystem, root string, pieceLength uint64, wantMD5Sum bool) (metaInfo *MetaInfo, err error) {
 	var m *MetaInfo = &MetaInfo{}
-	m.Info.PieceLength = int64(pieceLength)
 	var fileInfo os.FileInfo
 	fileInfo, err = fs.Stat(root)
+	var totalLength int64
 	if fileInfo.IsDir() {
 		err = m.addFiles(fs, root)
 		if err != nil {
 			return
+		}
+		for i := range m.Info.Files {
+			totalLength += m.Info.Files[i].Length
 		}
 		if wantMD5Sum {
 			for i := range m.Info.Files {
@@ -198,7 +243,8 @@ func CreateMetaInfoFromFileSystem(fs MetaInfoFileSystem, root string, pieceLengt
 		}
 	} else {
 		m.Info.Name = path.Base(root)
-		m.Info.Length = fileInfo.Size()
+		totalLength = fileInfo.Size()
+		m.Info.Length = totalLength
 		if wantMD5Sum {
 			m.Info.Md5sum, err = md5Sum(fs, root)
 			if err != nil {
@@ -206,9 +252,51 @@ func CreateMetaInfoFromFileSystem(fs MetaInfoFileSystem, root string, pieceLengt
 			}
 		}
 	}
+	if pieceLength == 0 {
+		// Choose a good piecelength.
+		// Must be a power of 2.
+		// Must be a multiple of 16KB
+		// Prefer to provide around 1024..2048 pieces.
+		uTotalLength := uint64(totalLength)
+		pieceLength = roundUpToPowerOfTwo(uTotalLength >> 10)
+		const minimumPieceLength = 16 * 1024
+		if pieceLength < minimumPieceLength {
+			pieceLength = minimumPieceLength
+		}
+	}
+	m.Info.PieceLength = int64(pieceLength)
+	fileStoreFS := &FileStoreFileSystemAdapter{fs}
+	var fileStore FileStore
+	var fileStoreLength int64
+	fileStore, fileStoreLength, err = NewFileStore(&m.Info, fileStoreFS)
+	if err != nil {
+		return
+	}
+	if fileStoreLength != totalLength {
+		err = fmt.Errorf("Filestore total length %v, expected %v", fileStoreLength, totalLength)
+		return
+	}
+	var sums []byte
+	sums, err = computeSums(fileStore, totalLength, int64(pieceLength))
+	if err != nil {
+		return
+	}
+	m.Info.Pieces = string(sums)
 	m.UpdateInfoHash(metaInfo)
 	metaInfo = m
 	return
+}
+
+func roundUpToPowerOfTwo(v uint64) uint64 {
+	v--
+	v |= v >> 1
+	v |= v >> 2
+	v |= v >> 4
+	v |= v >> 8
+	v |= v >> 16
+	v |= v >> 32
+	v++
+	return v
 }
 
 func WriteMetaInfoBytes(root string, w io.Writer) (err error) {

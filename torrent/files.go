@@ -15,7 +15,7 @@ type File interface {
 
 // Interface for a file system. A file system contains files.
 type FileSystem interface {
-	Open(path []string, length int64) (file File, err error)
+	Open(name []string, length int64) (file File, err error)
 }
 
 // A torrent file store.
