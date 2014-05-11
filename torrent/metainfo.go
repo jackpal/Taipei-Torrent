@@ -219,7 +219,7 @@ func (f *FileStoreFileAdapter) Close() (err error) {
 }
 
 // Create a MetaInfo for a given file and file system.
-func CreateMetaInfoFromFileSystem(fs MetaInfoFileSystem, root string, pieceLength uint64, wantMD5Sum bool) (metaInfo *MetaInfo, err error) {
+func CreateMetaInfoFromFileSystem(fs MetaInfoFileSystem, root string, pieceLength int64, wantMD5Sum bool) (metaInfo *MetaInfo, err error) {
 	var m *MetaInfo = &MetaInfo{}
 	var fileInfo os.FileInfo
 	fileInfo, err = fs.Stat(root)
@@ -253,16 +253,7 @@ func CreateMetaInfoFromFileSystem(fs MetaInfoFileSystem, root string, pieceLengt
 		}
 	}
 	if pieceLength == 0 {
-		// Choose a good piecelength.
-		// Must be a power of 2.
-		// Must be a multiple of 16KB
-		// Prefer to provide around 1024..2048 pieces.
-		uTotalLength := uint64(totalLength)
-		pieceLength = roundUpToPowerOfTwo(uTotalLength >> 10)
-		const minimumPieceLength = 16 * 1024
-		if pieceLength < minimumPieceLength {
-			pieceLength = minimumPieceLength
-		}
+		pieceLength = choosePieceLength(totalLength)
 	}
 	m.Info.PieceLength = int64(pieceLength)
 	fileStoreFS := &FileStoreFileSystemAdapter{fs}
@@ -284,6 +275,27 @@ func CreateMetaInfoFromFileSystem(fs MetaInfoFileSystem, root string, pieceLengt
 	m.Info.Pieces = string(sums)
 	m.UpdateInfoHash(metaInfo)
 	metaInfo = m
+	return
+}
+
+const MinimumPieceLength = 16 * 1024
+const TargetPieceCountLog2 = 10
+const TargetPieceCountMin = 1 << TargetPieceCountLog2
+
+// Target piece count should be < TargetPieceCountMax
+const TargetPieceCountMax = TargetPieceCountMin << 1
+
+// Choose a good piecelength.
+func choosePieceLength(totalLength int64) (pieceLength int64) {
+	// Must be a power of 2.
+	// Must be a multiple of 16KB
+	// Prefer to provide around 1024..2048 pieces.
+	pieceLength = MinimumPieceLength
+	pieces := totalLength / pieceLength
+	for pieces >= TargetPieceCountMax {
+		pieceLength <<= 1
+		pieces >>= 1
+	}
 	return
 }
 
