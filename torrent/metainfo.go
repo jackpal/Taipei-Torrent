@@ -2,12 +2,14 @@ package torrent
 
 import (
 	"bytes"
+	"crypto/md5"
 	"crypto/sha1"
 	"errors"
 	"io"
 	"io/ioutil"
 	"log"
 	"os"
+	"path"
 	"strings"
 
 	bencode "code.google.com/p/bencode-go"
@@ -148,6 +150,225 @@ func getMetaInfo(torrent string) (metaInfo *MetaInfo, err error) {
 	m2.Encoding = getString(topMap, "encoding")
 
 	metaInfo = &m2
+	return
+}
+
+type MetaInfoFileSystem interface {
+	Open(name string) (MetaInfoFile, error)
+	Stat(name string) (os.FileInfo, error)
+}
+
+type MetaInfoFile interface {
+	io.Closer
+	io.Reader
+	io.ReaderAt
+	Readdirnames(n int) (names []string, err error)
+	Stat() (os.FileInfo, error)
+}
+
+type OSMetaInfoFileSystem struct{}
+
+func (OSMetaInfoFileSystem) Open(name string) (MetaInfoFile, error) {
+	return os.Open(name)
+}
+
+func (OSMetaInfoFileSystem) Stat(name string) (os.FileInfo, error) {
+	return os.Stat(name)
+}
+
+// Create a MetaInfo for a given file and file system.
+func CreateMetaInfoFromFileSystem(fs MetaInfoFileSystem, root string, pieceLength uint, wantMD5Sum bool) (metaInfo *MetaInfo, err error) {
+	var m *MetaInfo = &MetaInfo{}
+	m.Info.PieceLength = int64(pieceLength)
+	var fileInfo os.FileInfo
+	fileInfo, err = fs.Stat(root)
+	if fileInfo.IsDir() {
+		err = m.addFiles(fs, root)
+		if err != nil {
+			return
+		}
+		if wantMD5Sum {
+			for i := range m.Info.Files {
+				fd := &m.Info.Files[i]
+				fd.Md5sum, err = md5Sum(fs, path.Join(fd.Path...))
+				if err != nil {
+					return
+				}
+			}
+		}
+	} else {
+		m.Info.Name = path.Base(root)
+		m.Info.Length = fileInfo.Size()
+		if wantMD5Sum {
+			m.Info.Md5sum, err = md5Sum(fs, root)
+			if err != nil {
+				return
+			}
+		}
+	}
+	m.UpdateInfoHash(metaInfo)
+	metaInfo = m
+	return
+}
+
+func WriteMetaInfoBytes(root string, w io.Writer) (err error) {
+	var m *MetaInfo
+	var fs MetaInfoFileSystem = OSMetaInfoFileSystem{}
+	m, err = CreateMetaInfoFromFileSystem(fs, root, 0, true)
+	if err != nil {
+		return
+	}
+	// log.Printf("Metainfo: %#v", m)
+	err = m.Bencode(w)
+	if err != nil {
+		return
+	}
+	return
+}
+
+func md5Sum(fs MetaInfoFileSystem, file string) (sum string, err error) {
+	var f MetaInfoFile
+	f, err = fs.Open(file)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+	hash := md5.New()
+	_, err = io.Copy(hash, f)
+	if err != nil {
+		return
+	}
+	sum = string(hash.Sum(nil))
+	return
+}
+
+func (m *MetaInfo) addFiles(fs MetaInfoFileSystem, file string) (err error) {
+	var fileInfo os.FileInfo
+	fileInfo, err = fs.Stat(file)
+	if err != nil {
+		return
+	}
+	if fileInfo.IsDir() {
+		var f MetaInfoFile
+		f, err = fs.Open(file)
+		if err != nil {
+			return
+		}
+		var fi []string
+		fi, err = f.Readdirnames(0)
+		if err != nil {
+			return
+		}
+		for _, name := range fi {
+			err = m.addFiles(fs, path.Join(file, name))
+			if err != nil {
+				return
+			}
+		}
+	} else {
+		fileDict := FileDict{Length: fileInfo.Size()}
+		cleanFile := path.Clean(file)
+		parts := strings.Split(cleanFile, string(os.PathSeparator))
+		fileDict.Path = parts
+		m.Info.Files = append(m.Info.Files, fileDict)
+	}
+	return
+}
+
+// Updates the InfoHash field. Call this after manually changing the Info data.
+func (m *MetaInfo) UpdateInfoHash(metaInfo *MetaInfo) (err error) {
+	var b bytes.Buffer
+	infoMap := m.Info.toMap()
+	if len(infoMap) > 0 {
+		err = bencode.Marshal(&b, infoMap)
+		if err != nil {
+			return
+		}
+	}
+	hash := sha1.New()
+	hash.Write(b.Bytes())
+
+	m.InfoHash = string(hash.Sum(nil))
+	return
+}
+
+// Copy the non-default values from an InfoDict to a map.
+func (i *InfoDict) toMap() (m map[string]interface{}) {
+	id := map[string]interface{}{}
+	// InfoDict
+	if i.PieceLength != 0 {
+		id["piece length"] = i.PieceLength
+	}
+	if i.Pieces != "" {
+		id["pieces"] = i.Pieces
+	}
+	if i.Private != 0 {
+		id["private"] = i.Private
+	}
+	if i.Name != "" {
+		id["name"] = i.Name
+	}
+	if i.Length != 0 {
+		id["length"] = i.Length
+	}
+	if i.Md5sum != "" {
+		id["md5sum"] = i.Md5sum
+	}
+	if len(i.Files) > 0 {
+		var fi []map[string]interface{}
+		for ii := range i.Files {
+			f := &i.Files[ii]
+			fd := map[string]interface{}{}
+			if f.Length > 0 {
+				fd["length"] = f.Length
+			}
+			if len(f.Path) > 0 {
+				fd["path"] = f.Path
+			}
+			if f.Md5sum != "" {
+				fd["md5sum"] = f.Md5sum
+			}
+			if len(fd) > 0 {
+				fi = append(fi, fd)
+			}
+		}
+		if len(fi) > 0 {
+			id["files"] = fi
+		}
+	}
+	if len(id) > 0 {
+		m = id
+	}
+	return
+}
+
+// Encode to Bencode, but only encode non-default values.
+func (m *MetaInfo) Bencode(w io.Writer) (err error) {
+	var mi map[string]interface{} = map[string]interface{}{}
+	id := m.Info.toMap()
+	if len(id) > 0 {
+		mi["info"] = id
+	}
+	// Do not encode InfoHash. Clients are supposed to calculate it themselves.
+	if m.Announce != "" {
+		mi["Announce"] = m.Announce
+	}
+	if len(m.AnnounceList) > 0 {
+		mi["announce-list"] = m.AnnounceList
+	}
+	if m.CreationDate != "" {
+		mi["creation date"] = m.CreationDate
+	}
+	if m.Comment != "" {
+		mi["comment"] = m.Comment
+	}
+	if m.CreatedBy != "" {
+		mi["created by"] = m.CreatedBy
+	}
+	if m.Encoding != "" {
+		mi["encoding"] = m.Encoding
+	}
+	bencode.Marshal(w, mi)
 	return
 }
 

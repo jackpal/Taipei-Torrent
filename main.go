@@ -11,14 +11,23 @@ import (
 )
 
 var (
-	cpuprofile = flag.String("cpuprofile", "", "If not empty, collects CPU profile samples and writes the profile to the given file before the program exits")
-	memprofile = flag.String("memprofile", "", "If not empty, writes memory heap allocations to the given file before the program exits")
-	useLPD     = flag.Bool("useLPD", false, "Use Local Peer Discovery")
+	cpuprofile    = flag.String("cpuprofile", "", "If not empty, collects CPU profile samples and writes the profile to the given file before the program exits")
+	memprofile    = flag.String("memprofile", "", "If not empty, writes memory heap allocations to the given file before the program exits")
+	useLPD        = flag.Bool("useLPD", false, "Use Local Peer Discovery")
+	createTorrent = flag.String("createTorrent", "", "If not empty, creates a torrent file from the given path. Writes to stdout")
 )
 
 func main() {
 	flag.Usage = usage
 	flag.Parse()
+
+	if *createTorrent != "" {
+		err := torrent.WriteMetaInfoBytes(*createTorrent, os.Stdout)
+		if err != nil {
+			log.Fatal("Could not create torrent file: ", err)
+		}
+		return
+	}
 
 	args := flag.Args()
 	narg := flag.NArg()
