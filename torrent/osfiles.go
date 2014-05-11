@@ -36,7 +36,7 @@ func (o *osFileSystem) Open(name []string, length int64) (file File, err error) 
 	return
 }
 
-func (o *osFileSystem) Close() (err error) {
+func (o *osFile) Close() (err error) {
 	return
 }
 
