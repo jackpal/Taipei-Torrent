@@ -173,7 +173,7 @@ func NewTorrentSession(torrent string, listenPort uint16) (ts *TorrentSession, e
 		chokePolicyHeartbeat: time.Tick(10 * time.Second),
 	}
 	fromMagnet := strings.HasPrefix(torrent, "magnet:")
-	t.M, err = getMetaInfo(torrent)
+	t.M, err = GetMetaInfo(torrent)
 	if err != nil {
 		return
 	}

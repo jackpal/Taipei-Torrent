@@ -4,9 +4,11 @@ import (
 	"encoding/hex"
 	"flag"
 	"github.com/jackpal/Taipei-Torrent/torrent"
+	"github.com/jackpal/Taipei-Torrent/tracker"
 	"log"
 	"os"
 	"os/signal"
+	"path"
 	"runtime/pprof"
 )
 
@@ -14,7 +16,8 @@ var (
 	cpuprofile    = flag.String("cpuprofile", "", "If not empty, collects CPU profile samples and writes the profile to the given file before the program exits")
 	memprofile    = flag.String("memprofile", "", "If not empty, writes memory heap allocations to the given file before the program exits")
 	useLPD        = flag.Bool("useLPD", false, "Use Local Peer Discovery")
-	createTorrent = flag.String("createTorrent", "", "If not empty, creates a torrent file from the given path. Writes to stdout")
+	createTorrent = flag.String("createTorrent", "", "If not empty, creates a torrent file from the given root. Writes to stdout")
+	createTracker = flag.Bool("createTracker", false, "Creates a tracker serving the given torrent file")
 )
 
 func main() {
@@ -25,6 +28,14 @@ func main() {
 		err := torrent.WriteMetaInfoBytes(*createTorrent, os.Stdout)
 		if err != nil {
 			log.Fatal("Could not create torrent file: ", err)
+		}
+		return
+	}
+
+	if *createTracker {
+		err := startTracker(flag.Args())
+		if err != nil {
+			log.Fatal("Could not create tracker: ", err)
 		}
 		return
 	}
@@ -151,6 +162,41 @@ func startLPD(torrentSessions map[string]*torrent.TorrentSession, listenPort uin
 		for _, ts := range torrentSessions {
 			lpd.Announce(ts.M.InfoHash)
 		}
+	}
+	return
+}
+
+func startTracker(torrentFiles []string) (err error) {
+	t := tracker.NewTracker()
+	// TODO(jackpal) Allow caller to choose port number
+	t.Addr = ":8080"
+	for _, torrentFile := range torrentFiles {
+		var metaInfo *torrent.MetaInfo
+		metaInfo, err = torrent.GetMetaInfo(torrentFile)
+		if err != nil {
+			return
+		}
+		name := metaInfo.Info.Name
+		if name == "" {
+			name = path.Base(torrentFile)
+		}
+		err = t.Register(metaInfo.InfoHash, name)
+		if err != nil {
+			return
+		}
+	}
+	go func() {
+		quitChan := listenSigInt()
+		select {
+		case <-quitChan:
+			log.Printf("got control-C")
+			t.Quit()
+		}
+	}()
+
+	err = t.ListenAndServe()
+	if err != nil {
+		panic(err.Error())
 	}
 	return
 }

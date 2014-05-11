@@ -78,7 +78,7 @@ func getSliceSliceString(m map[string]interface{}, k string) (aas [][]string) {
 	return
 }
 
-func getMetaInfo(torrent string) (metaInfo *MetaInfo, err error) {
+func GetMetaInfo(torrent string) (metaInfo *MetaInfo, err error) {
 	var input io.ReadCloser
 	if strings.HasPrefix(torrent, "http:") {
 		r, err := proxyHttpGet(torrent)
