@@ -346,14 +346,28 @@ func (t *trackerTorrent) handleAnnounce(now time.Time, peerListenAddress *net.TC
 			id:         params.peerID,
 		}
 		t.peers[peerKey] = peer
-		log.Printf("New peer joined %#v", peer.listenAddr.String())
+		log.Printf("Peer %s joined", peerKey)
 	}
 	peer.lastSeen = now
 	peer.uploaded = params.uploaded
 	peer.downloaded = params.downloaded
 	peer.left = params.left
-	if params.event == "completed" {
+	switch params.event {
+	default:
+		// TODO(jackpal):maybe report this as a warning
+		log.Printf("Peer %s Unknown event %s", peerKey, params.event)
+	case "":
+	case "started":
+		// do nothing
+	case "completed":
 		t.downloaded++
+		log.Printf("Peer %s completed. Total completions %d", peerKey, t.downloaded)
+	case "stopped":
+		// This client is reporting that they have stopped. Drop them from the peer table.
+		// And don't send any peers, since they won't need them.
+		log.Printf("Peer %s stopped", peerKey)
+		delete(t.peers, peerKey)
+		params.numWant = 0
 	}
 
 	completeCount, incompleteCount := t.countPeers()
