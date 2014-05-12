@@ -166,7 +166,7 @@ func newTrackerPeerListenAddress(requestRemoteAddr string, params *announceParam
 }
 
 func NewTracker() *Tracker {
-	return &Tracker{t: NewTrackerTorrents()}
+	return &Tracker{Announce: "/announce", t: NewTrackerTorrents()}
 }
 
 func (t *Tracker) ListenAndServe() (err error) {
@@ -188,20 +188,20 @@ func (t *Tracker) ListenAndServe() (err error) {
 		announce = "/"
 	}
 	serveMux.HandleFunc(announce, t.handleAnnounce)
-	scrapeURL := ScrapeURL(announce)
-	if scrapeURL != "" {
-		serveMux.HandleFunc(scrapeURL, t.handleScrape)
+	scrape := ScrapePattern(announce)
+	if scrape != "" {
+		serveMux.HandleFunc(scrape, t.handleScrape)
 	}
 	err = http.Serve(t.l, serveMux)
 	go t.reaper()
 	return
 }
 
-func ScrapeURL(announceURL string) string {
-	lastSlashIndex := strings.LastIndex(announceURL, "/")
+func ScrapePattern(announcePattern string) string {
+	lastSlashIndex := strings.LastIndex(announcePattern, "/")
 	if lastSlashIndex >= 0 {
-		firstPart := announceURL[0 : lastSlashIndex+1]
-		lastPart := announceURL[lastSlashIndex+1:]
+		firstPart := announcePattern[0 : lastSlashIndex+1]
+		lastPart := announcePattern[lastSlashIndex+1:]
 		announce := "announce"
 		if strings.HasPrefix(lastPart, announce) {
 			afterAnnounce := lastPart[len(announce):]
@@ -213,7 +213,7 @@ func ScrapeURL(announceURL string) string {
 
 func (t *Tracker) handleAnnounce(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/plain")
-	var response bmap = make(bmap)
+	response := make(bmap)
 	var params announceParams
 	var peerListenAddress *net.TCPAddr
 	err := params.parse(r.URL)
@@ -238,7 +238,7 @@ func (t *Tracker) handleAnnounce(w http.ResponseWriter, r *http.Request) {
 	var b bytes.Buffer
 	if err != nil {
 		log.Printf("announce from %v failed: %#v", r.RemoteAddr, err.Error())
-		var errorResponse bmap = make(bmap)
+		errorResponse := make(bmap)
 		errorResponse["failure reason"] = err.Error()
 		err = bencode.Marshal(&b, errorResponse)
 	} else {
@@ -251,6 +251,14 @@ func (t *Tracker) handleAnnounce(w http.ResponseWriter, r *http.Request) {
 
 func (t *Tracker) handleScrape(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/plain")
+	infoHashes := r.URL.Query()["info_hash"]
+	response := make(bmap)
+	response["files"] = t.t.scrape(infoHashes)
+	var b bytes.Buffer
+	err := bencode.Marshal(&b, response)
+	if err == nil {
+		w.Write(b.Bytes())
+	}
 }
 
 func (t *Tracker) Quit() (err error) {
@@ -299,6 +307,22 @@ func (t trackerTorrents) handleAnnounce(now time.Time, peerListenAddress *net.TC
 	} else {
 		err = fmt.Errorf("Unknown infoHash %#v", params.infoHash)
 		return
+	}
+	return
+}
+
+func (t trackerTorrents) scrape(infoHashes []string) (files bmap) {
+	files = make(bmap)
+	if len(infoHashes) > 0 {
+		for _, infoHash := range infoHashes {
+			if tt, ok := t[infoHash]; ok {
+				files[infoHash] = tt.scrape()
+			}
+		}
+	} else {
+		for infoHash, tt := range t {
+			files[infoHash] = tt.scrape()
+		}
 	}
 	return
 }
@@ -400,6 +424,18 @@ func (t *trackerTorrent) handleAnnounce(now time.Time, peerListenAddress *net.TC
 			return
 		}
 		response["peers"] = peers
+	}
+	return
+}
+
+func (t *trackerTorrent) scrape() (response bmap) {
+	response = make(bmap)
+	completeCount, incompleteCount := t.countPeers()
+	response["complete"] = completeCount
+	response["incomplete"] = incompleteCount
+	response["downloaded"] = t.downloaded
+	if t.name != "" {
+		response["name"] = t.name
 	}
 	return
 }

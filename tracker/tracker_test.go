@@ -13,7 +13,7 @@ func TestScrapeURL(t *testing.T) {
 		{"announce/x", ""},
 	}
 	for _, test := range tests {
-		scrape := ScrapeURL(test.announce)
+		scrape := ScrapePattern(test.announce)
 		if scrape != test.scrape {
 			t.Errorf("ScrapeURL(%#v) = %#v. Expected %#v", test.announce, scrape, test.scrape)
 		}
