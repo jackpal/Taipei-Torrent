@@ -34,12 +34,11 @@ type trackerTorrent struct {
 	peers      trackerPeers
 }
 
-// key is the RemoteAddress, in the form IP:port
+// key is the client's listen address, in the form IP:port
 type trackerPeers map[string]*trackerPeer
 
 type trackerPeer struct {
-	ip         net.IP
-	port       int
+	listenAddr *net.TCPAddr
 	id         string
 	lastSeen   time.Time
 	uploaded   int64
@@ -50,6 +49,7 @@ type trackerPeer struct {
 type announceParams struct {
 	infoHash   string
 	peerID     string
+	ip         string // optional
 	port       int
 	uploaded   int64
 	downloaded int64
@@ -98,6 +98,7 @@ func (a *announceParams) parse(u *url.URL) (err error) {
 		err = fmt.Errorf("Missing info_hash")
 		return
 	}
+	a.ip = q.Get("ip")
 	a.peerID = q.Get("peer_id")
 	a.port, err = getInt(q, "port")
 	if err != nil {
@@ -151,6 +152,19 @@ func randomString(s string, n int) string {
 	return string(b)
 }
 
+func newTrackerPeerListenAddress(requestRemoteAddr string, params *announceParams) (addr *net.TCPAddr, err error) {
+	var host string
+	if params.ip != "" {
+		host = params.ip
+	} else {
+		host, _, err = net.SplitHostPort(requestRemoteAddr)
+		if err != nil {
+			return
+		}
+	}
+	return net.ResolveTCPAddr("tcp", net.JoinHostPort(host, strconv.Itoa(params.port)))
+}
+
 func NewTracker() *Tracker {
 	return &Tracker{t: NewTrackerTorrents()}
 }
@@ -201,6 +215,7 @@ func (t *Tracker) handleAnnounce(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/plain")
 	var response bmap = make(bmap)
 	var params announceParams
+	var peerListenAddress *net.TCPAddr
 	err := params.parse(r.URL)
 	if err == nil {
 		if params.trackerID != "" && params.trackerID != t.ID {
@@ -208,9 +223,12 @@ func (t *Tracker) handleAnnounce(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if err == nil {
+		peerListenAddress, err = newTrackerPeerListenAddress(r.RemoteAddr, &params)
+	}
+	if err == nil {
 		now := time.Now()
 		t.m.Lock()
-		err = t.t.handleAnnounce(now, r.RemoteAddr, &params, response)
+		err = t.t.handleAnnounce(now, peerListenAddress, &params, response)
 		t.m.Unlock()
 		if err == nil {
 			response["interval"] = int64(30 * 60)
@@ -275,9 +293,9 @@ func NewTrackerTorrents() trackerTorrents {
 	return make(trackerTorrents)
 }
 
-func (t trackerTorrents) handleAnnounce(now time.Time, peerKey string, params *announceParams, response bmap) (err error) {
+func (t trackerTorrents) handleAnnounce(now time.Time, peerListenAddress *net.TCPAddr, params *announceParams, response bmap) (err error) {
 	if tt, ok := t[params.infoHash]; ok {
-		err = tt.handleAnnounce(now, peerKey, params, response)
+		err = tt.handleAnnounce(now, peerListenAddress, params, response)
 	} else {
 		err = fmt.Errorf("Unknown infoHash %#v", params.infoHash)
 		return
@@ -299,24 +317,6 @@ func (t trackerTorrents) unregister(infoHash string) (err error) {
 	return
 }
 
-func splitRemoteAddress(r string) (ip net.IP, port int, err error) {
-	lastColon := strings.LastIndex(r, ":")
-	if lastColon < 0 {
-		err = fmt.Errorf("No colon in %#v", r)
-		return
-	}
-	ip = net.ParseIP(r[0:lastColon])
-	if ip == nil {
-		err = fmt.Errorf("Could not parse IP")
-		return
-	}
-	port, err = strconv.Atoi(r[lastColon+1:])
-	if err != nil {
-		return
-	}
-	return
-}
-
 func (t *trackerTorrent) countPeers() (complete, incomplete int) {
 	for _, p := range t.peers {
 		if p.isComplete() {
@@ -328,28 +328,25 @@ func (t *trackerTorrent) countPeers() (complete, incomplete int) {
 	return
 }
 
-func (t *trackerTorrent) handleAnnounce(now time.Time, peerKey string, params *announceParams, response bmap) (err error) {
+func (t *trackerTorrent) handleAnnounce(now time.Time, peerListenAddress *net.TCPAddr, params *announceParams, response bmap) (err error) {
+	peerKey := peerListenAddress.String()
 	var peer *trackerPeer
-	if peer, ok := t.peers[peerKey]; ok {
+	var ok bool
+	if peer, ok = t.peers[peerKey]; ok {
 		// Does the new peer match the old peer?
 		if peer.id != params.peerID {
+			log.Printf("Peer changed ID. %#v != %#v", peer.id, params.peerID)
 			delete(t.peers, peerKey)
 			peer = nil
 		}
 	}
 	if peer == nil {
-		var peerIP net.IP
-		var peerPort int
-		peerIP, peerPort, err = splitRemoteAddress(peerKey)
-		if err != nil {
-			return
-		}
 		peer = &trackerPeer{
-			ip:   peerIP,
-			port: peerPort,
-			id:   params.peerID,
+			listenAddr: peerListenAddress,
+			id:         params.peerID,
 		}
 		t.peers[peerKey] = peer
+		log.Printf("New peer joined %#v", peer.listenAddr.String())
 	}
 	peer.lastSeen = now
 	peer.uploaded = params.uploaded
@@ -400,7 +397,7 @@ func (t trackerPeers) pickRandomPeers(peerKey string, compact bool, count int) (
 		if k == peerKey {
 			continue
 		}
-		if compact && v.ip.To4() == nil {
+		if compact && v.listenAddr.IP.To4() == nil {
 			continue
 		}
 		peers = append(peers, k)
@@ -414,16 +411,17 @@ func (t trackerPeers) pickRandomPeers(peerKey string, compact bool, count int) (
 func (t trackerPeers) writeCompactPeers(b *bytes.Buffer, keys []string) (err error) {
 	for _, k := range keys {
 		p := t[k]
-		ip4 := p.ip.To4()
+		la := p.listenAddr
+		ip4 := la.IP.To4()
 		if ip4 == nil {
-			err = fmt.Errorf("Can't write a compact peer for IPV6 peer %v %v", k, p.ip)
+			err = fmt.Errorf("Can't write a compact peer for a non-IPv4 peer %v %v", k, p.listenAddr.String())
 			return
 		}
-		_, err = b.Write(p.ip.To4())
+		_, err = b.Write(ip4)
 		if err != nil {
 			return
 		}
-		port := t[k].port
+		port := la.Port
 		portBytes := []byte{byte(port >> 8), byte(port)}
 		_, err = b.Write(portBytes)
 		if err != nil {
@@ -436,12 +434,13 @@ func (t trackerPeers) writeCompactPeers(b *bytes.Buffer, keys []string) (err err
 func (t trackerPeers) getPeers(keys []string, noPeerID bool) (peers []bmap, err error) {
 	for _, k := range keys {
 		p := t[k]
+		la := p.listenAddr
 		var peer bmap = make(bmap)
 		if !noPeerID {
 			peer["peer id"] = p.id
 		}
-		peer["ip"] = p.ip.String()
-		peer["port"] = strconv.Itoa(p.port)
+		peer["ip"] = la.IP.String()
+		peer["port"] = strconv.Itoa(la.Port)
 		peers = append(peers, peer)
 	}
 	return
