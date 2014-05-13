@@ -34,24 +34,24 @@ func NewBitsetFromBytes(n int, data []byte) *Bitset {
 }
 
 func (b *Bitset) Set(index int) {
-	if index < 0 || index >= b.n {
-		panic("Index out of range.")
-	}
+	b.checkRange(index)
 	b.b[index>>3] |= byte(128 >> byte(index&7))
 }
 
 func (b *Bitset) Clear(index int) {
-	if index < 0 || index >= b.n {
-		panic("Index out of range.")
-	}
+	b.checkRange(index)
 	b.b[index>>3] &= ^byte(128 >> byte(index&7))
 }
 
 func (b *Bitset) IsSet(index int) bool {
-	if index < 0 || index >= b.n {
-		panic("Index out of range.")
-	}
+	b.checkRange(index)
 	return (b.b[index>>3] & byte(128>>byte(index&7))) != 0
+}
+
+func (b *Bitset) checkRange(index int) {
+	if index < 0 || index >= b.n {
+		panic(fmt.Sprintf("Index %d out of range 0..%d.", index, b.n))
+	}
 }
 
 func (b *Bitset) AndNot(b2 *Bitset) {
