@@ -27,7 +27,7 @@ func main() {
 	if *createTorrent != "" {
 		err := torrent.WriteMetaInfoBytes(*createTorrent, os.Stdout)
 		if err != nil {
-			log.Fatal("Could not create torrent file: ", err)
+			log.Fatal("Could not create torrent file:", err)
 		}
 		return
 	}
@@ -35,7 +35,7 @@ func main() {
 	if *createTracker {
 		err := startTracker(flag.Args())
 		if err != nil {
-			log.Fatal("Could not create tracker: ", err)
+			log.Fatal("Tracker returned error:", err)
 		}
 		return
 	}
@@ -196,7 +196,7 @@ func startTracker(torrentFiles []string) (err error) {
 
 	err = t.ListenAndServe()
 	if err != nil {
-		panic(err.Error())
+		return
 	}
 	return
 }
