@@ -19,10 +19,10 @@ type Tracker struct {
 	Announce string
 	Addr     string
 	ID       string
-	l        net.Listener
-	m        sync.Mutex
-	t        trackerTorrents
 	done     chan struct{}
+	m        sync.Mutex // Protects l and t
+	l        net.Listener
+	t        trackerTorrents
 }
 
 type trackerTorrents map[string]*trackerTorrent
@@ -178,10 +178,14 @@ func (t *Tracker) ListenAndServe() (err error) {
 	if addr == "" {
 		addr = ":80"
 	}
-	t.l, err = net.Listen("tcp", addr)
+	var l net.Listener
+	l, err = net.Listen("tcp", addr)
 	if err != nil {
 		return
 	}
+	t.m.Lock()
+	t.l = l
+	t.m.Unlock()
 	serveMux := http.NewServeMux()
 	announce := t.Announce
 	if announce == "" {
@@ -192,8 +196,18 @@ func (t *Tracker) ListenAndServe() (err error) {
 	if scrape != "" {
 		serveMux.HandleFunc(scrape, t.handleScrape)
 	}
-	err = http.Serve(t.l, serveMux)
 	go t.reaper()
+	// This statement will not return until there is an error or the t.l channel is closed
+	err = http.Serve(l, serveMux)
+	if err != nil {
+		select {
+		case <-t.done:
+			// We're finished. Err is probably a "use of closed network connection" error.
+			err = nil
+		default:
+			// Not finished
+		}
+	}
 	return
 }
 
@@ -262,7 +276,17 @@ func (t *Tracker) handleScrape(w http.ResponseWriter, r *http.Request) {
 }
 
 func (t *Tracker) Quit() (err error) {
-	t.l.Close()
+	select {
+	case <-t.done:
+		err = fmt.Errorf("Already done")
+		return
+	default:
+	}
+	var l net.Listener
+	t.m.Lock()
+	l = t.l
+	t.m.Unlock()
+	l.Close()
 	close(t.done)
 	return
 }
