@@ -1,5 +1,9 @@
 package torrent
 
+import (
+	"fmt"
+)
+
 // As defined by the bittorrent protocol, this bitset is big-endian, such that
 // the high bit of the first byte is block 0
 
@@ -48,15 +52,23 @@ func (b *Bitset) IsSet(index int) bool {
 	return (b.b[index>>3] & byte(128>>byte(index&7))) != 0
 }
 
+func (b *Bitset) Len() int {
+	return b.n
+}
+
+func (b *Bitset) InRange(index int) bool {
+	return 0 <= index && index < b.n
+}
+
 func (b *Bitset) checkRange(index int) {
-	if index < 0 || index >= b.n {
+	if !b.InRange(index) {
 		panic(fmt.Sprintf("Index %d out of range 0..%d.", index, b.n))
 	}
 }
 
 func (b *Bitset) AndNot(b2 *Bitset) {
 	if b.n != b2.n {
-		panic("Unequal bitset sizes")
+		panic(fmt.Sprintf("Unequal bitset sizes %d != %d", b.n, b2.n))
 	}
 	for i := 0; i < len(b.b); i++ {
 		b.b[i] = b.b[i] & ^b2.b[i]

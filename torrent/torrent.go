@@ -330,7 +330,7 @@ func (ts *TorrentSession) hintNewPeerImp(peer string) {
 }
 
 func (ts *TorrentSession) mightAcceptPeer(peer string) bool {
-	if len(ts.peers) < MAX_NUM_PEERS {
+	if ts.si.HaveTorrent && len(ts.peers) < MAX_NUM_PEERS {
 		if _, ok := ts.peers[peer]; !ok {
 			return true
 		}
@@ -339,6 +339,9 @@ func (ts *TorrentSession) mightAcceptPeer(peer string) bool {
 }
 
 func (ts *TorrentSession) connectToPeer(peer string) {
+	if !ts.si.HaveTorrent {
+		return
+	}
 	conn, err := proxyNetDial("tcp", peer)
 	if err != nil {
 		// log.Println("Failed to connect to", peer, err)
@@ -383,8 +386,15 @@ func (t *TorrentSession) AddPeer(btconn *btConn) {
 }
 
 func (t *TorrentSession) addPeerImp(btconn *btConn) {
+	if !t.si.HaveTorrent {
+		log.Println("Rejecting peer because we don't have a torrent yet.")
+		btconn.conn.Close()
+		return
+	}
 	for _, p := range t.peers {
 		if p.id == btconn.id {
+			log.Println("Rejecting peer because already have a peer with the same id.")
+			btconn.conn.Close()
 			return
 		}
 	}
@@ -816,7 +826,7 @@ func (t *TorrentSession) RecordBlock(p *peerState, piece, begin, length uint32) 
 						// log.Println("...telling ", p)
 						haveMsg := make([]byte, 5)
 						haveMsg[0] = HAVE
-						uint32ToBytes(haveMsg[1:5], uint32(piece))
+						uint32ToBytes(haveMsg[1:5], piece)
 						p.sendMessage(haveMsg)
 					}
 				}
