@@ -167,14 +167,16 @@ type MetaInfoFile interface {
 	Stat() (os.FileInfo, error)
 }
 
-type OSMetaInfoFileSystem struct{}
-
-func (OSMetaInfoFileSystem) Open(name string) (MetaInfoFile, error) {
-	return os.Open(name)
+type OSMetaInfoFileSystem struct {
+	dir string
 }
 
-func (OSMetaInfoFileSystem) Stat(name string) (os.FileInfo, error) {
-	return os.Stat(name)
+func (o *OSMetaInfoFileSystem) Open(name string) (MetaInfoFile, error) {
+	return os.Open(path.Join(o.dir, name))
+}
+
+func (o *OSMetaInfoFileSystem) Stat(name string) (os.FileInfo, error) {
+	return os.Stat(path.Join(o.dir, name))
 }
 
 // Adapt a MetaInfoFileSystem into a torrent file store FileSystem
@@ -227,7 +229,14 @@ func (f *FileStoreFileAdapter) Close() (err error) {
 }
 
 // Create a MetaInfo for a given file and file system.
+// If fs is nil then the OSMetaInfoFileSystem will be used.
+// If pieceLength is 0 then an optimal piece length will be chosen.
 func CreateMetaInfoFromFileSystem(fs MetaInfoFileSystem, root string, pieceLength int64, wantMD5Sum bool) (metaInfo *MetaInfo, err error) {
+	if fs == nil {
+		dir, file := path.Split(root)
+		fs = &OSMetaInfoFileSystem{dir}
+		root = file
+	}
 	var m *MetaInfo = &MetaInfo{}
 	var fileInfo os.FileInfo
 	fileInfo, err = fs.Stat(root)
@@ -321,8 +330,7 @@ func roundUpToPowerOfTwo(v uint64) uint64 {
 
 func WriteMetaInfoBytes(root string, w io.Writer) (err error) {
 	var m *MetaInfo
-	var fs MetaInfoFileSystem = OSMetaInfoFileSystem{}
-	m, err = CreateMetaInfoFromFileSystem(fs, root, 0, true)
+	m, err = CreateMetaInfoFromFileSystem(nil, root, 0, true)
 	if err != nil {
 		return
 	}
