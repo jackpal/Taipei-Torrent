@@ -32,15 +32,64 @@ func TestScrapeURL(t *testing.T) {
 	}
 }
 
-func TestSwarm(t *testing.T) {
-	// End-to-end test of transfering a file from one torrent client to another.
-	err := testSwarm(t)
+func TestSmallSwarm(t *testing.T) {
+	testSwarm(t, 1)
+}
+
+/*
+
+func TestMediumSwarm(t *testing.T) {
+	testSwarm(t, 10)
+}
+
+func TestLargeSwarm(t *testing.T) {
+	testSwarm(t, 100)
+}
+
+*/
+
+func testSwarm(t *testing.T, leechCount int) {
+	err := runSwarm(leechCount)
 	if err != nil {
 		t.Fatal("Error running testSwarm", err)
 	}
 }
 
-func testSwarm(t *testing.T) (err error) {
+type prog struct {
+	name    string
+	dirName string
+	cmd     *exec.Cmd
+	doneCh  chan error
+}
+
+func (p *prog) start() (err error) {
+	log.Println("starting", p.name)
+	out := logWriter(p.name)
+	p.cmd.Stdout = &out
+	p.cmd.Stderr = &out
+	err = p.cmd.Start()
+	if err != nil {
+		return
+	}
+	p.doneCh = make(chan error, 1)
+	go func() {
+		err := p.cmd.Wait()
+		p.doneCh <- err
+	}()
+	return
+}
+
+func (p *prog) kill() (err error) {
+	err = p.cmd.Process.Kill()
+	return
+}
+
+func NewProg(instanceName string, dir string, name string, arg ...string) (p *prog) {
+	cmd := exec.Command(name, arg...)
+	return &prog{name: name, dirName: dir, cmd: cmd}
+}
+
+func runSwarm(leechCount int) (err error) {
 	var rootDir string
 	rootDir, err = ioutil.TempDir("", "swarm")
 	if err != nil {
@@ -68,27 +117,29 @@ func testSwarm(t *testing.T) (err error) {
 		return
 	}
 
-	var tracker, seed, leech *exec.Cmd
-	var trackerCh, seedCh, leechCh chan error
-	tracker, trackerCh, err = startTracker(":8080", torrentFile)
+	TaipeiTorrent := "Taipei-Torrent"
+
+	tracker := NewProg("tracker", rootDir, TaipeiTorrent, "-createTracker=:8080", torrentFile)
+	err = tracker.start()
 	if err != nil {
 		return
 	}
-	defer kill(tracker)
+	defer tracker.kill()
 	time.Sleep(100 * time.Microsecond)
 
-	seed, seedCh, err = startTorrentClient("seed", 7000, torrentFile, seedDir, math.Inf(0))
+	var seed, leech *prog
+	seed, err = startTorrentClient("seed", 7000, torrentFile, seedDir, math.Inf(0))
 	if err != nil {
 		return
 	}
-	defer kill(seed)
+	defer seed.kill()
 	time.Sleep(100 * time.Microsecond)
 
-	leech, leechCh, err = startTorrentClient("leech", 7001, torrentFile, leechDir, 0)
+	leech, err = startTorrentClient("leech", 7001, torrentFile, leechDir, 0)
 	if err != nil {
 		return
 	}
-	defer kill(leech)
+	defer leech.kill()
 
 	timeout := make(chan bool, 1)
 	go func() {
@@ -99,12 +150,12 @@ func testSwarm(t *testing.T) (err error) {
 	select {
 	case <-timeout:
 		err = fmt.Errorf("Timout exceeded")
-	case err = <-leechCh:
-	case err = <-seedCh:
+	case err = <-leech.doneCh:
+	case err = <-seed.doneCh:
 		if err == nil {
 			err = fmt.Errorf("Seed finished. Should not have.")
 		}
-	case err = <-trackerCh:
+	case err = <-tracker.doneCh:
 		if err == nil {
 			err = fmt.Errorf("Tracker finished. Should not have.")
 		}
@@ -122,41 +173,13 @@ func testSwarm(t *testing.T) (err error) {
 	return
 }
 
-func startTracker(addr string, trackerFile string) (cmd *exec.Cmd, ech chan error, err error) {
-	cmd = exec.Command("Taipei-Torrent", fmt.Sprintf("-createTracker=%v", addr), trackerFile)
-	ech, err = startCmd("tracker", cmd)
-	return
-}
-
-func startTorrentClient(name string, port int, trackerFile string, fileDir string, ratio float64) (cmd *exec.Cmd, ech chan error, err error) {
-	cmd = exec.Command("Taipei-Torrent",
+func startTorrentClient(name string, port int, trackerFile string, fileDir string, ratio float64) (p *prog, err error) {
+	p = NewProg(name, fileDir, "Taipei-Torrent",
 		fmt.Sprintf("-port=%v", port),
 		fmt.Sprintf("-fileDir=%v", fileDir),
 		fmt.Sprintf("-seedRatio=%v", ratio),
 		trackerFile)
-	ech, err = startCmd(name, cmd)
-	return
-}
-
-func startCmd(name string, cmd *exec.Cmd) (ech chan error, err error) {
-	log.Println("starting", name)
-	out := logWriter(name)
-	cmd.Stdout = &out
-	cmd.Stderr = &out
-	err = cmd.Start()
-	if err != nil {
-		return
-	}
-	ech = make(chan error, 1)
-	go func() {
-		err := cmd.Wait()
-		ech <- err
-	}()
-	return
-}
-
-func kill(cmd *exec.Cmd) (err error) {
-	err = cmd.Process.Kill()
+	err = p.start()
 	return
 }
 
