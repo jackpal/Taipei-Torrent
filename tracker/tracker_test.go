@@ -155,7 +155,7 @@ func createTorrentFile(torrentFileName, root, announcePath string) (err error) {
 	if err != nil {
 		return
 	}
-	metaInfo.Announce = "127.0.0.1:8080/announce"
+	metaInfo.Announce = "http://127.0.0.1:8080/announce"
 	metaInfo.CreatedBy = "testSwarm"
 	var torrentFile *os.File
 	torrentFile, err = os.Create(torrentFileName)
