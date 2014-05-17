@@ -467,7 +467,7 @@ func (m *MetaInfo) Bencode(w io.Writer) (err error) {
 	}
 	// Do not encode InfoHash. Clients are supposed to calculate it themselves.
 	if m.Announce != "" {
-		mi["Announce"] = m.Announce
+		mi["announce"] = m.Announce
 	}
 	if len(m.AnnounceList) > 0 {
 		mi["announce-list"] = m.AnnounceList
