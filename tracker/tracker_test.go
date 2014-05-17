@@ -2,7 +2,6 @@ package tracker
 
 import (
 	"bufio"
-	"bytes"
 	"fmt"
 	"github.com/jackpal/Taipei-Torrent/torrent"
 	"io/ioutil"
@@ -130,7 +129,7 @@ func startTorrentClient(name string, port int, trackerFile string, fileDir strin
 
 func startCmd(name string, cmd *exec.Cmd) (ech chan error, err error) {
 	log.Println("starting", name)
-	var out bytes.Buffer
+	out := logWriter(name)
 	cmd.Stdout = &out
 	cmd.Stderr = &out
 	err = cmd.Start()
@@ -140,14 +139,12 @@ func startCmd(name string, cmd *exec.Cmd) (ech chan error, err error) {
 	ech = make(chan error, 1)
 	go func() {
 		err := cmd.Wait()
-		fmt.Printf("%v output: %v\n", name, out.String())
 		ech <- err
 	}()
 	return
 }
 
 func kill(cmd *exec.Cmd) (err error) {
-	log.Println("Killing", cmd)
 	err = cmd.Process.Kill()
 	return
 }
@@ -199,5 +196,13 @@ func createDataFile(name string, length int64) (err error) {
 			return
 		}
 	}
+	return
+}
+
+type logWriter string
+
+func (l logWriter) Write(p []byte) (n int, err error) {
+	log.Println(l, string(p))
+	n = len(p)
 	return
 }
