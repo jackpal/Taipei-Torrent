@@ -92,8 +92,8 @@ func testSwarm(t *testing.T) (err error) {
 
 	timeout := make(chan bool, 1)
 	go func() {
-		// It takes about 13 seconds to complete the test. (First 10 seconds are waiting for the choke timeout.)
-		time.Sleep(30 * time.Second)
+		// It takes about 3.5 seconds to complete the test on my computer.
+		time.Sleep(10 * time.Second)
 		timeout <- true
 	}()
 	select {
