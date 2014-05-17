@@ -61,7 +61,7 @@ func (ccp *ClassicChokePolicy) Choke(chokers []Choker) (unchokeCount int, err er
 	optimistIndex := ccp.findOptimist(chokers)
 	if optimistIndex >= 0 {
 		if optimistIndex < OPTIMISTIC_UNCHOKE_INDEX {
-			// Forget optimistit choke
+			// Forget optimistic choke
 			optimistIndex = -1
 		} else {
 			ByDownloadBPS(chokers).Swap(OPTIMISTIC_UNCHOKE_INDEX, optimistIndex)
