@@ -927,12 +927,14 @@ func (t *TorrentSession) generalMessage(message []byte, p *peerState) (err error
 			return errors.New("Unexpected length")
 		}
 		p.peer_interested = true
+		t.chokePeers()
 	case NOT_INTERESTED:
 		// log.Println("not interested", p)
 		if len(message) != 1 {
 			return errors.New("Unexpected length")
 		}
 		p.peer_interested = false
+		t.chokePeers()
 	case HAVE:
 		if len(message) != 5 {
 			return errors.New("Unexpected length")
