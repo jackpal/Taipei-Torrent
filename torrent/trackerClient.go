@@ -3,6 +3,7 @@ package torrent
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"log"
 	"math/rand"
@@ -119,7 +120,9 @@ func queryTracker(report ClientStatusReport, trackerUrl string) (tr *TrackerResp
 	case "udp":
 		return queryUDPTracker(report, u)
 	default:
-		return nil, fmt.Errorf("Unknown scheme %v in %v", u.Scheme, trackerUrl)
+		errorMessage := fmt.Sprintf("Unknown scheme %v in %v", u.Scheme, trackerUrl)
+		log.Println(errorMessage)
+		return nil, errors.New(errorMessage)
 	}
 }
 
