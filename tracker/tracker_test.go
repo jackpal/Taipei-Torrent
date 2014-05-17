@@ -2,8 +2,10 @@ package tracker
 
 import (
 	"bufio"
+	"bytes"
 	"fmt"
 	"github.com/jackpal/Taipei-Torrent/torrent"
+	"io"
 	"io/ioutil"
 	"log"
 	"math"
@@ -45,7 +47,6 @@ func testSwarm(t *testing.T) (err error) {
 		return
 	}
 	log.Printf("Temporary directory: %s", rootDir)
-	defer os.RemoveAll(rootDir)
 	seedDir := path.Join(rootDir, "seed")
 	err = os.Mkdir(seedDir, 0700)
 	if err != nil {
@@ -73,13 +74,16 @@ func testSwarm(t *testing.T) (err error) {
 	if err != nil {
 		return
 	}
-
 	defer kill(tracker)
+	time.Sleep(100 * time.Microsecond)
+
 	seed, seedCh, err = startTorrentClient("seed", 7000, torrentFile, seedDir, math.Inf(0))
 	if err != nil {
 		return
 	}
 	defer kill(seed)
+	time.Sleep(100 * time.Microsecond)
+
 	leech, leechCh, err = startTorrentClient("leech", 7001, torrentFile, leechDir, 0)
 	if err != nil {
 		return
@@ -88,7 +92,8 @@ func testSwarm(t *testing.T) (err error) {
 
 	timeout := make(chan bool, 1)
 	go func() {
-		time.Sleep(10 * time.Second)
+		// It takes about 13 seconds to complete the test. (First 10 seconds are waiting for the choke timeout.)
+		time.Sleep(30 * time.Second)
 		timeout <- true
 	}()
 	select {
@@ -107,7 +112,13 @@ func testSwarm(t *testing.T) (err error) {
 	if err != nil {
 		return
 	}
-	// Compare seed and leech versions of data file
+	err = compareData(seedData, leechDir)
+	if err != nil {
+		return
+	}
+	// All is good. Clean up
+	os.RemoveAll(rootDir)
+
 	return
 }
 
@@ -198,6 +209,100 @@ func createDataFile(name string, length int64) (err error) {
 	}
 	return
 }
+
+func compareData(sourceName, copyDirName string) (err error) {
+	_, base := path.Split(sourceName)
+	copyName := path.Join(copyDirName, base)
+	err = compare(sourceName, copyName)
+	return
+}
+
+func compare(aName, bName string) (err error) {
+	var aFileInfo, bFileInfo os.FileInfo
+	aFileInfo, err = os.Stat(aName)
+	if err != nil {
+		return
+	}
+	bFileInfo, err = os.Stat(bName)
+	if err != nil {
+		return
+	}
+	aIsDir, bIsDir := aFileInfo.IsDir(), bFileInfo.IsDir()
+	if aIsDir != bIsDir {
+		return fmt.Errorf("%s.IsDir() == %v != %s.IsDir() == %v",
+			aName, aIsDir,
+			bName, bIsDir)
+	}
+	var aFile, bFile *os.File
+	aFile, err = os.Open(aName)
+	if err != nil {
+		return
+	}
+	defer aFile.Close()
+	bFile, err = os.Open(bName)
+	if err != nil {
+		return
+	}
+	defer bFile.Close()
+	if !aIsDir {
+		aSize, bSize := aFileInfo.Size(), bFileInfo.Size()
+		if aSize != bSize {
+			return fmt.Errorf("%s.Size() == %v != %s.Size() == %v",
+				aName, aSize,
+				bName, bSize)
+		}
+		var aBuf, bBuf bytes.Buffer
+		bufferSize := int64(128 * 1024)
+		for i := int64(0); i < aSize; i += bufferSize {
+			toRead := bufferSize
+			remainder := aSize - i
+			if toRead > remainder {
+				toRead = remainder
+			}
+			_, err = io.CopyN(&aBuf, aFile, toRead)
+			if err != nil {
+				return
+			}
+			_, err = io.CopyN(&bBuf, bFile, toRead)
+			if err != nil {
+				return
+			}
+			aBytes, bBytes := aBuf.Bytes(), bBuf.Bytes()
+			for j := int64(0); j < toRead; j++ {
+				a, b := aBytes[j], bBytes[j]
+				if a != b {
+					err = fmt.Errorf("%s[%d] %d != %d", aName, i+j, a, b)
+					return
+				}
+			}
+			aBuf.Reset()
+			bBuf.Reset()
+		}
+	} else {
+		var aNames, bNames []string
+		aNames, err = aFile.Readdirnames(0)
+		if err != nil {
+			return
+		}
+		bNames, err = bFile.Readdirnames(0)
+		if err != nil {
+			return
+		}
+		if len(aNames) != len(bName) {
+			err = fmt.Errorf("Directories %v and %v don't contain same number of files %d != %d",
+				aName, bName, len(aNames), len(bNames))
+		}
+		for _, name := range aNames {
+			err = compare(path.Join(aName, name), path.Join(bName, name))
+			if err != nil {
+				return
+			}
+		}
+	}
+	return
+}
+
+// type logWriter
 
 type logWriter string
 
