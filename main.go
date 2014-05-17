@@ -17,7 +17,7 @@ var (
 	memprofile    = flag.String("memprofile", "", "If not empty, writes memory heap allocations to the given file before the program exits")
 	useLPD        = flag.Bool("useLPD", false, "Use Local Peer Discovery")
 	createTorrent = flag.String("createTorrent", "", "If not empty, creates a torrent file from the given root. Writes to stdout")
-	createTracker = flag.Bool("createTracker", false, "Creates a tracker serving the given torrent file")
+	createTracker = flag.String("createTracker", "", "Creates a tracker serving the given torrent file on the given address. Example --createTracker=:8080 to serve on port 8080.")
 )
 
 func main() {
@@ -32,8 +32,8 @@ func main() {
 		return
 	}
 
-	if *createTracker {
-		err := startTracker(flag.Args())
+	if *createTracker != "" {
+		err := startTracker(*createTracker, flag.Args())
 		if err != nil {
 			log.Fatal("Tracker returned error:", err)
 		}
@@ -166,10 +166,10 @@ func startLPD(torrentSessions map[string]*torrent.TorrentSession, listenPort uin
 	return
 }
 
-func startTracker(torrentFiles []string) (err error) {
+func startTracker(addr string, torrentFiles []string) (err error) {
 	t := tracker.NewTracker()
 	// TODO(jackpal) Allow caller to choose port number
-	t.Addr = ":8080"
+	t.Addr = addr
 	for _, torrentFile := range torrentFiles {
 		var metaInfo *torrent.MetaInfo
 		metaInfo, err = torrent.GetMetaInfo(torrentFile)

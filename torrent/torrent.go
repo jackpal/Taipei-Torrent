@@ -65,9 +65,6 @@ var seedRatio float64
 
 func init() {
 	flag.StringVar(&fileDir, "fileDir", ".", "path to directory where files are stored")
-	// If the port is 0, picks up a random port - but the DHT will keep
-	// running on port 0 because ListenUDP doesn't do that.
-	// Don't use port 6881 which blacklisted by some trackers.
 	flag.BoolVar(&useDHT, "useDHT", false, "Use DHT to get peers.")
 	flag.BoolVar(&trackerLessMode, "trackerLessMode", false, "Do not get peers from the tracker. Good for "+
 		"testing the DHT mode.")
