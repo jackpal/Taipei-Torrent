@@ -4,12 +4,28 @@ Taipei Torrent
 This is a simple command-line-interface BitTorrent client coded in the go
 programming language.
 
+Features:
+---------
+
++ Supports multiple torrent files
++ Magnet links
++ DHT
++ IPv6
++ UDP trackers
++ UPnP / NAT-PMP automatic firewall configuration
++ Socks5 proxy support
+
+Additional Features:
+--------------------
+
++ It can act as a tracker if you start it with the --startTracker flag
+
 FAQ:
 ----
 
-Q: Why call it Taipei Torrent?
+Q: Why is it named Taipei Torrent?
 
-A: I (jackpal) started writing it while visiting Taipei, Taiwan
+A: I started writing it while visiting beautiful Taipei, Taiwan
 
 Q: What is the license?
 
@@ -18,16 +34,19 @@ A: See the LICENSE file.
 Current Status
 --------------
 
-Tested on Windows, Linux and Mac OSX.
++ Tested on Go 1.2 and 1.3 release candidate
++ Tested on Windows, Linux and Mac OS X.
++ People tell me they've run it on Android, too.
 
 Development Roadmap
 -------------------
 
-+  Full UPnP support (need to be able to search for an unused listener port,
-   detect we have already acquired the port,
-   release the listener port when we quit.)
-+  Clean up source code
-+  Deal with TODOs
++ Full UPnP support (need to be able to search for an unused listener port,
+  detect we have already acquired the port, defend the report against router
+  reboots, release the listener port when we quit.)
++ Clean up source code
++ Deal with TODOs
++ Perhaps a web-based status UI.
 
 Download, Install, and Build Instructions
 -----------------------------------------
