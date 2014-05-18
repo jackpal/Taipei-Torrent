@@ -18,7 +18,7 @@ Features:
 Additional Features:
 --------------------
 
-+ It can act as a tracker if you start it with the --startTracker flag
++ It can act as a tracker if you start it with the --createTracker flag
 
 FAQ:
 ----
