@@ -32,17 +32,25 @@ func TestScrapeURL(t *testing.T) {
 	}
 }
 
-func TestSmallSwarm(t *testing.T) {
+func TestSwarm1(t *testing.T) {
 	testSwarm(t, 1)
 }
 
-/*
-
-func TestMediumSwarm(t *testing.T) {
+func TestSwarm10(t *testing.T) {
 	testSwarm(t, 10)
 }
 
-func TestLargeSwarm(t *testing.T) {
+/* Larger sizes don't work correctly.
+
+func TestSwarm20(t *testing.T) {
+	testSwarm(t, 20)
+}
+
+func TestSwarm50(t *testing.T) {
+	testSwarm(t, 50)
+}
+
+func TestSwarm100(t *testing.T) {
 	testSwarm(t, 100)
 }
 
@@ -99,11 +107,6 @@ func runSwarm(leechCount int) (err error) {
 	if err != nil {
 		return
 	}
-	leechDir := path.Join(rootDir, "leech")
-	err = os.Mkdir(leechDir, 0700)
-	if err != nil {
-		return
-	}
 	seedData := path.Join(seedDir, "data")
 	err = createDataFile(seedData, 1024*1024)
 	if err != nil {
@@ -134,34 +137,44 @@ func runSwarm(leechCount int) (err error) {
 		return
 	}
 	defer seed.kill()
-	time.Sleep(100 * time.Microsecond)
+	time.Sleep(50 * time.Microsecond)
 
-	leech = newTorrentClient("leech", 7001, torrentFile, leechDir, 0)
-	err = leech.start(doneCh)
-	if err != nil {
-		return
+	for l := 0; l < leechCount; l++ {
+		leechDir := path.Join(rootDir, fmt.Sprintf("leech %d", l))
+		err = os.Mkdir(leechDir, 0700)
+		if err != nil {
+			return
+		}
+		leech = newTorrentClient(fmt.Sprintf("leech %d", l), 7001+l, torrentFile, leechDir, 0)
+		err = leech.start(doneCh)
+		if err != nil {
+			return
+		}
+		defer leech.kill()
 	}
-	defer leech.kill()
 
 	timeout := make(chan bool, 1)
 	go func() {
 		// It takes about 3.5 seconds to complete the test on my computer.
-		time.Sleep(10 * time.Second)
+		time.Sleep(50 * time.Second)
 		timeout <- true
 	}()
 
-	select {
-	case <-timeout:
-		err = fmt.Errorf("Timout exceeded")
-	case doneP := <-doneCh:
-		if doneP != leech {
-			err = fmt.Errorf("%s finished before leech. Should not have.", doneP)
+	for doneCount := 0; doneCount < leechCount; doneCount++ {
+		select {
+		case <-timeout:
+			err = fmt.Errorf("Timout exceeded")
+		case doneP := <-doneCh:
+			if doneP == tracker || doneP == seed {
+				err = fmt.Errorf("%s finished before all leeches. Should not have.", doneP)
+			}
+			err = compareData(seedData, doneP.dirName)
 		}
+		if err != nil {
+			return
+		}
+		log.Printf("Done: %d of %d", (doneCount + 1), leechCount)
 	}
-	if err != nil {
-		return
-	}
-	err = compareData(seedData, leechDir)
 	if err != nil {
 		return
 	}
