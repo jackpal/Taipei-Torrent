@@ -1,8 +1,10 @@
 language: go
 
 go:
-  - 1.2
-  - 1.3
+# Missing regexp package
+#  - 1.2
+# Enable when 1.3 is released
+#  - 1.3
   - tip
 
 allowed_failures:
