@@ -41,9 +41,9 @@ type trackerPeer struct {
 	listenAddr *net.TCPAddr
 	id         string
 	lastSeen   time.Time
-	uploaded   int64
-	downloaded int64
-	left       int64
+	uploaded   uint64
+	downloaded uint64
+	left       uint64
 }
 
 type announceParams struct {
@@ -51,9 +51,9 @@ type announceParams struct {
 	peerID     string
 	ip         string // optional
 	port       int
-	uploaded   int64
-	downloaded int64
-	left       int64
+	uploaded   uint64
+	downloaded uint64
+	left       uint64
 	compact    bool
 	noPeerID   bool
 	event      string
@@ -72,18 +72,18 @@ func getBool(v url.Values, key string) (b bool, err error) {
 	return strconv.ParseBool(val)
 }
 
-func getInt64(v url.Values, key string) (i int64, err error) {
+func getUint64(v url.Values, key string) (i uint64, err error) {
 	val := v.Get(key)
 	if val == "" {
 		err = fmt.Errorf("Missing query parameter: %v", key)
 		return
 	}
-	return strconv.ParseInt(val, 10, 64)
+	return strconv.ParseUint(val, 10, 64)
 }
 
-func getInt(v url.Values, key string) (i int, err error) {
-	var i64 int64
-	i64, err = getInt64(v, key)
+func getUint(v url.Values, key string) (i int, err error) {
+	var i64 uint64
+	i64, err = getUint64(v, key)
 	if err != nil {
 		return
 	}
@@ -100,19 +100,19 @@ func (a *announceParams) parse(u *url.URL) (err error) {
 	}
 	a.ip = q.Get("ip")
 	a.peerID = q.Get("peer_id")
-	a.port, err = getInt(q, "port")
+	a.port, err = getUint(q, "port")
 	if err != nil {
 		return
 	}
-	a.uploaded, err = getInt64(q, "uploaded")
+	a.uploaded, err = getUint64(q, "uploaded")
 	if err != nil {
 		return
 	}
-	a.downloaded, err = getInt64(q, "downloaded")
+	a.downloaded, err = getUint64(q, "downloaded")
 	if err != nil {
 		return
 	}
-	a.left, err = getInt64(q, "left")
+	a.left, err = getUint64(q, "left")
 	if err != nil {
 		return
 	}
