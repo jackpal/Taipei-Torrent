@@ -59,10 +59,9 @@ type prog struct {
 	name    string
 	dirName string
 	cmd     *exec.Cmd
-	doneCh  chan error
 }
 
-func (p *prog) start() (err error) {
+func (p *prog) start(doneCh chan *prog) (err error) {
 	log.Println("starting", p.name)
 	out := logWriter(p.name)
 	p.cmd.Stdout = &out
@@ -71,10 +70,9 @@ func (p *prog) start() (err error) {
 	if err != nil {
 		return
 	}
-	p.doneCh = make(chan error, 1)
 	go func() {
-		err := p.cmd.Wait()
-		p.doneCh <- err
+		p.cmd.Wait()
+		doneCh <- p
 	}()
 	return
 }
@@ -119,8 +117,10 @@ func runSwarm(leechCount int) (err error) {
 
 	TaipeiTorrent := "Taipei-Torrent"
 
+	doneCh := make(chan *prog, 1)
+
 	tracker := NewProg("tracker", rootDir, TaipeiTorrent, "-createTracker=:8080", torrentFile)
-	err = tracker.start()
+	err = tracker.start(doneCh)
 	if err != nil {
 		return
 	}
@@ -128,14 +128,16 @@ func runSwarm(leechCount int) (err error) {
 	time.Sleep(100 * time.Microsecond)
 
 	var seed, leech *prog
-	seed, err = startTorrentClient("seed", 7000, torrentFile, seedDir, math.Inf(0))
+	seed = newTorrentClient("seed", 7000, torrentFile, seedDir, math.Inf(0))
+	err = seed.start(doneCh)
 	if err != nil {
 		return
 	}
 	defer seed.kill()
 	time.Sleep(100 * time.Microsecond)
 
-	leech, err = startTorrentClient("leech", 7001, torrentFile, leechDir, 0)
+	leech = newTorrentClient("leech", 7001, torrentFile, leechDir, 0)
+	err = leech.start(doneCh)
 	if err != nil {
 		return
 	}
@@ -147,17 +149,13 @@ func runSwarm(leechCount int) (err error) {
 		time.Sleep(10 * time.Second)
 		timeout <- true
 	}()
+
 	select {
 	case <-timeout:
 		err = fmt.Errorf("Timout exceeded")
-	case err = <-leech.doneCh:
-	case err = <-seed.doneCh:
-		if err == nil {
-			err = fmt.Errorf("Seed finished. Should not have.")
-		}
-	case err = <-tracker.doneCh:
-		if err == nil {
-			err = fmt.Errorf("Tracker finished. Should not have.")
+	case doneP := <-doneCh:
+		if doneP != leech {
+			err = fmt.Errorf("%s finished before leech. Should not have.", doneP)
 		}
 	}
 	if err != nil {
@@ -173,14 +171,12 @@ func runSwarm(leechCount int) (err error) {
 	return
 }
 
-func startTorrentClient(name string, port int, trackerFile string, fileDir string, ratio float64) (p *prog, err error) {
-	p = NewProg(name, fileDir, "Taipei-Torrent",
+func newTorrentClient(name string, port int, trackerFile string, fileDir string, ratio float64) (p *prog) {
+	return NewProg(name, fileDir, "Taipei-Torrent",
 		fmt.Sprintf("-port=%v", port),
 		fmt.Sprintf("-fileDir=%v", fileDir),
 		fmt.Sprintf("-seedRatio=%v", ratio),
 		trackerFile)
-	err = p.start()
-	return
 }
 
 func createTorrentFile(torrentFileName, root, announcePath string) (err error) {
@@ -240,6 +236,7 @@ func compareData(sourceName, copyDirName string) (err error) {
 	return
 }
 
+// Compare two files (or directories) for equality.
 func compare(aName, bName string) (err error) {
 	var aFileInfo, bFileInfo os.FileInfo
 	aFileInfo, err = os.Stat(aName)
