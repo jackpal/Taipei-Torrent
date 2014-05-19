@@ -327,7 +327,7 @@ func (ts *TorrentSession) hintNewPeerImp(peer string) {
 }
 
 func (ts *TorrentSession) mightAcceptPeer(peer string) bool {
-	if ts.si.HaveTorrent && len(ts.peers) < MAX_NUM_PEERS {
+	if (ts.si.HaveTorrent || ts.si.FromMagnet) && len(ts.peers) < MAX_NUM_PEERS {
 		if _, ok := ts.peers[peer]; !ok {
 			return true
 		}
@@ -336,7 +336,7 @@ func (ts *TorrentSession) mightAcceptPeer(peer string) bool {
 }
 
 func (ts *TorrentSession) connectToPeer(peer string) {
-	if !ts.si.HaveTorrent {
+	if (!ts.si.HaveTorrent && !ts.si.FromMagnet) {
 		return
 	}
 	conn, err := proxyNetDial("tcp", peer)
@@ -383,7 +383,7 @@ func (t *TorrentSession) AddPeer(btconn *btConn) {
 }
 
 func (t *TorrentSession) addPeerImp(btconn *btConn) {
-	if !t.si.HaveTorrent {
+	if (!t.si.HaveTorrent && !t.si.FromMagnet) {
 		log.Println("Rejecting peer because we don't have a torrent yet.")
 		btconn.conn.Close()
 		return
