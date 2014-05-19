@@ -13,6 +13,7 @@ import (
 type Magnet struct {
 	InfoHashes []string
 	Names      []string
+	Trackers   [][]string
 }
 
 func parseMagnet(s string) (Magnet, error) {
@@ -57,5 +58,12 @@ func parseMagnet(s string) (Magnet, error) {
 		names = n
 	}
 
-	return Magnet{InfoHashes: infoHashes, Names: names}, nil
+	var trackers [][]string
+	tr, ok := u.Query()["tr"]
+	if ok {
+		trackers = [][]string{tr}
+	}
+	fmt.Println("Trackers: ", trackers)
+
+	return Magnet{InfoHashes: infoHashes, Names: names, Trackers: trackers}, nil
 }

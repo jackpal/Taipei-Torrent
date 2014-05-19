@@ -98,7 +98,7 @@ func GetMetaInfo(torrent string) (metaInfo *MetaInfo, err error) {
 			return nil, err
 		}
 
-		metaInfo = &MetaInfo{InfoHash: string(ih)}
+		metaInfo = &MetaInfo{InfoHash: string(ih), AnnounceList: magnet.Trackers}
 		return metaInfo, err
 
 	} else {
