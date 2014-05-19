@@ -677,6 +677,10 @@ func (t *TorrentSession) chokePeers() (err error) {
 }
 
 func (t *TorrentSession) RequestBlock(p *peerState) (err error) {
+	if !t.si.HaveTorrent { // We can't request a block without a torrent
+		return
+	}
+
 	for k, _ := range t.activePieces {
 		if p.have.IsSet(k) {
 			err = t.RequestBlock2(p, k, false)
