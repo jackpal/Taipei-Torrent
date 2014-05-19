@@ -130,7 +130,7 @@ func (a *announceParams) parse(u *url.URL) (err error) {
 	}
 	a.event = q.Get("event")
 	if numWant := q.Get("numwant"); numWant != "" {
-		a.numWant, err = getInt(q, numWant)
+		a.numWant, err = strconv.Atoi(numWant)
 		if err != nil {
 			return
 		}
