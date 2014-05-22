@@ -74,8 +74,8 @@ func (o *osFile) ensureExists(length int64) (err error) {
 	}
 	err = os.Truncate(name, length)
 	if err != nil {
-		return
 		err = errors.New("Could not truncate file.")
+		return
 	}
 	return
 }

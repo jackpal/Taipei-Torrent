@@ -336,7 +336,7 @@ func (ts *TorrentSession) mightAcceptPeer(peer string) bool {
 }
 
 func (ts *TorrentSession) connectToPeer(peer string) {
-	if (!ts.si.HaveTorrent && !ts.si.FromMagnet) {
+	if !ts.si.HaveTorrent && !ts.si.FromMagnet {
 		return
 	}
 	conn, err := proxyNetDial("tcp", peer)
@@ -383,7 +383,7 @@ func (t *TorrentSession) AddPeer(btconn *btConn) {
 }
 
 func (t *TorrentSession) addPeerImp(btconn *btConn) {
-	if (!t.si.HaveTorrent && !t.si.FromMagnet) {
+	if !t.si.HaveTorrent && !t.si.FromMagnet {
 		log.Println("Rejecting peer because we don't have a torrent yet.")
 		btconn.conn.Close()
 		return
@@ -1193,7 +1193,7 @@ func (t *TorrentSession) DoMetadata(msg []byte, p *peerState) {
 		}
 		t.reload(metadata)
 	case METADATA_REJECT:
-		log.Printf("%d didn't want to send piece %d\n", p.address, message.Piece)
+		log.Printf("%s didn't want to send piece %d\n", p.address, message.Piece)
 	default:
 		log.Println("Didn't understand metadata extension type: ", mt)
 	}

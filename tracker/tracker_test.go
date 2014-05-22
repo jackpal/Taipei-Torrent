@@ -168,11 +168,11 @@ func runSwarm(leechCount int) (err error) {
 		select {
 		case <-timeout:
 			err = fmt.Errorf("Timout exceeded")
-		case doneP := <-doneCh:
-			if doneP == tracker || doneP == seed {
-				err = fmt.Errorf("%s finished before all leeches. Should not have.", doneP)
+		case donePeer := <-doneCh:
+			if donePeer == tracker || donePeer == seed {
+				err = fmt.Errorf("%v finished before all leeches. Should not have.", donePeer)
 			}
-			err = compareData(seedData, doneP.dirName)
+			err = compareData(seedData, donePeer.dirName)
 		}
 		if err != nil {
 			return

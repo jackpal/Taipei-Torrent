@@ -36,10 +36,10 @@ func RunTorrents(torrentFiles []string) (err error) {
 	}
 
 	for _, ts := range torrentSessions {
-		go func() {
+		go func(ts *TorrentSession) {
 			ts.DoTorrent()
 			doneChan <- ts
-		}()
+		}(ts)
 	}
 
 	lpd := &Announcer{}
