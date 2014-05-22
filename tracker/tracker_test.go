@@ -64,14 +64,14 @@ func testSwarm(t *testing.T, leechCount int) {
 }
 
 type prog struct {
-	name    string
-	dirName string
-	cmd     *exec.Cmd
+	instanceName string
+	dirName      string
+	cmd          *exec.Cmd
 }
 
 func (p *prog) start(doneCh chan *prog) (err error) {
-	log.Println("starting", p.name)
-	out := logWriter(p.name)
+	log.Println("starting", p.instanceName)
+	out := logWriter(p.instanceName)
 	p.cmd.Stdout = &out
 	p.cmd.Stderr = &out
 	err = p.cmd.Start()
@@ -92,7 +92,7 @@ func (p *prog) kill() (err error) {
 
 func NewProg(instanceName string, dir string, name string, arg ...string) (p *prog) {
 	cmd := exec.Command(name, arg...)
-	return &prog{name: name, dirName: dir, cmd: cmd}
+	return &prog{instanceName: instanceName, dirName: dir, cmd: cmd}
 }
 
 func runSwarm(leechCount int) (err error) {
