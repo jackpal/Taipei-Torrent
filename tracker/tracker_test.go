@@ -32,8 +32,6 @@ func TestScrapeURL(t *testing.T) {
 	}
 }
 
-/** Disabled until they work on Travis-CI
-
 func TestSwarm1(t *testing.T) {
 	testSwarm(t, 1)
 }
@@ -41,8 +39,6 @@ func TestSwarm1(t *testing.T) {
 func TestSwarm10(t *testing.T) {
 	testSwarm(t, 10)
 }
-
-*/
 
 /* Larger sizes don't work correctly.
 
@@ -122,11 +118,9 @@ func runSwarm(leechCount int) (err error) {
 		return
 	}
 
-	TaipeiTorrent := "Taipei-Torrent"
-
 	doneCh := make(chan *prog, 1)
 
-	tracker := NewProg("tracker", rootDir, TaipeiTorrent, "-createTracker=:8080", torrentFile)
+	tracker := newTracker("tracker", ":8080", rootDir, torrentFile)
 	err = tracker.start(doneCh)
 	if err != nil {
 		return
@@ -188,12 +182,19 @@ func runSwarm(leechCount int) (err error) {
 	return
 }
 
-func newTorrentClient(name string, port int, trackerFile string, fileDir string, ratio float64) (p *prog) {
+func newTracker(name string, addr string, fileDir string, torrentFile string) (p *prog) {
+	return NewProg(name, fileDir, "Taipei-Torrent",
+		fmt.Sprintf("-createTracker=%v", addr),
+		fmt.Sprintf("-fileDir=%v", fileDir),
+		torrentFile)
+}
+
+func newTorrentClient(name string, port int, torrentFile string, fileDir string, ratio float64) (p *prog) {
 	return NewProg(name, fileDir, "Taipei-Torrent",
 		fmt.Sprintf("-port=%v", port),
 		fmt.Sprintf("-fileDir=%v", fileDir),
 		fmt.Sprintf("-seedRatio=%v", ratio),
-		trackerFile)
+		torrentFile)
 }
 
 func createTorrentFile(torrentFileName, root, announcePath string) (err error) {
@@ -347,4 +348,49 @@ func (l logWriter) Write(p []byte) (n int, err error) {
 	log.Println(l, string(p))
 	n = len(p)
 	return
+}
+
+// A test that's used to run multiple processes. From http://golang.org/src/pkg/os/exec/exec_test.go
+
+func helperCommands(s ...string) *exec.Cmd {
+	cs := []string{"-test.run=TestHelperProcess", "--"}
+	cs = append(cs, s...)
+	cmd := exec.Command(os.Args[0], cs...)
+	cmd.Env = []string{"GO_WANT_HELPER_PROCESS=1"}
+	return cmd
+}
+
+func TestHelperProcess(*testing.T) {
+	if os.Getenv("GO_WANT_HELPER_PROCESS") != "1" {
+		return
+	}
+
+	defer os.Exit(0)
+
+	args := os.Args
+	for len(args) > 0 {
+		if args[0] == "--" {
+			args = args[1:]
+			break
+		}
+		args = args[1:]
+	}
+
+	if len(args) == 0 {
+		fmt.Fprintf(os.Stderr, "No commands\n")
+		os.Exit(2)
+	}
+
+	cmd, args := args[0], args[1:]
+	switch cmd {
+	case "tracker":
+		fmt.Fprintf(os.Stderr, "tracker not implemented\n")
+		os.Exit(2)
+	case "client":
+		fmt.Fprintf(os.Stderr, "client not implemented\n")
+		os.Exit(2)
+	default:
+		fmt.Fprintf(os.Stderr, "Unknown command %q\n", cmd)
+		os.Exit(2)
+	}
 }
