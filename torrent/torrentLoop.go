@@ -12,8 +12,8 @@ var (
 	useLPD = flag.Bool("useLPD", false, "Use Local Peer Discovery")
 )
 
-func RunTorrents(torrentFiles []string) (err error) {
-	conChan, listenPort, err := ListenForPeerConnections()
+func RunTorrents(port int, fileDir string, seedRatio float64, torrentFiles []string) (err error) {
+	conChan, listenPort, err := ListenForPeerConnections(port)
 	if err != nil {
 		log.Println("Couldn't listen for peers connection: ", err)
 		return
@@ -26,7 +26,7 @@ func RunTorrents(torrentFiles []string) (err error) {
 
 	for _, torrentFile := range torrentFiles {
 		var ts *TorrentSession
-		ts, err = NewTorrentSession(torrentFile, listenPort)
+		ts, err = NewTorrentSession(fileDir, torrentFile, uint16(listenPort), seedRatio)
 		if err != nil {
 			log.Println("Could not create torrent session.", err)
 			return
@@ -44,7 +44,7 @@ func RunTorrents(torrentFiles []string) (err error) {
 
 	lpd := &Announcer{}
 	if *useLPD {
-		lpd = startLPD(torrentSessions, listenPort)
+		lpd = startLPD(torrentSessions, uint16(listenPort))
 	}
 
 mainLoop:

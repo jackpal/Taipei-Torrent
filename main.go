@@ -5,6 +5,7 @@ import (
 	"github.com/jackpal/Taipei-Torrent/torrent"
 	"github.com/jackpal/Taipei-Torrent/tracker"
 	"log"
+	"math"
 	"os"
 	"os/signal"
 	"path"
@@ -16,6 +17,9 @@ var (
 	memprofile    = flag.String("memprofile", "", "If not empty, writes memory heap allocations to the given file before the program exits")
 	createTorrent = flag.String("createTorrent", "", "If not empty, creates a torrent file from the given root. Writes to stdout")
 	createTracker = flag.String("createTracker", "", "Creates a tracker serving the given torrent file on the given address. Example --createTracker=:8080 to serve on port 8080.")
+	port          = flag.Int("port", 7777, "Port to listen on. 0 means pick random port. Note that 6881 is blacklisted by some trackers.")
+	fileDir       = flag.String("fileDir", ".", "path to directory where files are stored")
+	seedRatio     = flag.Float64("seedRatio", math.Inf(0), "Seed until ratio >= this value before quitting.")
 )
 
 func main() {
@@ -70,7 +74,7 @@ func main() {
 
 	log.Println("Starting.")
 
-	err := torrent.RunTorrents(args)
+	err := torrent.RunTorrents(*port, *fileDir, *seedRatio, args)
 	if err != nil {
 		log.Fatal("Could not run torrents", args, err)
 	}

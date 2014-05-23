@@ -9,9 +9,6 @@ import (
 )
 
 var (
-	// If the port is 0, picks up a random port. Don't use port 6881 which
-	// is blacklisted by some trackers.
-	port      = flag.Int("port", 7777, "Port to listen on.")
 	useUPnP   = flag.Bool("useUPnP", false, "Use UPnP to open port in firewall.")
 	useNATPMP = flag.Bool("useNATPMP", false, "Use NAT-PMP to open port in firewall.")
 )
@@ -28,8 +25,8 @@ type btConn struct {
 // listenForPeerConnections listens on a TCP port for incoming connections and
 // demuxes them to the appropriate active torrentSession based on the InfoHash
 // in the header.
-func ListenForPeerConnections() (conChan chan *btConn, listenPort uint16, err error) {
-	listener, err := CreateListener()
+func ListenForPeerConnections(port int) (conChan chan *btConn, listenPort int, err error) {
+	listener, listenPort, err := CreateListener(port)
 	if err != nil {
 		return
 	}
@@ -37,13 +34,6 @@ func ListenForPeerConnections() (conChan chan *btConn, listenPort uint16, err er
 	_, portstring, err := net.SplitHostPort(listener.Addr().String())
 	if err != nil {
 		log.Printf("Listener failed while finding the host/port for %v: %v", portstring, err)
-		return
-	}
-	var listenPortAsInt int
-	listenPortAsInt, err = strconv.Atoi(portstring)
-	listenPort = uint16(listenPortAsInt)
-	if err != nil {
-		log.Printf("Listener failed while converting %v to integer: %v", portstring, err)
 		return
 	}
 	go func() {
@@ -72,13 +62,13 @@ func ListenForPeerConnections() (conChan chan *btConn, listenPort uint16, err er
 	return
 }
 
-func CreateListener() (listener net.Listener, err error) {
+func CreateListener(port int) (listener net.Listener, externalPort int, err error) {
 	nat, err := CreatePortMapping()
 	if err != nil {
 		err = fmt.Errorf("Unable to create NAT: %v", err)
 		return
 	}
-	listenPort := *port
+	listenPort := port
 	if nat != nil {
 		var external net.IP
 		if external, err = nat.GetExternalAddress(); err != nil {
@@ -86,7 +76,7 @@ func CreateListener() (listener net.Listener, err error) {
 			return
 		}
 		log.Println("External ip address: ", external)
-		if listenPort, err = chooseListenPort(nat); err != nil {
+		if listenPort, err = chooseListenPort(nat, listenPort); err != nil {
 			log.Println("Could not choose listen port.", err)
 			log.Println("Peer connectivity will be affected.")
 		}
@@ -96,6 +86,7 @@ func CreateListener() (listener net.Listener, err error) {
 		log.Fatal("Listen failed:", err)
 	}
 	log.Println("Listening for peers on port:", listenPort)
+	externalPort = listenPort
 	return
 }
 
@@ -124,12 +115,11 @@ func CreatePortMapping() (nat NAT, err error) {
 	return
 }
 
-func chooseListenPort(nat NAT) (listenPort int, err error) {
-	listenPort = *port
+func chooseListenPort(nat NAT, externalPort int) (listenPort int, err error) {
 	// TODO: Unmap port when exiting. (Right now we never exit cleanly.)
 	// TODO: Defend the port, remap when router reboots
-	listenPort, err = nat.AddPortMapping("tcp", listenPort, listenPort,
-		"Taipei-Torrent port "+strconv.Itoa(listenPort), 360000)
+	listenPort, err = nat.AddPortMapping("tcp", externalPort, externalPort,
+		"Taipei-Torrent port "+strconv.Itoa(externalPort), 360000)
 	if err != nil {
 		return
 	}

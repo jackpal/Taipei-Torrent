@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path"
+	"strconv"
 	"testing"
 	"time"
 )
@@ -36,6 +37,7 @@ func TestSwarm1(t *testing.T) {
 	testSwarm(t, 1)
 }
 
+/*
 func TestSwarm10(t *testing.T) {
 	testSwarm(t, 10)
 }
@@ -90,8 +92,8 @@ func (p *prog) kill() (err error) {
 	return
 }
 
-func NewProg(instanceName string, dir string, name string, arg ...string) (p *prog) {
-	cmd := exec.Command(name, arg...)
+func newProg(instanceName string, dir string, command string, arg ...string) (p *prog) {
+	cmd := helperCommands(append([]string{command}, arg...)...)
 	return &prog{instanceName: instanceName, dirName: dir, cmd: cmd}
 }
 
@@ -183,17 +185,14 @@ func runSwarm(leechCount int) (err error) {
 }
 
 func newTracker(name string, addr string, fileDir string, torrentFile string) (p *prog) {
-	return NewProg(name, fileDir, "Taipei-Torrent",
-		fmt.Sprintf("-createTracker=%v", addr),
-		fmt.Sprintf("-fileDir=%v", fileDir),
-		torrentFile)
+	return newProg(name, fileDir, "tracker", addr, torrentFile)
 }
 
 func newTorrentClient(name string, port int, torrentFile string, fileDir string, ratio float64) (p *prog) {
-	return NewProg(name, fileDir, "Taipei-Torrent",
-		fmt.Sprintf("-port=%v", port),
-		fmt.Sprintf("-fileDir=%v", fileDir),
-		fmt.Sprintf("-seedRatio=%v", ratio),
+	return newProg(name, fileDir, "client",
+		fmt.Sprintf("%v", port),
+		fileDir,
+		fmt.Sprintf("%v", ratio),
 		torrentFile)
 }
 
@@ -367,7 +366,14 @@ func TestHelperProcess(*testing.T) {
 
 	defer os.Exit(0)
 
-	args := os.Args
+	err := testHelperProcessImp(os.Args)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error %v\n", err)
+		os.Exit(3)
+	}
+}
+
+func testHelperProcessImp(args []string) (err error) {
 	for len(args) > 0 {
 		if args[0] == "--" {
 			args = args[1:]
@@ -377,20 +383,44 @@ func TestHelperProcess(*testing.T) {
 	}
 
 	if len(args) == 0 {
-		fmt.Fprintf(os.Stderr, "No commands\n")
-		os.Exit(2)
+		err = fmt.Errorf("No commands\n")
+		return
 	}
 
 	cmd, args := args[0], args[1:]
 	switch cmd {
 	case "tracker":
-		fmt.Fprintf(os.Stderr, "tracker not implemented\n")
-		os.Exit(2)
+		if len(args) < 2 {
+			err = fmt.Errorf("tracker expected 2 or more args\n")
+			return
+		}
+		addr, torrentFiles := args[0], args[1:]
+
+		err = StartTracker(addr, torrentFiles)
+		if err != nil {
+			return
+		}
 	case "client":
-		fmt.Fprintf(os.Stderr, "client not implemented\n")
-		os.Exit(2)
+		if len(args) < 4 {
+			err = fmt.Errorf("client expected 4 or more args\n")
+			return
+		}
+		portStr, fileDir, seedRatioStr, torrentFiles :=
+			args[0], args[1], args[2], args[3:]
+		var port uint64
+		port, err = strconv.ParseUint(portStr, 10, 16)
+		if err != nil {
+			return
+		}
+		var seedRatio float64
+		seedRatio, err = strconv.ParseFloat(seedRatioStr, 64)
+		err = torrent.RunTorrents(int(port), fileDir, seedRatio, torrentFiles)
+		if err != nil {
+			return
+		}
 	default:
-		fmt.Fprintf(os.Stderr, "Unknown command %q\n", cmd)
-		os.Exit(2)
+		err = fmt.Errorf("Unknown command %q\n", cmd)
+		return
 	}
+	return
 }

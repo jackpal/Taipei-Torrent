@@ -58,18 +58,14 @@ const (
 
 // Should be overriden by flag. Not thread safe.
 var gateway string
-var fileDir string
 var useDHT bool
 var trackerLessMode bool
-var seedRatio float64
 
 func init() {
-	flag.StringVar(&fileDir, "fileDir", ".", "path to directory where files are stored")
 	flag.BoolVar(&useDHT, "useDHT", false, "Use DHT to get peers.")
 	flag.BoolVar(&trackerLessMode, "trackerLessMode", false, "Do not get peers from the tracker. Good for "+
 		"testing the DHT mode.")
 	flag.StringVar(&gateway, "gateway", "", "IP Address of gateway.")
-	flag.Float64Var(&seedRatio, "seedRatio", math.Inf(0), "Seed until ratio >= this value before quitting.")
 }
 
 func peerId() string {
@@ -133,6 +129,8 @@ func (a *ActivePiece) isComplete() bool {
 }
 
 type TorrentSession struct {
+	fileDir              string
+	seedRatio            float64
 	M                    *MetaInfo
 	si                   *SessionInfo
 	ti                   *TrackerResponse
@@ -159,8 +157,10 @@ type TorrentSession struct {
 	chokePolicyHeartbeat <-chan time.Time
 }
 
-func NewTorrentSession(torrent string, listenPort uint16) (ts *TorrentSession, err error) {
+func NewTorrentSession(fileDir string, torrent string, listenPort uint16, seedRatio float64) (ts *TorrentSession, err error) {
 	t := &TorrentSession{
+		fileDir:              fileDir,
+		seedRatio:            seedRatio,
 		peers:                make(map[string]*peerState),
 		peerMessageChan:      make(chan peerMessage),
 		activePieces:         make(map[int]*ActivePiece),
@@ -232,7 +232,7 @@ func (t *TorrentSession) load() {
 	}
 
 	ext := ".torrent"
-	dir := fileDir
+	dir := t.fileDir
 	if len(t.M.Info.Files) != 0 {
 		torrentName := t.M.Info.Name
 		if torrentName == "" {
@@ -608,8 +608,8 @@ func (t *TorrentSession) DoTorrent() {
 			log.Println("Peers:", len(t.peers), "downloaded:", t.si.Downloaded,
 				"uploaded:", t.si.Uploaded, "ratio", ratio)
 			log.Println("good, total", t.goodPieces, t.totalPieces)
-			if t.goodPieces == t.totalPieces && ratio >= seedRatio {
-				log.Println("Achieved target seed ratio", seedRatio)
+			if t.goodPieces == t.totalPieces && ratio >= t.seedRatio {
+				log.Println("Achieved target seed ratio", t.seedRatio)
 				return
 			}
 			if len(t.peers) < TARGET_NUM_PEERS && (t.totalPieces == 0 || t.goodPieces < t.totalPieces) {
