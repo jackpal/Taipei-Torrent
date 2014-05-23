@@ -37,7 +37,6 @@ func TestSwarm1(t *testing.T) {
 	testSwarm(t, 1)
 }
 
-/*
 func TestSwarm10(t *testing.T) {
 	testSwarm(t, 10)
 }
