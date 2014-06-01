@@ -1070,15 +1070,15 @@ func (t *TorrentSession) generalMessage(message []byte, p *peerState) (err error
 }
 
 type ExtensionHandshake struct {
-	M      map[string]int "m"
-	P      uint16         "p"
-	V      string         "v"
-	Yourip string         "yourip"
-	Ipv6   string         "ipv6"
-	Ipv4   string         "ipv4"
-	Reqq   uint16         "reqq"
+	M      map[string]int `bencode:"m"`
+	P      uint16         `bencode:"p"`
+	V      string         `bencode:"v"`
+	Yourip string         `bencode:"yourip"`
+	Ipv6   string         `bencode:"ipv6"`
+	Ipv4   string         `bencode:"ipv4"`
+	Reqq   uint16         `bencode:"reqq"`
 
-	MetadataSize uint "metadata_size"
+	MetadataSize uint `bencode:"metadata_size"`
 }
 
 func (t *TorrentSession) DoExtension(msg []byte, p *peerState) (err error) {
@@ -1126,9 +1126,9 @@ func (t *TorrentSession) DoExtension(msg []byte, p *peerState) (err error) {
 }
 
 type MetadataMessage struct {
-	MsgType   uint8 "msg_type"
-	Piece     uint  "piece"
-	TotalSize uint  "total_size"
+	MsgType   uint8 `bencode:"msg_type"`
+	Piece     uint  `bencode:"piece"`
+	TotalSize uint  `bencode:"total_size"`
 }
 
 func (t *TorrentSession) DoMetadata(msg []byte, p *peerState) {

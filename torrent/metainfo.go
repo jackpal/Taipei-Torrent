@@ -24,7 +24,7 @@ type FileDict struct {
 }
 
 type InfoDict struct {
-	PieceLength int64 "piece length"
+	PieceLength int64 `bencode:"piece length"`
 	Pieces      string
 	Private     int64
 	Name        string
@@ -39,10 +39,10 @@ type MetaInfo struct {
 	Info         InfoDict
 	InfoHash     string
 	Announce     string
-	AnnounceList [][]string "announce-list"
-	CreationDate string     "creation date"
+	AnnounceList [][]string `bencode:"announce-list"`
+	CreationDate string     `bencode:"creation date"`
 	Comment      string
-	CreatedBy    string "created by"
+	CreatedBy    string `bencode:"created by"`
 	Encoding     string
 }
 
@@ -489,11 +489,11 @@ func (m *MetaInfo) Bencode(w io.Writer) (err error) {
 }
 
 type TrackerResponse struct {
-	FailureReason  string "failure reason"
-	WarningMessage string "warning message"
+	FailureReason  string `bencode:"failure reason"`
+	WarningMessage string `bencode:"warning message"`
 	Interval       uint
-	MinInterval    uint   "min interval"
-	TrackerId      string "tracker id"
+	MinInterval    uint   `bencode:"min interval"`
+	TrackerId      string `bencode:"tracker id"`
 	Complete       uint
 	Incomplete     uint
 	Peers          string
