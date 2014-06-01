@@ -176,7 +176,7 @@ func StartTracker(addr string, torrentFiles []string) (err error) {
 	t.Addr = addr
 	for _, torrentFile := range torrentFiles {
 		var metaInfo *torrent.MetaInfo
-		metaInfo, err = torrent.GetMetaInfo(torrentFile)
+		metaInfo, err = torrent.GetMetaInfo(nil, torrentFile)
 		if err != nil {
 			return
 		}

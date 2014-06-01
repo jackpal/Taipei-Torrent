@@ -1,16 +1,10 @@
 package torrent
 
 import (
-	"flag"
 	"fmt"
 	"log"
 	"net"
 	"strconv"
-)
-
-var (
-	useUPnP   = flag.Bool("useUPnP", false, "Use UPnP to open port in firewall.")
-	useNATPMP = flag.Bool("useNATPMP", false, "Use NAT-PMP to open port in firewall.")
 )
 
 // btConn wraps an incoming network connection and contains metadata that helps
@@ -25,8 +19,8 @@ type btConn struct {
 // listenForPeerConnections listens on a TCP port for incoming connections and
 // demuxes them to the appropriate active torrentSession based on the InfoHash
 // in the header.
-func ListenForPeerConnections(port int) (conChan chan *btConn, listenPort int, err error) {
-	listener, listenPort, err := CreateListener(port)
+func ListenForPeerConnections(flags *TorrentFlags) (conChan chan *btConn, listenPort int, err error) {
+	listener, listenPort, err := CreateListener(flags)
 	if err != nil {
 		return
 	}
@@ -62,13 +56,13 @@ func ListenForPeerConnections(port int) (conChan chan *btConn, listenPort int, e
 	return
 }
 
-func CreateListener(port int) (listener net.Listener, externalPort int, err error) {
-	nat, err := CreatePortMapping()
+func CreateListener(flags *TorrentFlags) (listener net.Listener, externalPort int, err error) {
+	nat, err := CreatePortMapping(flags)
 	if err != nil {
 		err = fmt.Errorf("Unable to create NAT: %v", err)
 		return
 	}
-	listenPort := port
+	listenPort := flags.Port
 	if nat != nil {
 		var external net.IP
 		if external, err = nat.GetExternalAddress(); err != nil {
@@ -91,24 +85,24 @@ func CreateListener(port int) (listener net.Listener, externalPort int, err erro
 }
 
 // createPortMapping creates a NAT port mapping, or nil if none requested or found.
-func CreatePortMapping() (nat NAT, err error) {
-	if *useUPnP && *useNATPMP {
+func CreatePortMapping(flags *TorrentFlags) (nat NAT, err error) {
+	if flags.UseUPnP && flags.UseNATPMP {
 		err = fmt.Errorf("Cannot specify both -useUPnP and -useNATPMP")
 		return
 	}
-	if *useUPnP {
+	if flags.UseUPnP {
 		log.Println("Using UPnP to open port.")
 		nat, err = Discover()
 	}
-	if *useNATPMP {
-		if gateway == "" {
-			err = fmt.Errorf("-useNATPMP requires -gateway")
+	if flags.UseNATPMP {
+		if flags.Gateway == "" {
+			err = fmt.Errorf("useNATPMP requires gateway")
 			return
 		}
 		log.Println("Using NAT-PMP to open port.")
-		gatewayIP := net.ParseIP(gateway)
+		gatewayIP := net.ParseIP(flags.Gateway)
 		if gatewayIP == nil {
-			err = fmt.Errorf("Could not parse gateway %q", gateway)
+			err = fmt.Errorf("Could not parse gateway %q", flags.Gateway)
 		}
 		nat = NewNatPMP(gatewayIP)
 	}

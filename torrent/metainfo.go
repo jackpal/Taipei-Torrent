@@ -78,10 +78,10 @@ func getSliceSliceString(m map[string]interface{}, k string) (aas [][]string) {
 	return
 }
 
-func GetMetaInfo(torrent string) (metaInfo *MetaInfo, err error) {
+func GetMetaInfo(dialer Dialer, torrent string) (metaInfo *MetaInfo, err error) {
 	var input io.ReadCloser
 	if strings.HasPrefix(torrent, "http:") {
-		r, err := proxyHttpGet(torrent)
+		r, err := proxyHttpGet(dialer, torrent)
 		if err != nil {
 			return nil, err
 		}
@@ -520,8 +520,8 @@ type MetaDataExchange struct {
 	Pieces       [][]byte
 }
 
-func getTrackerInfo(url string) (tr *TrackerResponse, err error) {
-	r, err := proxyHttpGet(url)
+func getTrackerInfo(dialer Dialer, url string) (tr *TrackerResponse, err error) {
+	r, err := proxyHttpGet(dialer, url)
 	if err != nil {
 		return
 	}

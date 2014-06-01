@@ -1,41 +1,23 @@
 package torrent
 
 import (
-	"flag"
 	"net"
 	"net/http"
-
-	"github.com/hailiang/gosocks"
 )
 
-func init() {
-	flag.StringVar(&proxyAddress, "proxyAddress", "", "Address of a SOCKS5 proxy to use.")
-}
-
-var proxyAddress string
-
-func useProxy() bool {
-	return len(proxyAddress) > 0
-}
-
-func proxyHttpGet(url string) (r *http.Response, e error) {
-	return proxyHttpClient().Get(url)
-}
-
-func proxyNetDial(netType, addr string) (net.Conn, error) {
-	if useProxy() {
-		return socks.DialSocksProxy(socks.SOCKS5, proxyAddress)(netType, addr)
+func proxyNetDial(dialer Dialer, network, address string) (net.Conn, error) {
+	if dialer != nil {
+		return dialer(network, address)
 	}
-	return net.Dial(netType, addr)
+	return net.Dial(network, address)
 }
 
-func proxyHttpClient() (client *http.Client) {
-	if useProxy() {
-		dialSocksProxy := socks.DialSocksProxy(socks.SOCKS5, proxyAddress)
-		tr := &http.Transport{Dial: dialSocksProxy}
-		client = &http.Client{Transport: tr}
-	} else {
-		client = &http.Client{}
-	}
+func proxyHttpGet(dialer Dialer, url string) (r *http.Response, e error) {
+	return proxyHttpClient(dialer).Get(url)
+}
+
+func proxyHttpClient(dialer Dialer) (client *http.Client) {
+	tr := &http.Transport{Dial: dialer}
+	client = &http.Client{Transport: tr}
 	return
 }

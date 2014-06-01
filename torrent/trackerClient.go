@@ -28,7 +28,7 @@ type ClientStatusReport struct {
 	Left       uint64
 }
 
-func startTrackerClient(announce string, announceList [][]string, trackerInfoChan chan *TrackerResponse, reports chan ClientStatusReport) {
+func startTrackerClient(dialer Dialer, announce string, announceList [][]string, trackerInfoChan chan *TrackerResponse, reports chan ClientStatusReport) {
 	if announce != "" && announceList == nil {
 		// Convert the plain announce into an announceList to simplify logic
 		announceList = [][]string{[]string{announce}}
@@ -61,7 +61,7 @@ func startTrackerClient(announce string, announceList [][]string, trackerInfoCha
 
 	go func() {
 		for report := range recentReports {
-			tr := queryTrackers(announceList, report)
+			tr := queryTrackers(dialer, announceList, report)
 			if tr != nil {
 				trackerInfoChan <- tr
 			}
@@ -88,11 +88,11 @@ func shuffleAnnounceListLevel(level []string) (shuffled []string) {
 	return
 }
 
-func queryTrackers(announceList [][]string, report ClientStatusReport) (tr *TrackerResponse) {
+func queryTrackers(dialer Dialer, announceList [][]string, report ClientStatusReport) (tr *TrackerResponse) {
 	for _, level := range announceList {
 		for i, tracker := range level {
 			var err error
-			tr, err = queryTracker(report, tracker)
+			tr, err = queryTracker(dialer, report, tracker)
 			if err == nil {
 				// Move successful tracker to front of slice for next announcement
 				// cycle.
@@ -106,7 +106,7 @@ func queryTrackers(announceList [][]string, report ClientStatusReport) (tr *Trac
 	return
 }
 
-func queryTracker(report ClientStatusReport, trackerUrl string) (tr *TrackerResponse, err error) {
+func queryTracker(dialer Dialer, report ClientStatusReport, trackerUrl string) (tr *TrackerResponse, err error) {
 	u, err := url.Parse(trackerUrl)
 	if err != nil {
 		log.Println("Error: Invalid announce URL(", trackerUrl, "):", err)
@@ -116,7 +116,7 @@ func queryTracker(report ClientStatusReport, trackerUrl string) (tr *TrackerResp
 	case "http":
 		fallthrough
 	case "https":
-		return queryHTTPTracker(report, u)
+		return queryHTTPTracker(dialer, report, u)
 	case "udp":
 		return queryUDPTracker(report, u)
 	default:
@@ -126,7 +126,7 @@ func queryTracker(report ClientStatusReport, trackerUrl string) (tr *TrackerResp
 	}
 }
 
-func queryHTTPTracker(report ClientStatusReport, u *url.URL) (tr *TrackerResponse, err error) {
+func queryHTTPTracker(dialer Dialer, report ClientStatusReport, u *url.URL) (tr *TrackerResponse, err error) {
 	uq := u.Query()
 	uq.Add("info_hash", report.InfoHash)
 	uq.Add("peer_id", report.PeerId)
@@ -155,7 +155,7 @@ func queryHTTPTracker(report ClientStatusReport, u *url.URL) (tr *TrackerRespons
 
 	u.RawQuery = uq.Encode()
 
-	tr, err = getTrackerInfo(u.String())
+	tr, err = getTrackerInfo(dialer, u.String())
 	if tr == nil || err != nil {
 		log.Println("Error: Could not fetch tracker info:", err)
 	} else if tr.FailureReason != "" {

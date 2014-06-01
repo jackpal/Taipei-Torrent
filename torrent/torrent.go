@@ -5,7 +5,6 @@ import (
 	"bytes"
 	"crypto/sha1"
 	"errors"
-	"flag"
 	"fmt"
 	"io"
 	"log"
@@ -55,18 +54,6 @@ const (
 	METADATA_DATA
 	METADATA_REJECT
 )
-
-// Should be overriden by flag. Not thread safe.
-var gateway string
-var useDHT bool
-var trackerLessMode bool
-
-func init() {
-	flag.BoolVar(&useDHT, "useDHT", false, "Use DHT to get peers.")
-	flag.BoolVar(&trackerLessMode, "trackerLessMode", false, "Do not get peers from the tracker. Good for "+
-		"testing the DHT mode.")
-	flag.StringVar(&gateway, "gateway", "", "IP Address of gateway.")
-}
 
 func peerId() string {
 	sid := "-tt" + strconv.Itoa(os.Getpid()) + "_" + strconv.FormatInt(rand.Int63(), 10)
@@ -129,8 +116,7 @@ func (a *ActivePiece) isComplete() bool {
 }
 
 type TorrentSession struct {
-	fileDir              string
-	seedRatio            float64
+	flags                *TorrentFlags
 	M                    *MetaInfo
 	si                   *SessionInfo
 	ti                   *TrackerResponse
@@ -157,10 +143,9 @@ type TorrentSession struct {
 	chokePolicyHeartbeat <-chan time.Time
 }
 
-func NewTorrentSession(fileDir string, torrent string, listenPort uint16, seedRatio float64) (ts *TorrentSession, err error) {
+func NewTorrentSession(flags *TorrentFlags, torrent string, listenPort uint16) (ts *TorrentSession, err error) {
 	t := &TorrentSession{
-		fileDir:              fileDir,
-		seedRatio:            seedRatio,
+		flags:                flags,
 		peers:                make(map[string]*peerState),
 		peerMessageChan:      make(chan peerMessage),
 		activePieces:         make(map[int]*ActivePiece),
@@ -170,11 +155,11 @@ func NewTorrentSession(fileDir string, torrent string, listenPort uint16, seedRa
 		chokePolicyHeartbeat: time.Tick(10 * time.Second),
 	}
 	fromMagnet := strings.HasPrefix(torrent, "magnet:")
-	t.M, err = GetMetaInfo(torrent)
+	t.M, err = GetMetaInfo(flags.Dial, torrent)
 	if err != nil {
 		return
 	}
-	dhtAllowed := useDHT && t.M.Info.Private == 0
+	dhtAllowed := flags.UseDHT && t.M.Info.Private == 0
 	if dhtAllowed {
 		// TODO: UPnP UDP port mapping.
 		cfg := dht.NewConfig()
@@ -228,11 +213,11 @@ func (t *TorrentSession) load() {
 	if t.M.Announce == "" {
 		t.trackerLessMode = true
 	} else {
-		t.trackerLessMode = trackerLessMode
+		t.trackerLessMode = t.flags.TrackerlessMode
 	}
 
 	ext := ".torrent"
-	dir := t.fileDir
+	dir := t.flags.FileDir
 	if len(t.M.Info.Files) != 0 {
 		torrentName := t.M.Info.Name
 		if torrentName == "" {
@@ -339,7 +324,7 @@ func (ts *TorrentSession) connectToPeer(peer string) {
 	if !ts.si.HaveTorrent && !ts.si.FromMagnet {
 		return
 	}
-	conn, err := proxyNetDial("tcp", peer)
+	conn, err := proxyNetDial(ts.flags.Dial, "tcp", peer)
 	if err != nil {
 		// log.Println("Failed to connect to", peer, err)
 		return
@@ -492,7 +477,7 @@ func (t *TorrentSession) DoTorrent() {
 		retrackerChan = time.Tick(20 * time.Second)
 		t.trackerInfoChan = make(chan *TrackerResponse)
 		t.trackerReportChan = make(chan ClientStatusReport)
-		startTrackerClient(t.M.Announce, t.M.AnnounceList, t.trackerInfoChan, t.trackerReportChan)
+		startTrackerClient(t.flags.Dial, t.M.Announce, t.M.AnnounceList, t.trackerInfoChan, t.trackerReportChan)
 	}
 
 	if t.si.UseDHT {
@@ -608,8 +593,8 @@ func (t *TorrentSession) DoTorrent() {
 			log.Println("Peers:", len(t.peers), "downloaded:", t.si.Downloaded,
 				"uploaded:", t.si.Uploaded, "ratio", ratio)
 			log.Println("good, total", t.goodPieces, t.totalPieces)
-			if t.goodPieces == t.totalPieces && ratio >= t.seedRatio {
-				log.Println("Achieved target seed ratio", t.seedRatio)
+			if t.goodPieces == t.totalPieces && ratio >= t.flags.SeedRatio {
+				log.Println("Achieved target seed ratio", t.flags.SeedRatio)
 				return
 			}
 			if len(t.peers) < TARGET_NUM_PEERS && (t.totalPieces == 0 || t.goodPieces < t.totalPieces) {

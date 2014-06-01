@@ -413,7 +413,12 @@ func testHelperProcessImp(args []string) (err error) {
 		}
 		var seedRatio float64
 		seedRatio, err = strconv.ParseFloat(seedRatioStr, 64)
-		err = torrent.RunTorrents(int(port), fileDir, seedRatio, torrentFiles)
+		torrentFlags := torrent.TorrentFlags{
+			Port:      int(port),
+			FileDir:   fileDir,
+			SeedRatio: seedRatio,
+		}
+		err = torrent.RunTorrents(&torrentFlags, torrentFiles)
 		if err != nil {
 			return
 		}

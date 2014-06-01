@@ -2,18 +2,33 @@ package torrent
 
 import (
 	"encoding/hex"
-	"flag"
 	"log"
+	"net"
 	"os"
 	"os/signal"
 )
 
-var (
-	useLPD = flag.Bool("useLPD", false, "Use Local Peer Discovery")
-)
+type Dialer func(network, addr string) (net.Conn, error)
 
-func RunTorrents(port int, fileDir string, seedRatio float64, torrentFiles []string) (err error) {
-	conChan, listenPort, err := ListenForPeerConnections(port)
+type TorrentFlags struct {
+	Port            int
+	FileDir         string
+	SeedRatio       float64
+	UseLPD          bool
+	UseDHT          bool
+	UseUPnP         bool
+	UseNATPMP       bool
+	TrackerlessMode bool
+
+	// The dial function to use. Nil means use net.Dial
+	Dial Dialer
+
+	// IP address of gateway
+	Gateway string
+}
+
+func RunTorrents(flags *TorrentFlags, torrentFiles []string) (err error) {
+	conChan, listenPort, err := ListenForPeerConnections(flags)
 	if err != nil {
 		log.Println("Couldn't listen for peers connection: ", err)
 		return
@@ -26,7 +41,7 @@ func RunTorrents(port int, fileDir string, seedRatio float64, torrentFiles []str
 
 	for _, torrentFile := range torrentFiles {
 		var ts *TorrentSession
-		ts, err = NewTorrentSession(fileDir, torrentFile, uint16(listenPort), seedRatio)
+		ts, err = NewTorrentSession(flags, torrentFile, uint16(listenPort))
 		if err != nil {
 			log.Println("Could not create torrent session.", err)
 			return
@@ -43,7 +58,7 @@ func RunTorrents(port int, fileDir string, seedRatio float64, torrentFiles []str
 	}
 
 	lpd := &Announcer{}
-	if *useLPD {
+	if flags.UseLPD {
 		lpd = startLPD(torrentSessions, uint16(listenPort))
 	}
 
