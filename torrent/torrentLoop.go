@@ -23,7 +23,7 @@ type TorrentFlags struct {
 	// The dial function to use. Nil means use net.Dial
 	Dial Dialer
 
-	// IP address of gateway
+	// IP address of gateway used for NAT-PMP
 	Gateway string
 }
 
