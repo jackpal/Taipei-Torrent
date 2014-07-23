@@ -1168,7 +1168,7 @@ func (t *TorrentSession) DoMetadata(msg []byte, p *peerState) {
 		actual := string(sha.Sum(nil))
 		if actual != t.M.InfoHash {
 			log.Println("Invalid metadata")
-			log.Printf("Expected %s, got %s\n", t.M.InfoHash, actual)
+			log.Printf("Expected %x, got %x\n", t.M.InfoHash, actual)
 		}
 
 		metadata := string(b)
