@@ -20,29 +20,31 @@ var (
 	createTorrent = flag.String("createTorrent", "", "If not empty, creates a torrent file from the given root. Writes to stdout")
 	createTracker = flag.String("createTracker", "", "Creates a tracker serving the given torrent file on the given address. Example --createTracker=:8080 to serve on port 8080.")
 
-	port            = flag.Int("port", 7777, "Port to listen on. 0 means pick random port. Note that 6881 is blacklisted by some trackers.")
-	fileDir         = flag.String("fileDir", ".", "path to directory where files are stored")
-	seedRatio       = flag.Float64("seedRatio", math.Inf(0), "Seed until ratio >= this value before quitting.")
-	useLPD          = flag.Bool("useLPD", false, "Use Local Peer Discovery")
-	useUPnP         = flag.Bool("useUPnP", false, "Use UPnP to open port in firewall.")
-	useNATPMP       = flag.Bool("useNATPMP", false, "Use NAT-PMP to open port in firewall.")
-	gateway         = flag.String("gateway", "", "IP Address of gateway.")
-	useDHT          = flag.Bool("useDHT", false, "Use DHT to get peers.")
-	trackerlessMode = flag.Bool("trackerlessMode", false, "Do not get peers from the tracker. Good for testing DHT mode.")
-	proxyAddress    = flag.String("proxyAddress", "", "Address of a SOCKS5 proxy to use.")
+	port                = flag.Int("port", 7777, "Port to listen on. 0 means pick random port. Note that 6881 is blacklisted by some trackers.")
+	fileDir             = flag.String("fileDir", ".", "path to directory where files are stored")
+	seedRatio           = flag.Float64("seedRatio", math.Inf(0), "Seed until ratio >= this value before quitting.")
+	useDeadlockDetector = flag.Bool("useDeadlockDetector", false, "Panic and print stack dumps when the program is stuck.")
+	useLPD              = flag.Bool("useLPD", false, "Use Local Peer Discovery")
+	useUPnP             = flag.Bool("useUPnP", false, "Use UPnP to open port in firewall.")
+	useNATPMP           = flag.Bool("useNATPMP", false, "Use NAT-PMP to open port in firewall.")
+	gateway             = flag.String("gateway", "", "IP Address of gateway.")
+	useDHT              = flag.Bool("useDHT", false, "Use DHT to get peers.")
+	trackerlessMode     = flag.Bool("trackerlessMode", false, "Do not get peers from the tracker. Good for testing DHT mode.")
+	proxyAddress        = flag.String("proxyAddress", "", "Address of a SOCKS5 proxy to use.")
 )
 
 func parseTorrentFlags() *torrent.TorrentFlags {
 	return &torrent.TorrentFlags{
-		Dial:            dialerFromFlags(),
-		Port:            *port,
-		FileDir:         *fileDir,
-		SeedRatio:       *seedRatio,
-		UseLPD:          *useLPD,
-		UseDHT:          *useDHT,
-		UseUPnP:         *useUPnP,
-		UseNATPMP:       *useNATPMP,
-		TrackerlessMode: *trackerlessMode,
+		Dial:                dialerFromFlags(),
+		Port:                *port,
+		FileDir:             *fileDir,
+		SeedRatio:           *seedRatio,
+		UseDeadlockDetector: *useDeadlockDetector,
+		UseLPD:              *useLPD,
+		UseDHT:              *useDHT,
+		UseUPnP:             *useUPnP,
+		UseNATPMP:           *useNATPMP,
+		TrackerlessMode:     *trackerlessMode,
 		// IP address of gateway
 		Gateway: *gateway,
 	}

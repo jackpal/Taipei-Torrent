@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"bytes"
 	"fmt"
-	"github.com/jackpal/Taipei-Torrent/torrent"
 	"io"
 	"io/ioutil"
 	"log"
@@ -15,6 +14,8 @@ import (
 	"strconv"
 	"testing"
 	"time"
+
+	"github.com/jackpal/Taipei-Torrent/torrent"
 )
 
 func TestScrapeURL(t *testing.T) {

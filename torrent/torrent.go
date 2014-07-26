@@ -464,7 +464,9 @@ func (t *TorrentSession) Shutdown() (err error) {
 
 func (t *TorrentSession) DoTorrent() {
 	t.heartbeat = make(chan bool, 1)
-	go t.deadlockDetector()
+	if t.flags.UseDeadlockDetector {
+		go t.deadlockDetector()
+	}
 	log.Println("Fetching torrent.")
 	heartbeatChan := time.Tick(1 * time.Second)
 	keepAliveChan := time.Tick(60 * time.Second)

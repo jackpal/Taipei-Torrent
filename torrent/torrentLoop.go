@@ -11,14 +11,15 @@ import (
 type Dialer func(network, addr string) (net.Conn, error)
 
 type TorrentFlags struct {
-	Port            int
-	FileDir         string
-	SeedRatio       float64
-	UseLPD          bool
-	UseDHT          bool
-	UseUPnP         bool
-	UseNATPMP       bool
-	TrackerlessMode bool
+	Port                int
+	FileDir             string
+	SeedRatio           float64
+	UseDeadlockDetector bool
+	UseLPD              bool
+	UseDHT              bool
+	UseUPnP             bool
+	UseNATPMP           bool
+	TrackerlessMode     bool
 
 	// The dial function to use. Nil means use net.Dial
 	Dial Dialer
