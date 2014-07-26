@@ -2,15 +2,16 @@ package main
 
 import (
 	"flag"
-	"github.com/hailiang/gosocks"
-	"github.com/jackpal/Taipei-Torrent/torrent"
-	"github.com/jackpal/Taipei-Torrent/tracker"
 	"log"
 	"math"
 	"os"
 	"os/signal"
 	"path"
 	"runtime/pprof"
+
+	socks "github.com/hailiang/gosocks"
+	"github.com/jackpal/Taipei-Torrent/torrent"
+	"github.com/jackpal/Taipei-Torrent/tracker"
 )
 
 var (
