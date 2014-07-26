@@ -587,7 +587,9 @@ func (t *TorrentSession) DoTorrent() {
 				t.ClosePeer(peer)
 			}
 		case <-heartbeatChan:
-			t.heartbeat <- true
+			if t.flags.UseDeadlockDetector {
+				t.heartbeat <- true
+			}
 			ratio := float64(0.0)
 			if t.si.Downloaded > 0 {
 				ratio = float64(t.si.Uploaded) / float64(t.si.Downloaded)
