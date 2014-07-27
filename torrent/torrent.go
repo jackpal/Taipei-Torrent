@@ -815,7 +815,7 @@ func (t *TorrentSession) RecordBlock(p *peerState, piece, begin, length uint32) 
 			}
 			for _, p := range t.peers {
 				if p.have != nil {
-					if p.have.IsSet(int(piece)) {
+					if int(piece) < p.have.n && p.have.IsSet(int(piece)) {
 						// We don't do anything special. We rely on the caller
 						// to decide if this peer is still interesting.
 					} else {
