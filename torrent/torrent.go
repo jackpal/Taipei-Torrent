@@ -718,8 +718,11 @@ func (t *TorrentSession) ChoosePiece(p *peerState) (piece int) {
 	return
 }
 
+// checkRange returns the first piece in range start..end that is not in the
+// torrent's pieceSet but is in the peer's pieceSet.
 func (t *TorrentSession) checkRange(p *peerState, start, end int) (piece int) {
-	for i := start; i < end; i++ {
+	clampedEnd := min(end, min(p.have.n, t.pieceSet.n))
+	for i := start; i < clampedEnd; i++ {
 		if (!t.pieceSet.IsSet(i)) && p.have.IsSet(i) {
 			if _, ok := t.activePieces[i]; !ok {
 				return i
@@ -1223,4 +1226,11 @@ func (t *TorrentSession) isInteresting(p *peerState) bool {
 		}
 	}
 	return false
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
