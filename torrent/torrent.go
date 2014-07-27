@@ -184,29 +184,29 @@ func NewTorrentSession(flags *TorrentFlags, torrent string, listenPort uint16) (
 	t.setHeader()
 
 	if !t.si.FromMagnet {
-		t.load()
+		err = t.load()
 	}
 	return t, err
 }
 
-func (t *TorrentSession) reload(metadata string) {
+func (t *TorrentSession) reload(metadata string) (err error) {
 	var info InfoDict
-	err := bencode.Unmarshal(bytes.NewReader([]byte(metadata)), &info)
+	err = bencode.Unmarshal(bytes.NewReader([]byte(metadata)), &info)
 	if err != nil {
 		log.Println("Error when reloading torrent: ", err)
 		return
 	}
 
 	t.M.Info = info
-	t.load()
+	err = t.load()
+	return
 }
 
-func (t *TorrentSession) load() {
-	var err error
-
+func (t *TorrentSession) load() (err error) {
 	log.Printf("Tracker: %v, Comment: %v, InfoHash: %x, Encoding: %v, Private: %v",
 		t.M.AnnounceList, t.M.Comment, t.M.InfoHash, t.M.Encoding, t.M.Info.Private)
 	if e := t.M.Encoding; e != "" && e != "UTF-8" {
+		err = fmt.Errorf("Unknown encoding %v", e)
 		return
 	}
 
@@ -241,6 +241,11 @@ func (t *TorrentSession) load() {
 	if err != nil {
 		return
 	}
+
+	if t.M.Info.PieceLength == 0 {
+		err = fmt.Errorf("Bad PieceLength: %v", t.M.Info.PieceLength)
+		return
+	}
 	t.lastPieceLength = int(t.totalSize % t.M.Info.PieceLength)
 	if t.lastPieceLength == 0 { // last piece is a full piece
 		t.lastPieceLength = int(t.M.Info.PieceLength)
@@ -266,6 +271,7 @@ func (t *TorrentSession) load() {
 	log.Println("Good pieces:", good, "Bad pieces:", bad, "Bytes left:", left)
 
 	t.si.HaveTorrent = true
+	return
 }
 
 func (t *TorrentSession) pieceLength(piece int) int {
