@@ -2,9 +2,7 @@ package tracker
 
 import (
 	"bytes"
-	bencode "code.google.com/p/bencode-go"
 	"fmt"
-	"github.com/jackpal/Taipei-Torrent/torrent"
 	"log"
 	"math/rand"
 	"net"
@@ -17,6 +15,9 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	bencode "code.google.com/p/bencode-go"
+	"github.com/jackpal/Taipei-Torrent/torrent"
 )
 
 type Tracker struct {

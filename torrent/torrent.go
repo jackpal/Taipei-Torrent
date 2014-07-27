@@ -464,7 +464,9 @@ func (t *TorrentSession) Shutdown() (err error) {
 
 func (t *TorrentSession) DoTorrent() {
 	t.heartbeat = make(chan bool, 1)
-	go t.deadlockDetector()
+	if t.flags.UseDeadlockDetector {
+		go t.deadlockDetector()
+	}
 	log.Println("Fetching torrent.")
 	heartbeatChan := time.Tick(1 * time.Second)
 	keepAliveChan := time.Tick(60 * time.Second)
@@ -585,7 +587,9 @@ func (t *TorrentSession) DoTorrent() {
 				t.ClosePeer(peer)
 			}
 		case <-heartbeatChan:
-			t.heartbeat <- true
+			if t.flags.UseDeadlockDetector {
+				t.heartbeat <- true
+			}
 			ratio := float64(0.0)
 			if t.si.Downloaded > 0 {
 				ratio = float64(t.si.Uploaded) / float64(t.si.Downloaded)
@@ -1168,7 +1172,7 @@ func (t *TorrentSession) DoMetadata(msg []byte, p *peerState) {
 		actual := string(sha.Sum(nil))
 		if actual != t.M.InfoHash {
 			log.Println("Invalid metadata")
-			log.Printf("Expected %s, got %s\n", t.M.InfoHash, actual)
+			log.Printf("Expected %x, got %x\n", t.M.InfoHash, actual)
 		}
 
 		metadata := string(b)
