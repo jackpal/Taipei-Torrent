@@ -270,6 +270,16 @@ func (t *TorrentSession) load() (err error) {
 
 	log.Println("Good pieces:", good, "Bad pieces:", bad, "Bytes left:", left)
 
+	// Enlarge any existing peers piece maps
+	for _, p := range t.peers {
+		if p.have.n != t.totalPieces {
+			if p.have.n != 0 {
+				panic("Expected p.have.n == 0")
+			}
+			p.have = NewBitset(t.totalPieces)
+		}
+	}
+
 	t.si.HaveTorrent = true
 	return
 }
@@ -410,6 +420,10 @@ func (t *TorrentSession) addPeerImp(btconn *btConn) {
 
 	// By default, a peer has no pieces. If it has pieces, it should send
 	// a BITFIELD message as a first message
+	// If the torrent has not been received yet, t.totalPieces will be 0, and
+	// the "have" map will have to be enlarged later when t.totalPieces is
+	// learned.
+
 	ps.have = NewBitset(t.totalPieces)
 
 	t.peers[peer] = ps
