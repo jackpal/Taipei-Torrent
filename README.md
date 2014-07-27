@@ -34,7 +34,7 @@ A: See the LICENSE file.
 Current Status
 --------------
 
-+ Tested on Go 1.2 and 1.3 release candidate
++ Tested on Go 1.3
 + Tested on Windows, Linux and Mac OS X.
 + People tell me they've run it on Android, too.
 
