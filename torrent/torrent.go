@@ -18,7 +18,7 @@ import (
 	"strings"
 	"time"
 
-	bencode "code.google.com/p/bencode-go"
+	bencode "github.com/jackpal/bencode-go"
 	"github.com/nictuku/dht"
 	"github.com/nictuku/nettools"
 )

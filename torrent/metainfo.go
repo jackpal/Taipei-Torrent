@@ -13,7 +13,7 @@ import (
 	"path"
 	"strings"
 
-	bencode "code.google.com/p/bencode-go"
+	bencode "github.com/jackpal/bencode-go"
 	"github.com/nictuku/dht"
 )
 

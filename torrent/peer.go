@@ -7,7 +7,7 @@ import (
 	"net"
 	"time"
 
-	bencode "code.google.com/p/bencode-go"
+	bencode "github.com/jackpal/bencode-go"
 )
 
 const MAX_OUR_REQUESTS = 2

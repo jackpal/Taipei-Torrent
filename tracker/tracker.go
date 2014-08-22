@@ -16,8 +16,8 @@ import (
 	"sync"
 	"time"
 
-	bencode "code.google.com/p/bencode-go"
 	"github.com/jackpal/Taipei-Torrent/torrent"
+	bencode "github.com/jackpal/bencode-go"
 )
 
 type Tracker struct {
