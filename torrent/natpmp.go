@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"net"
 
-	natpmp "code.google.com/p/go-nat-pmp"
+	natpmp "github.com/jackpal/go-nat-pmp"
 )
 
 // Adapt the NAT-PMP protocol to the NAT interface
