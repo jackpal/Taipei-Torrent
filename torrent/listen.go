@@ -19,8 +19,8 @@ type btConn struct {
 // listenForPeerConnections listens on a TCP port for incoming connections and
 // demuxes them to the appropriate active torrentSession based on the InfoHash
 // in the header.
-func ListenForPeerConnections(flags *TorrentFlags) (conChan chan *btConn, listenPort int, err error) {
-	listener, listenPort, err := CreateListener(flags)
+func ListenForPeerConnections(flags *TorrentFlags) (conChan chan *btConn, listener net.Listener, listenPort int, err error) {
+	listener, listenPort, err = CreateListener(flags)
 	if err != nil {
 		return
 	}
@@ -35,6 +35,10 @@ func ListenForPeerConnections(flags *TorrentFlags) (conChan chan *btConn, listen
 			var conn net.Conn
 			conn, err := listener.Accept()
 			if err != nil {
+				// https://code.google.com/p/go/issues/detail?id=4373
+				if err.Error() == "use of closed network connection" {
+					return
+				}
 				log.Println("Listener accept failed:", err)
 				continue
 			}

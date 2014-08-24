@@ -116,6 +116,7 @@ func (a *ActivePiece) isComplete() bool {
 }
 
 type TorrentSession struct {
+	Done                 chan bool
 	flags                *TorrentFlags
 	M                    *MetaInfo
 	si                   *SessionInfo
@@ -139,6 +140,7 @@ type TorrentSession struct {
 	quit                 chan bool
 	trackerLessMode      bool
 	torrentFile          string
+	TorrentFile          string
 	chokePolicy          ChokePolicy
 	chokePolicyHeartbeat <-chan time.Time
 }
@@ -151,6 +153,7 @@ func NewTorrentSession(flags *TorrentFlags, torrent string, listenPort uint16) (
 		activePieces:         make(map[int]*ActivePiece),
 		quit:                 make(chan bool),
 		torrentFile:          torrent,
+		TorrentFile:          torrent,
 		chokePolicy:          &ClassicChokePolicy{},
 		chokePolicyHeartbeat: time.Tick(10 * time.Second),
 	}
@@ -337,12 +340,13 @@ func (ts *TorrentSession) mightAcceptPeer(peer string) bool {
 }
 
 func (ts *TorrentSession) connectToPeer(peer string) {
+	log.Println("Trying to contact", peer)
 	if !ts.si.HaveTorrent && !ts.si.FromMagnet {
 		return
 	}
 	conn, err := proxyNetDial(ts.flags.Dial, "tcp", peer)
 	if err != nil {
-		// log.Println("Failed to connect to", peer, err)
+		log.Println("Failed to connect to", peer, err)
 		return
 	}
 
@@ -353,7 +357,9 @@ func (ts *TorrentSession) connectToPeer(peer string) {
 	}
 
 	theirheader, err := readHeader(conn)
+
 	if err != nil {
+		log.Println("error reading their header", err)
 		return
 	}
 
@@ -366,7 +372,7 @@ func (ts *TorrentSession) connectToPeer(peer string) {
 		id:       id,
 		conn:     conn,
 	}
-	// log.Println("Connected to", peer)
+	log.Println("Connected to", peer)
 	ts.AddPeer(btconn)
 }
 
@@ -456,7 +462,11 @@ func (t *TorrentSession) deadlockDetector() {
 	lastHeartbeat := time.Now()
 	for {
 		select {
-		case <-t.heartbeat:
+		case _, ok := <-t.heartbeat:
+			if ok == false {
+				// channel closed
+				return
+			}
 			lastHeartbeat = time.Now()
 		case <-time.After(15 * time.Second):
 			age := time.Now().Sub(lastHeartbeat)
@@ -484,6 +494,7 @@ func (t *TorrentSession) Shutdown() (err error) {
 
 func (t *TorrentSession) DoTorrent() {
 	t.heartbeat = make(chan bool, 1)
+	t.Done = make(chan bool)
 	if t.flags.UseDeadlockDetector {
 		go t.deadlockDetector()
 	}
@@ -652,6 +663,7 @@ func (t *TorrentSession) DoTorrent() {
 
 		case <-t.quit:
 			log.Println("Quitting torrent session")
+			close(t.heartbeat)
 			return
 		}
 	}
@@ -825,6 +837,7 @@ func (t *TorrentSession) RecordBlock(p *peerState, piece, begin, length uint32) 
 			log.Println("Have", t.goodPieces, "of", t.totalPieces,
 				"pieces", percentComplete, "% complete.")
 			if t.goodPieces == t.totalPieces {
+				t.Done <- true
 				if !t.trackerLessMode {
 					t.fetchTrackerInfo("completed")
 				}

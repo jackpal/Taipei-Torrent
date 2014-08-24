@@ -3,7 +3,7 @@
 set -e
 echo "Building..."
 go clean
-go build -race
+go build -race -o Taipei-Torrent
 echo "Running unit tests..."
 cd torrent
 go test -race

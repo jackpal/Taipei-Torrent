@@ -15,7 +15,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jackpal/Taipei-Torrent/torrent"
+	"github.com/remerge/torrent/torrent"
 )
 
 func TestScrapeURL(t *testing.T) {

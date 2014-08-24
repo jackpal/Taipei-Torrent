@@ -13,7 +13,7 @@ import (
 var (
 	request_template = "BT-SEARCH * HTTP/1.1\r\n" +
 		"Host: 239.192.152.143:6771\r\n" +
-		"Port: %u\r\n" +
+		"Port: %d\r\n" +
 		"Infohash: %X\r\n\r\n"
 )
 

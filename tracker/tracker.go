@@ -16,7 +16,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/jackpal/Taipei-Torrent/torrent"
+	"github.com/remerge/torrent/torrent"
 	bencode "github.com/jackpal/bencode-go"
 )
 

@@ -10,8 +10,8 @@ import (
 	"runtime/pprof"
 
 	socks "github.com/hailiang/gosocks"
-	"github.com/jackpal/Taipei-Torrent/torrent"
-	"github.com/jackpal/Taipei-Torrent/tracker"
+	"github.com/remerge/torrent/torrent"
+	"github.com/remerge/torrent/tracker"
 )
 
 var (

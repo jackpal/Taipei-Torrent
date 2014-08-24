@@ -29,7 +29,7 @@ type TorrentFlags struct {
 }
 
 func RunTorrents(flags *TorrentFlags, torrentFiles []string) (err error) {
-	conChan, listenPort, err := ListenForPeerConnections(flags)
+	conChan, _, listenPort, err := ListenForPeerConnections(flags)
 	if err != nil {
 		log.Println("Couldn't listen for peers connection: ", err)
 		return

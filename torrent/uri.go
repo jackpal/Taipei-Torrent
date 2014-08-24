@@ -63,7 +63,6 @@ func parseMagnet(s string) (Magnet, error) {
 	if ok {
 		trackers = [][]string{tr}
 	}
-	fmt.Println("Trackers: ", trackers)
 
 	return Magnet{InfoHashes: infoHashes, Names: names, Trackers: trackers}, nil
 }

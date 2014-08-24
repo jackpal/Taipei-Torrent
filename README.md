@@ -56,7 +56,7 @@ Download, Install, and Build Instructions
 2. Use the "go" command to download, install, and build the Taipei-Torrent
 app:
 
-    go get github.com/jackpal/Taipei-Torrent
+    go get github.com/remerge/torrent
 
 Usage Instructions
 ------------------
