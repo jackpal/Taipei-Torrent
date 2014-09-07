@@ -532,7 +532,7 @@ func (t *TorrentSession) DoTorrent() {
 					}
 				}
 			}
-			logPrintln("Contacting", newPeerCount, "new peers")
+			log.Debugf("contacting %d new peers", newPeerCount)
 
 			interval := t.ti.Interval
 			minInterval := uint(120)
@@ -542,7 +542,7 @@ func (t *TorrentSession) DoTorrent() {
 			} else if interval > maxInterval {
 				interval = maxInterval
 			}
-			logPrintln("..checking again in", interval, "seconds.")
+			log.Debugf("..checking again in", interval, "seconds.")
 			retrackerChan = time.Tick(time.Duration(interval) * time.Second)
 
 		case pm := <-t.peerMessageChan:
@@ -594,7 +594,7 @@ func (t *TorrentSession) DoTorrent() {
 			}
 
 		case <-t.quit:
-			logPrintln("Quitting torrent session")
+			log.Debugf("quitting torrent session")
 			close(t.heartbeat)
 			return
 		}
@@ -602,7 +602,7 @@ func (t *TorrentSession) DoTorrent() {
 }
 
 func (t *TorrentSession) chokePeers() (err error) {
-	log.Infof("Choking peers")
+	log.Debugf("choking peers")
 	peers := t.peers
 	chokers := make([]Choker, 0, len(peers))
 	for _, peer := range peers {

@@ -443,7 +443,7 @@ func (t *trackerTorrent) handleAnnounce(now time.Time, peerListenAddress *net.TC
 			id:         params.peerID,
 		}
 		t.peers[peerKey] = peer
-		log.Infof("Peer %s joined", peerKey)
+		log.Debugf("peer %s joined", peerKey)
 	}
 	peer.lastSeen = now
 	peer.uploaded = params.uploaded
@@ -451,17 +451,17 @@ func (t *trackerTorrent) handleAnnounce(now time.Time, peerListenAddress *net.TC
 	peer.left = params.left
 	switch params.event {
 	default:
-		log.Warningf("Peer %s Unknown event %s", peerKey, params.event)
+		log.Warningf("peer %s sent unknown event %s", peerKey, params.event)
 	case "":
 	case "started":
 		// do nothing
 	case "completed":
 		t.downloaded++
-		log.Infof("Peer %s completed. Total completions %d", peerKey, t.downloaded)
+		log.Debugf("peer %s completed. total completions %d", peerKey, t.downloaded)
 	case "stopped":
 		// This client is reporting that they have stopped. Drop them from the peer table.
 		// And don't send any peers, since they won't need them.
-		log.Infof("Peer %s stopped", peerKey)
+		log.Debugf("peer %s stopped", peerKey)
 		delete(t.peers, peerKey)
 		params.numWant = 0
 	}
