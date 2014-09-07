@@ -112,6 +112,18 @@ func (a *ActivePiece) isComplete() bool {
 	return true
 }
 
+type Dialer func(network, addr string) (net.Conn, error)
+
+type TorrentFlags struct {
+	Port                int
+	FileDir             string
+	SeedRatio           float64
+	UseDeadlockDetector bool
+
+	// The dial function to use. Nil means use net.Dial
+	Dial Dialer
+}
+
 type TorrentSession struct {
 	Done                 chan bool
 	flags                *TorrentFlags
@@ -134,7 +146,6 @@ type TorrentSession struct {
 	activePieces         map[int]*ActivePiece
 	heartbeat            chan bool
 	quit                 chan bool
-	trackerLessMode      bool
 	torrentFile          string
 	TorrentFile          string
 	chokePolicy          ChokePolicy
@@ -190,12 +201,6 @@ func (t *TorrentSession) load() (err error) {
 
 	if e := t.M.Encoding; e != "" && e != "UTF-8" {
 		return fmt.Errorf("Unknown encoding %v", e)
-	}
-
-	if t.M.Announce == "" {
-		t.trackerLessMode = true
-	} else {
-		t.trackerLessMode = t.flags.TrackerlessMode
 	}
 
 	ext := ".torrent"
@@ -469,16 +474,14 @@ func (t *TorrentSession) DoTorrent() {
 	var retrackerChan <-chan time.Time
 	t.hintNewPeerChan = make(chan string)
 	t.addPeerChan = make(chan *btConn)
-	if !t.trackerLessMode {
-		// Start out polling tracker every 20 seconds until we get a response.
-		// Maybe be exponential backoff here?
-		retrackerChan = time.Tick(20 * time.Second)
-		t.trackerInfoChan = make(chan *TrackerResponse)
-		t.trackerReportChan = make(chan ClientStatusReport)
-		startTrackerClient(t.flags.Dial, t.M.Announce, t.M.AnnounceList, t.trackerInfoChan, t.trackerReportChan)
-	}
+	// Start out polling tracker every 20 seconds until we get a response.
+	// Maybe be exponential backoff here?
+	retrackerChan = time.Tick(20 * time.Second)
+	t.trackerInfoChan = make(chan *TrackerResponse)
+	t.trackerReportChan = make(chan ClientStatusReport)
+	startTrackerClient(t.flags.Dial, t.M.Announce, t.M.AnnounceList, t.trackerInfoChan, t.trackerReportChan)
 
-	if !t.trackerLessMode && t.si.HaveTorrent {
+	if t.si.HaveTorrent {
 		t.fetchTrackerInfo("started")
 	}
 
@@ -493,47 +496,43 @@ func (t *TorrentSession) DoTorrent() {
 		case btconn := <-t.addPeerChan:
 			t.addPeerImp(btconn)
 		case <-retrackerChan:
-			if !t.trackerLessMode {
-				t.fetchTrackerInfo("")
-			}
+			t.fetchTrackerInfo("")
 		case ti := <-t.trackerInfoChan:
 			t.ti = ti
 			log.Debugf("torrent has %d seeders and %d leechers", t.ti.Complete, t.ti.Incomplete)
-			if !t.trackerLessMode {
-				newPeerCount := 0
-				{
-					peers := t.ti.Peers
-					if len(peers) > 0 {
-						const peerLen = 6
-						logPrintln("Tracker gave us", len(peers)/peerLen, "peers")
-						for i := 0; i < len(peers); i += peerLen {
-							peer := nettools.BinaryToDottedPort(peers[i : i+peerLen])
-							if t.mightAcceptPeer(peer) {
-								newPeerCount++
-								go t.connectToPeer(peer)
-							}
+			newPeerCount := 0
+			{
+				peers := t.ti.Peers
+				if len(peers) > 0 {
+					const peerLen = 6
+					logPrintln("Tracker gave us", len(peers)/peerLen, "peers")
+					for i := 0; i < len(peers); i += peerLen {
+						peer := nettools.BinaryToDottedPort(peers[i : i+peerLen])
+						if t.mightAcceptPeer(peer) {
+							newPeerCount++
+							go t.connectToPeer(peer)
 						}
 					}
 				}
-				{
-					peers6 := t.ti.Peers6
-					if len(peers6) > 0 {
-						const peerLen = 18
-						logPrintln("Tracker gave us", len(peers6)/peerLen, "IPv6 peers")
-						for i := 0; i < len(peers6); i += peerLen {
-							peerEntry := peers6[i : i+peerLen]
-							host := net.IP(peerEntry[0:16])
-							port := int((uint(peerEntry[16]) << 8) | uint(peerEntry[17]))
-							peer := net.JoinHostPort(host.String(), strconv.Itoa(port))
-							if t.mightAcceptPeer(peer) {
-								newPeerCount++
-								go t.connectToPeer(peer)
-							}
-						}
-					}
-				}
-				logPrintln("Contacting", newPeerCount, "new peers")
 			}
+			{
+				peers6 := t.ti.Peers6
+				if len(peers6) > 0 {
+					const peerLen = 18
+					logPrintln("Tracker gave us", len(peers6)/peerLen, "IPv6 peers")
+					for i := 0; i < len(peers6); i += peerLen {
+						peerEntry := peers6[i : i+peerLen]
+						host := net.IP(peerEntry[0:16])
+						port := int((uint(peerEntry[16]) << 8) | uint(peerEntry[17]))
+						peer := net.JoinHostPort(host.String(), strconv.Itoa(port))
+						if t.mightAcceptPeer(peer) {
+							newPeerCount++
+							go t.connectToPeer(peer)
+						}
+					}
+				}
+			}
+			logPrintln("Contacting", newPeerCount, "new peers")
 
 			interval := t.ti.Interval
 			minInterval := uint(120)
@@ -571,10 +570,8 @@ func (t *TorrentSession) DoTorrent() {
 				return
 			}
 			if len(t.peers) < TARGET_NUM_PEERS && (t.totalPieces == 0 || t.goodPieces < t.totalPieces) {
-				if !t.trackerLessMode {
-					if t.ti == nil || t.ti.Complete > 100 {
-						t.fetchTrackerInfo("")
-					}
+				if t.ti == nil || t.ti.Complete > 100 {
+					t.fetchTrackerInfo("")
 				}
 			}
 		case <-keepAliveChan:
@@ -773,9 +770,7 @@ func (t *TorrentSession) RecordBlock(p *peerState, piece, begin, length uint32) 
 				"pieces", percentComplete, "% complete.")
 			if t.goodPieces == t.totalPieces {
 				t.Done <- true
-				if !t.trackerLessMode {
-					t.fetchTrackerInfo("completed")
-				}
+				t.fetchTrackerInfo("completed")
 				// TODO: Drop connections to all seeders.
 			}
 			for _, p := range t.peers {
