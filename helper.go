@@ -1,7 +1,6 @@
 package torrent
 
 import (
-	"encoding/hex"
 	"fmt"
 	"io/ioutil"
 	"math"
@@ -24,7 +23,6 @@ type TorrentClient struct {
 	ListenPort int
 	DoneConn   chan *TorrentSession
 	Sessions   map[string]*TorrentSession
-	Announcer  *Announcer
 	quitChan   chan bool
 	listener   net.Listener
 }
@@ -41,18 +39,12 @@ func NewTorrentClient(dir string, port int) *TorrentClient {
 		panic(err)
 	}
 
-	announcer, err := NewAnnouncer(uint16(listenPort))
-	if err != nil {
-		panic(err)
-	}
-
 	tc := &TorrentClient{
 		DoneConn:   make(chan *TorrentSession),
 		Sessions:   make(map[string]*TorrentSession),
 		Flags:      flags,
 		listener:   listener,
 		ListenPort: listenPort,
-		Announcer:  announcer,
 		quitChan:   make(chan bool),
 	}
 
@@ -74,16 +66,6 @@ func NewTorrentClient(dir string, port int) *TorrentClient {
 				log.Infof("New bt connection for ih %x", c.Infohash)
 				if ts, ok := tc.Sessions[c.Infohash]; ok {
 					ts.AcceptNewPeer(c)
-				}
-			case announce := <-announcer.Announces:
-				hexhash, err := hex.DecodeString(announce.Infohash)
-				if err != nil {
-					logPrintln("Err with hex-decoding:", err)
-					break
-				}
-				if ts, ok := tc.Sessions[string(hexhash)]; ok {
-					log.Infof("Received LPD announce for ih %s", announce.Infohash)
-					ts.HintNewPeer(announce.Peer)
 				}
 			}
 		}
@@ -113,7 +95,6 @@ func (c *TorrentClient) Download(meta *MetaInfo) *TorrentSession {
 }
 
 func (c *TorrentClient) Unserve(session *TorrentSession) {
-	c.Announcer.StopAnnouncing(session.M.InfoHash)
 	err := session.Quit()
 	if err != nil {
 		panic(err)
@@ -129,8 +110,6 @@ func (c *TorrentClient) Serve(torrentfile string) *TorrentSession {
 
 	// fmt.Printf("Starting torrent session for %x\n", session.M.InfoHash)
 	c.Sessions[session.M.InfoHash] = session
-
-	c.Announcer.Announce(session.M.InfoHash)
 
 	go func() {
 		session.DoTorrent()

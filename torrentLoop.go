@@ -1,7 +1,6 @@
 package torrent
 
 import (
-	"encoding/hex"
 	"net"
 	"os"
 	"os/signal"
@@ -51,11 +50,6 @@ func RunTorrents(flags *TorrentFlags, torrentFiles []string) (err error) {
 		}(ts)
 	}
 
-	lpd := &Announcer{}
-	if flags.UseLPD {
-		lpd = startLPD(torrentSessions, uint16(listenPort))
-	}
-
 mainLoop:
 	for {
 		select {
@@ -78,16 +72,6 @@ mainLoop:
 			if ts, ok := torrentSessions[c.Infohash]; ok {
 				ts.AcceptNewPeer(c)
 			}
-		case announce := <-lpd.Announces:
-			hexhash, err := hex.DecodeString(announce.Infohash)
-			if err != nil {
-				logPrintln("Err with hex-decoding:", err)
-				break
-			}
-			if ts, ok := torrentSessions[string(hexhash)]; ok {
-				log.Infof("Received LPD announce for ih %s", announce.Infohash)
-				ts.HintNewPeer(announce.Peer)
-			}
 		}
 	}
 	return
@@ -97,17 +81,4 @@ func listenSigInt() chan os.Signal {
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt, os.Kill)
 	return c
-}
-
-func startLPD(torrentSessions map[string]*TorrentSession, listenPort uint16) (lpd *Announcer) {
-	lpd, err := NewAnnouncer(listenPort)
-	if err != nil {
-		logPrintln("Couldn't listen for Local Peer Discoveries: ", err)
-		return
-	} else {
-		for _, ts := range torrentSessions {
-			lpd.Announce(ts.M.InfoHash)
-		}
-	}
-	return
 }
