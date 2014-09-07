@@ -205,11 +205,11 @@ func (t *TorrentSession) reload(metadata string) (err error) {
 }
 
 func (t *TorrentSession) load() (err error) {
-	log.Infof("Tracker: %v, Comment: %v, InfoHash: %x, Encoding: %v, Private: %v",
+	log.Debugf("load session trackers=%v comment=%v hash=%x encoding=%v private=%v",
 		t.M.AnnounceList, t.M.Comment, t.M.InfoHash, t.M.Encoding, t.M.Info.Private)
+
 	if e := t.M.Encoding; e != "" && e != "UTF-8" {
-		err = fmt.Errorf("Unknown encoding %v", e)
-		return
+		return fmt.Errorf("Unknown encoding %v", e)
 	}
 
 	if t.M.Announce == "" {
@@ -256,7 +256,7 @@ func (t *TorrentSession) load() (err error) {
 	start := time.Now()
 	good, bad, pieceSet, err := checkPieces(t.fileStore, t.totalSize, t.M)
 	end := time.Now()
-	log.Infof("Computed missing pieces (%.2f seconds)", end.Sub(start).Seconds())
+	log.Debugf("computed missing pieces (%.2f seconds)", end.Sub(start).Seconds())
 	if err != nil {
 		return
 	}
@@ -270,7 +270,7 @@ func (t *TorrentSession) load() (err error) {
 	}
 	t.si.Left = left
 
-	logPrintln("Good pieces:", good, "Bad pieces:", bad, "Bytes left:", left)
+	log.Debugf("pieces good=%d bad=%d left=%d", good, bad, left)
 
 	// Enlarge any existing peers piece maps
 	for _, p := range t.peers {
@@ -295,7 +295,7 @@ func (t *TorrentSession) pieceLength(piece int) int {
 
 func (t *TorrentSession) fetchTrackerInfo(event string) {
 	m, si := t.M, t.si
-	logPrintln("Stats: Uploaded", si.Uploaded, "Downloaded", si.Downloaded, "Left", si.Left)
+	log.Debugf("stats: uploaded=%v downloaded=%v left=%v", si.Uploaded, si.Downloaded, si.Left)
 	t.trackerReportChan <- ClientStatusReport{
 		event, m.InfoHash, si.PeerId, si.Port, si.Uploaded, si.Downloaded, si.Left}
 }
@@ -497,7 +497,7 @@ func (t *TorrentSession) DoTorrent() {
 	if t.flags.UseDeadlockDetector {
 		go t.deadlockDetector()
 	}
-	logPrintln("Fetching torrent.")
+	log.Debugf("fetching torrent")
 	heartbeatChan := time.Tick(1 * time.Second)
 	keepAliveChan := time.Tick(60 * time.Second)
 	var retrackerChan <-chan time.Time
@@ -624,9 +624,8 @@ func (t *TorrentSession) DoTorrent() {
 			if t.si.Downloaded > 0 {
 				ratio = float64(t.si.Uploaded) / float64(t.si.Downloaded)
 			}
-			logPrintln("Peers:", len(t.peers), "downloaded:", t.si.Downloaded,
-				"uploaded:", t.si.Uploaded, "ratio", ratio)
-			logPrintln("good, total", t.goodPieces, t.totalPieces)
+			log.Debugf("peers=%d downloaded=%d uploaded=%d ratio=%f", len(t.peers), t.si.Downloaded, t.si.Uploaded, ratio)
+			log.Debugf("pieces good=%d total=%d", t.goodPieces, t.totalPieces)
 			if t.goodPieces == t.totalPieces && ratio >= t.flags.SeedRatio {
 				logPrintln("Achieved target seed ratio", t.flags.SeedRatio)
 				return

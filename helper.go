@@ -29,10 +29,6 @@ type TorrentClient struct {
 	listener   net.Listener
 }
 
-func NewTorrentClientDefault() *TorrentClient {
-	return NewTorrentClient("./data/", 8000)
-}
-
 func NewTorrentClient(dir string, port int) *TorrentClient {
 	flags := &TorrentFlags{
 		Port:      port,
@@ -172,7 +168,7 @@ func NewTorrentFor(filename string, tracker string) (*MetaInfo, string) {
 	if err != nil {
 		panic(err)
 	}
-	metaInfo.Announce = fmt.Sprintf("http://%s/announce")
+	metaInfo.Announce = fmt.Sprintf("http://%s/announce", tracker)
 	torrentFile := SaveTorrent(metaInfo)
 	return metaInfo, torrentFile
 }

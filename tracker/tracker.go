@@ -341,7 +341,7 @@ func (t *Tracker) Quit() (err error) {
 }
 
 func (t *Tracker) Register(infoHash, name string) (err error) {
-	log.Debugf("Register(%#v,%#v)", infoHash, name)
+	log.Debugf("register new torrent %s (%x)", name, infoHash)
 	t.m.Lock()
 	defer t.m.Unlock()
 	err = t.t.register(infoHash, name)
