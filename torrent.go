@@ -14,11 +14,9 @@ import (
 	"path"
 	"path/filepath"
 	"strconv"
-	"strings"
 	"time"
 
-	bencode "github.com/jackpal/bencode-go"
-	"github.com/nictuku/dht"
+	"github.com/jackpal/bencode-go"
 	"github.com/nictuku/nettools"
 )
 
@@ -135,7 +133,6 @@ type TorrentSession struct {
 	goodPieces           int
 	activePieces         map[int]*ActivePiece
 	heartbeat            chan bool
-	dht                  *dht.DHT
 	quit                 chan bool
 	trackerLessMode      bool
 	torrentFile          string
@@ -156,38 +153,21 @@ func NewTorrentSession(flags *TorrentFlags, torrent string, listenPort uint16) (
 		chokePolicy:          &ClassicChokePolicy{},
 		chokePolicyHeartbeat: time.Tick(10 * time.Second),
 	}
-	fromMagnet := strings.HasPrefix(torrent, "magnet:")
 	t.M, err = GetMetaInfo(flags.Dial, torrent)
 	if err != nil {
 		return
-	}
-	dhtAllowed := flags.UseDHT && t.M.Info.Private == 0
-	if dhtAllowed {
-		// TODO: UPnP UDP port mapping.
-		cfg := dht.NewConfig()
-		cfg.Port = int(listenPort)
-		cfg.NumTargetPeers = TARGET_NUM_PEERS
-		if t.dht, err = dht.New(cfg); err != nil {
-			logPrintln("DHT node creation error", err)
-			return
-		}
-		go t.dht.Run()
 	}
 
 	t.si = &SessionInfo{
 		PeerId:        peerId(),
 		Port:          listenPort,
-		UseDHT:        dhtAllowed,
-		FromMagnet:    fromMagnet,
 		HaveTorrent:   false,
 		ME:            &MetaDataExchange{},
 		OurExtensions: map[int]string{1: "ut_metadata"},
 	}
 	t.setHeader()
 
-	if !t.si.FromMagnet {
-		err = t.load()
-	}
+	err = t.load()
 	return t, err
 }
 
@@ -303,9 +283,6 @@ func (t *TorrentSession) fetchTrackerInfo(event string) {
 func (ts *TorrentSession) setHeader() {
 	header := make([]byte, 68)
 	copy(header, kBitTorrentHeader[0:])
-	if ts.si.UseDHT {
-		header[27] = header[27] | 0x01
-	}
 	// Support Extension Protocol (BEP-0010)
 	header[25] |= 0x10
 	copy(header[28:48], string2Bytes(ts.M.InfoHash))
@@ -330,7 +307,7 @@ func (ts *TorrentSession) hintNewPeerImp(peer string) {
 }
 
 func (ts *TorrentSession) mightAcceptPeer(peer string) bool {
-	if (ts.si.HaveTorrent || ts.si.FromMagnet) && len(ts.peers) < MAX_NUM_PEERS {
+	if ts.si.HaveTorrent && len(ts.peers) < MAX_NUM_PEERS {
 		if _, ok := ts.peers[peer]; !ok {
 			return true
 		}
@@ -340,7 +317,7 @@ func (ts *TorrentSession) mightAcceptPeer(peer string) bool {
 
 func (ts *TorrentSession) connectToPeer(peer string) {
 	logPrintln("Trying to contact", peer)
-	if !ts.si.HaveTorrent && !ts.si.FromMagnet {
+	if !ts.si.HaveTorrent {
 		return
 	}
 	conn, err := proxyNetDial(ts.flags.Dial, "tcp", peer)
@@ -389,7 +366,7 @@ func (t *TorrentSession) AddPeer(btconn *btConn) {
 }
 
 func (t *TorrentSession) addPeerImp(btconn *btConn) {
-	if !t.si.HaveTorrent && !t.si.FromMagnet {
+	if !t.si.HaveTorrent {
 		logPrintln("Rejecting peer because we don't have a torrent yet.")
 		btconn.conn.Close()
 		return
@@ -414,14 +391,6 @@ func (t *TorrentSession) addPeerImp(btconn *btConn) {
 	ps := NewPeerState(btconn.conn)
 	ps.address = peer
 	ps.id = btconn.id
-	if t.si.UseDHT {
-		// If 128, then it supports DHT.
-		if int(theirheader[7])&0x01 == 0x01 {
-			// It's OK if we know this node already. The DHT engine will
-			// ignore it accordingly.
-			go t.dht.AddNode(ps.address)
-		}
-	}
 
 	// By default, a peer has no pieces. If it has pieces, it should send
 	// a BITFIELD message as a first message
@@ -485,9 +454,6 @@ func (t *TorrentSession) Shutdown() (err error) {
 	for _, peer := range t.peers {
 		t.ClosePeer(peer)
 	}
-	if t.dht != nil {
-		t.dht.Stop()
-	}
 	return
 }
 
@@ -512,10 +478,6 @@ func (t *TorrentSession) DoTorrent() {
 		startTrackerClient(t.flags.Dial, t.M.Announce, t.M.AnnounceList, t.trackerInfoChan, t.trackerReportChan)
 	}
 
-	if t.si.UseDHT {
-		t.dht.PeersRequest(t.M.InfoHash, true)
-	}
-
 	if !t.trackerLessMode && t.si.HaveTorrent {
 		t.fetchTrackerInfo("started")
 	}
@@ -523,11 +485,6 @@ func (t *TorrentSession) DoTorrent() {
 	defer t.Shutdown()
 
 	for {
-		var peersRequestResults chan map[dht.InfoHash][]string
-		peersRequestResults = nil
-		if t.dht != nil {
-			peersRequestResults = t.dht.PeersRequestResults
-		}
 		select {
 		case <-t.chokePolicyHeartbeat:
 			t.chokePeers()
@@ -539,23 +496,6 @@ func (t *TorrentSession) DoTorrent() {
 			if !t.trackerLessMode {
 				t.fetchTrackerInfo("")
 			}
-		case dhtInfoHashPeers := <-peersRequestResults:
-			newPeerCount := 0
-			// key = infoHash. The torrent client currently only
-			// supports one download at a time, so let's assume
-			// it's the case.
-			for _, peers := range dhtInfoHashPeers {
-				for _, peer := range peers {
-					peer = dht.DecodePeerAddress(peer)
-					if t.mightAcceptPeer(peer) {
-						newPeerCount++
-						if t.si.HaveTorrent {
-							go t.connectToPeer(peer)
-						}
-					}
-				}
-			}
-			// logPrintln("Contacting", newPeerCount, "new peers (thanks DHT!)")
 		case ti := <-t.trackerInfoChan:
 			t.ti = ti
 			log.Debugf("torrent has %d seeders and %d leechers", t.ti.Complete, t.ti.Incomplete)
@@ -631,9 +571,6 @@ func (t *TorrentSession) DoTorrent() {
 				return
 			}
 			if len(t.peers) < TARGET_NUM_PEERS && (t.totalPieces == 0 || t.goodPieces < t.totalPieces) {
-				if t.si.UseDHT {
-					go t.dht.PeersRequest(t.M.InfoHash, true)
-				}
 				if !t.trackerLessMode {
 					if t.ti == nil || t.ti.Complete > 100 {
 						t.fetchTrackerInfo("")
@@ -1064,14 +1001,6 @@ func (t *TorrentSession) generalMessage(message []byte, p *peerState) (err error
 			return errors.New("Unexpected block length.")
 		}
 		p.CancelRequest(index, begin, length)
-	case PORT:
-		// TODO: Implement this message.
-		// We see peers sending us 16K byte messages here, so
-		// it seems that we don't understand what this is.
-		if len(message) != 3 {
-			return fmt.Errorf("Unexpected length for port message: %d", len(message))
-		}
-		go t.dht.AddNode(p.address)
 	case EXTENSION:
 		err := t.DoExtension(message[1:], p)
 		if err != nil {

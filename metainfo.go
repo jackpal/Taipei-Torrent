@@ -12,8 +12,7 @@ import (
 	"path"
 	"strings"
 
-	bencode "github.com/jackpal/bencode-go"
-	"github.com/nictuku/dht"
+	"github.com/jackpal/bencode-go"
 )
 
 type FileDict struct {
@@ -85,21 +84,6 @@ func GetMetaInfo(dialer Dialer, torrent string) (metaInfo *MetaInfo, err error) 
 			return nil, err
 		}
 		input = r.Body
-	} else if strings.HasPrefix(torrent, "magnet:") {
-		magnet, err := parseMagnet(torrent)
-		if err != nil {
-			logPrintln("Couldn't parse magnet: ", err)
-			return nil, err
-		}
-
-		ih, err := dht.DecodeInfoHash(magnet.InfoHashes[0])
-		if err != nil {
-			return nil, err
-		}
-
-		metaInfo = &MetaInfo{InfoHash: string(ih), AnnounceList: magnet.Trackers}
-		return metaInfo, err
-
 	} else {
 		if input, err = os.Open(torrent); err != nil {
 			return
@@ -506,8 +490,6 @@ type SessionInfo struct {
 	Downloaded uint64
 	Left       uint64
 
-	UseDHT      bool
-	FromMagnet  bool
 	HaveTorrent bool
 
 	OurExtensions map[int]string

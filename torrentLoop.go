@@ -15,16 +15,10 @@ type TorrentFlags struct {
 	SeedRatio           float64
 	UseDeadlockDetector bool
 	UseLPD              bool
-	UseDHT              bool
-	UseUPnP             bool
-	UseNATPMP           bool
 	TrackerlessMode     bool
 
 	// The dial function to use. Nil means use net.Dial
 	Dial Dialer
-
-	// IP address of gateway used for NAT-PMP
-	Gateway string
 }
 
 func RunTorrents(flags *TorrentFlags, torrentFiles []string) (err error) {
