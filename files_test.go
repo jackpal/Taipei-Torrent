@@ -18,7 +18,7 @@ type testFile struct {
 }
 
 var tests []testFile = []testFile{{
-	"../testData/testFile",
+	"testData/testFile",
 	8054,
 	// shasum testData/testFile | tr "[a-z]" "[A-Z]"
 	"BC6314A1D1D36EC6C0888AF9DBD3B5E826612ADA",

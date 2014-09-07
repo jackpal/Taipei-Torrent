@@ -29,7 +29,7 @@ clean:
 	rm -f $(OBJS)
 
 test:
-	cd torrent && $(GOTEST)
+	$(GOTEST)
 
 fmt:
 	$(GOFMT) .
