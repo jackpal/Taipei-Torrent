@@ -3,7 +3,6 @@ package torrent
 import (
 	"fmt"
 	"net"
-	"strconv"
 )
 
 // btConn wraps an incoming network connection and contains metadata that helps
@@ -60,66 +59,13 @@ func ListenForPeerConnections(flags *TorrentFlags) (conChan chan *btConn, listen
 }
 
 func CreateListener(flags *TorrentFlags) (listener net.Listener, externalPort int, err error) {
-	nat, err := CreatePortMapping(flags)
-	if err != nil {
-		err = fmt.Errorf("Unable to create NAT: %v", err)
-		return
-	}
 	listenPort := flags.Port
-	if nat != nil {
-		var external net.IP
-		if external, err = nat.GetExternalAddress(); err != nil {
-			err = fmt.Errorf("Unable to get external IP address from NAT: %v", err)
-			return
-		}
-		logPrintln("External ip address: ", external)
-		if listenPort, err = chooseListenPort(nat, listenPort); err != nil {
-			logPrintln("Could not choose listen port.", err)
-			logPrintln("Peer connectivity will be affected.")
-		}
-	}
 	listener, err = net.ListenTCP("tcp", &net.TCPAddr{Port: listenPort})
 	if err != nil {
 		panic(err)
 	}
-	logPrintln("Listening for peers on port:", listenPort)
+	log.Debugf("listening for peers on port %d", listenPort)
 	externalPort = listenPort
-	return
-}
-
-// createPortMapping creates a NAT port mapping, or nil if none requested or found.
-func CreatePortMapping(flags *TorrentFlags) (nat NAT, err error) {
-	if flags.UseUPnP && flags.UseNATPMP {
-		err = fmt.Errorf("Cannot specify both -useUPnP and -useNATPMP")
-		return
-	}
-	if flags.UseUPnP {
-		logPrintln("Using UPnP to open port.")
-		nat, err = Discover()
-	}
-	if flags.UseNATPMP {
-		if flags.Gateway == "" {
-			err = fmt.Errorf("useNATPMP requires gateway")
-			return
-		}
-		logPrintln("Using NAT-PMP to open port.")
-		gatewayIP := net.ParseIP(flags.Gateway)
-		if gatewayIP == nil {
-			err = fmt.Errorf("Could not parse gateway %q", flags.Gateway)
-		}
-		nat = NewNatPMP(gatewayIP)
-	}
-	return
-}
-
-func chooseListenPort(nat NAT, externalPort int) (listenPort int, err error) {
-	// TODO: Unmap port when exiting. (Right now we never exit cleanly.)
-	// TODO: Defend the port, remap when router reboots
-	listenPort, err = nat.AddPortMapping("tcp", externalPort, externalPort,
-		"Taipei-Torrent port "+strconv.Itoa(externalPort), 360000)
-	if err != nil {
-		return
-	}
 	return
 }
 

@@ -558,7 +558,7 @@ func (t *TorrentSession) DoTorrent() {
 			// logPrintln("Contacting", newPeerCount, "new peers (thanks DHT!)")
 		case ti := <-t.trackerInfoChan:
 			t.ti = ti
-			logPrintln("Torrent has", t.ti.Complete, "seeders and", t.ti.Incomplete, "leachers.")
+			log.Debugf("torrent has %d seeders and %d leechers", t.ti.Complete, t.ti.Incomplete)
 			if !t.trackerLessMode {
 				newPeerCount := 0
 				{
