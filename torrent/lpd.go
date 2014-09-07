@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"bytes"
 	"fmt"
-	"log"
 	"net"
 	"net/http"
 	"time"
@@ -60,35 +59,35 @@ func (lpd *Announcer) run() {
 		answer := make([]byte, 256)
 		_, from, err := lpd.conn.ReadFromUDP(answer)
 		if err != nil {
-			log.Println("Error reading from UDP: ", err)
+			logPrintln("Error reading from UDP: ", err)
 			continue
 		}
 
 		req, err := http.ReadRequest(bufio.NewReader(bytes.NewReader(answer)))
 		if err != nil {
-			log.Println("Error reading HTTP request from UDP: ", err)
+			logPrintln("Error reading HTTP request from UDP: ", err)
 			continue
 		}
 
 		if req.Method != "BT-SEARCH" {
-			log.Println("Invalid method: ", req.Method)
+			logPrintln("Invalid method: ", req.Method)
 		}
 
 		ih := req.Header.Get("Infohash")
 		if ih == "" {
-			log.Println("No Infohash")
+			logPrintln("No Infohash")
 			continue
 		}
 
 		port := req.Header.Get("Port")
 		if port == "" {
-			log.Println("No port")
+			logPrintln("No port")
 			continue
 		}
 
 		addr, err := net.ResolveTCPAddr("tcp4", from.IP.String()+":"+port)
 		if err != nil {
-			log.Println(err)
+			logPrintln(err)
 			continue
 		}
 		lpd.Announces <- &Announce{addr.String(), ih}
@@ -103,7 +102,7 @@ func (lpd *Announcer) Announce(ih string) {
 		// Announce at launch, then every 5 minutes
 		_, err := lpd.conn.WriteToUDP(requestMessage, lpd.addr)
 		if err != nil {
-			log.Println(err)
+			logPrintln(err)
 		}
 
 		ticker := time.NewTicker(5 * time.Minute)
@@ -112,7 +111,7 @@ func (lpd *Announcer) Announce(ih string) {
 		for _ = range ticker.C {
 			_, err := lpd.conn.WriteToUDP(requestMessage, lpd.addr)
 			if err != nil {
-				log.Println(err)
+				logPrintln(err)
 			}
 		}
 	}()

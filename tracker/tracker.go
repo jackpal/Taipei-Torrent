@@ -3,7 +3,6 @@ package tracker
 import (
 	"bytes"
 	"fmt"
-	"log"
 	"math/rand"
 	"net"
 	"net/http"
@@ -16,9 +15,12 @@ import (
 	"sync"
 	"time"
 
+	"github.com/jackpal/bencode-go"
+	"github.com/juju/loggo"
 	"github.com/remerge/torrent/torrent"
-	bencode "github.com/jackpal/bencode-go"
 )
+
+var log = loggo.GetLogger("torrent.tracker")
 
 type Tracker struct {
 	Announce string
@@ -194,7 +196,7 @@ func StartTracker(addr string, torrentFiles []string) (err error) {
 		quitChan := listenSigInt()
 		select {
 		case <-quitChan:
-			log.Printf("got control-C")
+			log.Infof("shutting down")
 			t.Quit()
 		}
 	}()
@@ -298,7 +300,7 @@ func (t *Tracker) handleAnnounce(w http.ResponseWriter, r *http.Request) {
 	}
 	var b bytes.Buffer
 	if err != nil {
-		log.Printf("announce from %v failed: %#v", r.RemoteAddr, err.Error())
+		log.Infof("announce from %v failed: %#v", r.RemoteAddr, err.Error())
 		errorResponse := make(bmap)
 		errorResponse["failure reason"] = err.Error()
 		err = bencode.Marshal(&b, errorResponse)
@@ -339,7 +341,7 @@ func (t *Tracker) Quit() (err error) {
 }
 
 func (t *Tracker) Register(infoHash, name string) (err error) {
-	log.Printf("Register(%#v,%#v)", infoHash, name)
+	log.Debugf("Register(%#v,%#v)", infoHash, name)
 	t.m.Lock()
 	defer t.m.Unlock()
 	err = t.t.register(infoHash, name)
@@ -430,7 +432,7 @@ func (t *trackerTorrent) handleAnnounce(now time.Time, peerListenAddress *net.TC
 	if peer, ok = t.peers[peerKey]; ok {
 		// Does the new peer match the old peer?
 		if peer.id != params.peerID {
-			log.Printf("Peer changed ID. %#v != %#v", peer.id, params.peerID)
+			log.Infof("Peer changed ID. %#v != %#v", peer.id, params.peerID)
 			delete(t.peers, peerKey)
 			peer = nil
 		}
@@ -441,7 +443,7 @@ func (t *trackerTorrent) handleAnnounce(now time.Time, peerListenAddress *net.TC
 			id:         params.peerID,
 		}
 		t.peers[peerKey] = peer
-		log.Printf("Peer %s joined", peerKey)
+		log.Infof("Peer %s joined", peerKey)
 	}
 	peer.lastSeen = now
 	peer.uploaded = params.uploaded
@@ -449,18 +451,17 @@ func (t *trackerTorrent) handleAnnounce(now time.Time, peerListenAddress *net.TC
 	peer.left = params.left
 	switch params.event {
 	default:
-		// TODO(jackpal):maybe report this as a warning
-		log.Printf("Peer %s Unknown event %s", peerKey, params.event)
+		log.Warningf("Peer %s Unknown event %s", peerKey, params.event)
 	case "":
 	case "started":
 		// do nothing
 	case "completed":
 		t.downloaded++
-		log.Printf("Peer %s completed. Total completions %d", peerKey, t.downloaded)
+		log.Infof("Peer %s completed. Total completions %d", peerKey, t.downloaded)
 	case "stopped":
 		// This client is reporting that they have stopped. Drop them from the peer table.
 		// And don't send any peers, since they won't need them.
-		log.Printf("Peer %s stopped", peerKey)
+		log.Infof("Peer %s stopped", peerKey)
 		delete(t.peers, peerKey)
 		params.numWant = 0
 	}
@@ -580,7 +581,7 @@ func (t *trackerTorrent) reap(deadline time.Time) {
 func (t trackerPeers) reap(deadline time.Time) {
 	for address, peer := range t {
 		if deadline.After(peer.lastSeen) {
-			log.Println("reaping", address)
+			log.Infof("reaping %#v", address)
 			delete(t, address)
 		}
 	}

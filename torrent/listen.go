@@ -2,7 +2,6 @@ package torrent
 
 import (
 	"fmt"
-	"log"
 	"net"
 	"strconv"
 )
@@ -27,7 +26,7 @@ func ListenForPeerConnections(flags *TorrentFlags) (conChan chan *btConn, listen
 	conChan = make(chan *btConn)
 	_, portstring, err := net.SplitHostPort(listener.Addr().String())
 	if err != nil {
-		log.Printf("Listener failed while finding the host/port for %v: %v", portstring, err)
+		log.Infof("Listener failed while finding the host/port for %v: %v", portstring, err)
 		return
 	}
 	go func() {
@@ -39,12 +38,12 @@ func ListenForPeerConnections(flags *TorrentFlags) (conChan chan *btConn, listen
 				if err.Error() == "use of closed network connection" {
 					return
 				}
-				log.Println("Listener accept failed:", err)
+				logPrintln("Listener accept failed:", err)
 				continue
 			}
 			header, err := readHeader(conn)
 			if err != nil {
-				log.Println("Error reading header: ", err)
+				logPrintln("Error reading header: ", err)
 				continue
 			}
 			peersInfoHash := string(header[8:28])
@@ -73,17 +72,17 @@ func CreateListener(flags *TorrentFlags) (listener net.Listener, externalPort in
 			err = fmt.Errorf("Unable to get external IP address from NAT: %v", err)
 			return
 		}
-		log.Println("External ip address: ", external)
+		logPrintln("External ip address: ", external)
 		if listenPort, err = chooseListenPort(nat, listenPort); err != nil {
-			log.Println("Could not choose listen port.", err)
-			log.Println("Peer connectivity will be affected.")
+			logPrintln("Could not choose listen port.", err)
+			logPrintln("Peer connectivity will be affected.")
 		}
 	}
 	listener, err = net.ListenTCP("tcp", &net.TCPAddr{Port: listenPort})
 	if err != nil {
-		log.Fatal("Listen failed:", err)
+		panic(err)
 	}
-	log.Println("Listening for peers on port:", listenPort)
+	logPrintln("Listening for peers on port:", listenPort)
 	externalPort = listenPort
 	return
 }
@@ -95,7 +94,7 @@ func CreatePortMapping(flags *TorrentFlags) (nat NAT, err error) {
 		return
 	}
 	if flags.UseUPnP {
-		log.Println("Using UPnP to open port.")
+		logPrintln("Using UPnP to open port.")
 		nat, err = Discover()
 	}
 	if flags.UseNATPMP {
@@ -103,7 +102,7 @@ func CreatePortMapping(flags *TorrentFlags) (nat NAT, err error) {
 			err = fmt.Errorf("useNATPMP requires gateway")
 			return
 		}
-		log.Println("Using NAT-PMP to open port.")
+		logPrintln("Using NAT-PMP to open port.")
 		gatewayIP := net.ParseIP(flags.Gateway)
 		if gatewayIP == nil {
 			err = fmt.Errorf("Could not parse gateway %q", flags.Gateway)

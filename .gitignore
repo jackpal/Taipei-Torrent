@@ -1,5 +1,3 @@
-*~
-*.[56ao]
+.godeps/
 Taipei-Torrent
-*.exe
-testdata/downloads/
+testData/downloads/

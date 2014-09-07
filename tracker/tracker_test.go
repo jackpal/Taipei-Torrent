@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
-	"log"
 	"math"
 	"os"
 	"os/exec"
@@ -15,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/juju/loggo"
 	"github.com/remerge/torrent/torrent"
 )
 
@@ -59,6 +59,7 @@ func TestSwarm100(t *testing.T) {
 */
 
 func testSwarm(t *testing.T, leechCount int) {
+	loggo.ConfigureLoggers("<root>=TRACE")
 	err := runSwarm(leechCount)
 	if err != nil {
 		t.Fatal("Error running testSwarm", err)
@@ -72,7 +73,7 @@ type prog struct {
 }
 
 func (p *prog) start(doneCh chan *prog) (err error) {
-	log.Println("starting", p.instanceName)
+	log.Infof("starting %s", p.instanceName)
 	out := logWriter(p.instanceName)
 	p.cmd.Stdout = &out
 	p.cmd.Stderr = &out
@@ -103,7 +104,7 @@ func runSwarm(leechCount int) (err error) {
 	if err != nil {
 		return
 	}
-	log.Printf("Temporary directory: %s", rootDir)
+	log.Infof("Temporary directory: %s", rootDir)
 	seedDir := path.Join(rootDir, "seed")
 	err = os.Mkdir(seedDir, 0700)
 	if err != nil {
@@ -115,14 +116,14 @@ func runSwarm(leechCount int) (err error) {
 		return
 	}
 	torrentFile := path.Join(rootDir, "testSwarm.torrent")
-	err = createTorrentFile(torrentFile, seedData, "127.0.0.1:8080/announce")
+	err = createTorrentFile(torrentFile, seedData, "127.0.0.1:38764/announce")
 	if err != nil {
 		return
 	}
 
 	doneCh := make(chan *prog, 1)
 
-	tracker := newTracker("tracker", ":8080", rootDir, torrentFile)
+	tracker := newTracker("tracker", ":38764", rootDir, torrentFile)
 	err = tracker.start(doneCh)
 	if err != nil {
 		return
@@ -173,7 +174,7 @@ func runSwarm(leechCount int) (err error) {
 		if err != nil {
 			return
 		}
-		log.Printf("Done: %d of %d", (doneCount + 1), leechCount)
+		log.Infof("Done: %d of %d", (doneCount + 1), leechCount)
 	}
 	if err != nil {
 		return
@@ -202,7 +203,7 @@ func createTorrentFile(torrentFileName, root, announcePath string) (err error) {
 	if err != nil {
 		return
 	}
-	metaInfo.Announce = "http://127.0.0.1:8080/announce"
+	metaInfo.Announce = "http://127.0.0.1:38764/announce"
 	metaInfo.CreatedBy = "testSwarm"
 	var torrentFile *os.File
 	torrentFile, err = os.Create(torrentFileName)
@@ -344,7 +345,7 @@ func compare(aName, bName string) (err error) {
 type logWriter string
 
 func (l logWriter) Write(p []byte) (n int, err error) {
-	log.Println(l, string(p))
+	log.Infof(string(p))
 	n = len(p)
 	return
 }

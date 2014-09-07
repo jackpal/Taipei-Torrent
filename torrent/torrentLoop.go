@@ -2,7 +2,6 @@ package torrent
 
 import (
 	"encoding/hex"
-	"log"
 	"net"
 	"os"
 	"os/signal"
@@ -31,7 +30,7 @@ type TorrentFlags struct {
 func RunTorrents(flags *TorrentFlags, torrentFiles []string) (err error) {
 	conChan, _, listenPort, err := ListenForPeerConnections(flags)
 	if err != nil {
-		log.Println("Couldn't listen for peers connection: ", err)
+		logPrintln("Couldn't listen for peers connection: ", err)
 		return
 	}
 	quitChan := listenSigInt()
@@ -44,10 +43,10 @@ func RunTorrents(flags *TorrentFlags, torrentFiles []string) (err error) {
 		var ts *TorrentSession
 		ts, err = NewTorrentSession(flags, torrentFile, uint16(listenPort))
 		if err != nil {
-			log.Println("Could not create torrent session.", err)
+			logPrintln("Could not create torrent session.", err)
 			return
 		}
-		log.Printf("Starting torrent session for %x", ts.M.InfoHash)
+		log.Infof("Starting torrent session for %x", ts.M.InfoHash)
 		torrentSessions[ts.M.InfoHash] = ts
 	}
 
@@ -75,24 +74,24 @@ mainLoop:
 			for _, ts := range torrentSessions {
 				err := ts.Quit()
 				if err != nil {
-					log.Println("Failed: ", err)
+					logPrintln("Failed: ", err)
 				} else {
-					log.Println("Done")
+					logPrintln("Done")
 				}
 			}
 		case c := <-conChan:
-			log.Printf("New bt connection for ih %x", c.Infohash)
+			log.Infof("New bt connection for ih %x", c.Infohash)
 			if ts, ok := torrentSessions[c.Infohash]; ok {
 				ts.AcceptNewPeer(c)
 			}
 		case announce := <-lpd.Announces:
 			hexhash, err := hex.DecodeString(announce.Infohash)
 			if err != nil {
-				log.Println("Err with hex-decoding:", err)
+				logPrintln("Err with hex-decoding:", err)
 				break
 			}
 			if ts, ok := torrentSessions[string(hexhash)]; ok {
-				log.Printf("Received LPD announce for ih %s", announce.Infohash)
+				log.Infof("Received LPD announce for ih %s", announce.Infohash)
 				ts.HintNewPeer(announce.Peer)
 			}
 		}
@@ -109,7 +108,7 @@ func listenSigInt() chan os.Signal {
 func startLPD(torrentSessions map[string]*TorrentSession, listenPort uint16) (lpd *Announcer) {
 	lpd, err := NewAnnouncer(listenPort)
 	if err != nil {
-		log.Println("Couldn't listen for Local Peer Discoveries: ", err)
+		logPrintln("Couldn't listen for Local Peer Discoveries: ", err)
 		return
 	} else {
 		for _, ts := range torrentSessions {

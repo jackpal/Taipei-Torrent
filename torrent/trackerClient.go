@@ -5,7 +5,6 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"log"
 	"math/rand"
 	"net"
 	"net/url"
@@ -102,14 +101,14 @@ func queryTrackers(dialer Dialer, announceList [][]string, report ClientStatusRe
 			}
 		}
 	}
-	log.Println("Error: Did not successfully contact a tracker:", announceList)
+	logPrintln("Error: Did not successfully contact a tracker:", announceList)
 	return
 }
 
 func queryTracker(dialer Dialer, report ClientStatusReport, trackerUrl string) (tr *TrackerResponse, err error) {
 	u, err := url.Parse(trackerUrl)
 	if err != nil {
-		log.Println("Error: Invalid announce URL(", trackerUrl, "):", err)
+		logPrintln("Error: Invalid announce URL(", trackerUrl, "):", err)
 		return
 	}
 	switch u.Scheme {
@@ -121,7 +120,7 @@ func queryTracker(dialer Dialer, report ClientStatusReport, trackerUrl string) (
 		return queryUDPTracker(report, u)
 	default:
 		errorMessage := fmt.Sprintf("Unknown scheme %v in %v", u.Scheme, trackerUrl)
-		log.Println(errorMessage)
+		logPrintln(errorMessage)
 		return nil, errors.New(errorMessage)
 	}
 }
@@ -141,7 +140,7 @@ func queryHTTPTracker(dialer Dialer, report ClientStatusReport, u *url.URL) (tr 
 	if false {
 		ipv6Address, err := findLocalIPV6AddressFor(u.Host)
 		if err == nil {
-			log.Println("our ipv6", ipv6Address)
+			logPrintln("our ipv6", ipv6Address)
 			uq.Add("ipv6", ipv6Address)
 		}
 	}
@@ -157,9 +156,9 @@ func queryHTTPTracker(dialer Dialer, report ClientStatusReport, u *url.URL) (tr 
 
 	tr, err = getTrackerInfo(dialer, u.String())
 	if tr == nil || err != nil {
-		log.Println("Error: Could not fetch tracker info:", err)
+		logPrintln("Error: Could not fetch tracker info:", err)
 	} else if tr.FailureReason != "" {
-		log.Println("Error: Tracker returned failure reason:", tr.FailureReason)
+		logPrintln("Error: Tracker returned failure reason:", tr.FailureReason)
 		err = fmt.Errorf("tracker failure %s", tr.FailureReason)
 	}
 	return
@@ -173,10 +172,10 @@ func findLocalIPV6AddressFor(hostAddr string) (local string, err error) {
 		hostPort = "1234"
 	}
 	dummyAddr := net.JoinHostPort(host, hostPort)
-	log.Println("Looking for host ", dummyAddr)
+	logPrintln("Looking for host ", dummyAddr)
 	conn, err := net.Dial("udp6", dummyAddr)
 	if err != nil {
-		log.Println("No IPV6 for host ", host, err)
+		logPrintln("No IPV6 for host ", host, err)
 		return "", err
 	}
 	defer conn.Close()

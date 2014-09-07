@@ -2,13 +2,22 @@ package torrent
 
 import (
 	"encoding/hex"
+	"fmt"
 	"io/ioutil"
-	"log"
 	"math"
 	"net"
 	"os"
 	"time"
+
+	"github.com/juju/loggo"
 )
+
+var log = loggo.GetLogger("torrent.peer")
+
+// too lazy to convert all logPrintln to log.Infof
+func logPrintln(v ...interface{}) {
+	log.Infof(fmt.Sprintln(v...))
+}
 
 type TorrentClient struct {
 	Flags      *TorrentFlags
@@ -63,21 +72,21 @@ func NewTorrentClient(dir string, port int) *TorrentClient {
 					// return
 				}
 			case <-tc.quitChan:
-				log.Println("terminate client main loop")
+				logPrintln("terminate client main loop")
 				return
 			case c := <-newConn:
-				log.Printf("New bt connection for ih %x", c.Infohash)
+				log.Infof("New bt connection for ih %x", c.Infohash)
 				if ts, ok := tc.Sessions[c.Infohash]; ok {
 					ts.AcceptNewPeer(c)
 				}
 			case announce := <-announcer.Announces:
 				hexhash, err := hex.DecodeString(announce.Infohash)
 				if err != nil {
-					log.Println("Err with hex-decoding:", err)
+					logPrintln("Err with hex-decoding:", err)
 					break
 				}
 				if ts, ok := tc.Sessions[string(hexhash)]; ok {
-					log.Printf("Received LPD announce for ih %s", announce.Infohash)
+					log.Infof("Received LPD announce for ih %s", announce.Infohash)
 					ts.HintNewPeer(announce.Peer)
 				}
 			}
@@ -118,7 +127,7 @@ func (c *TorrentClient) Unserve(session *TorrentSession) {
 func (c *TorrentClient) Serve(torrentfile string) *TorrentSession {
 	session, err := NewTorrentSession(c.Flags, torrentfile, uint16(c.ListenPort))
 	if err != nil {
-		log.Println("Could not create torrent session.", err)
+		logPrintln("Could not create torrent session.", err)
 		panic(err)
 	}
 
@@ -157,14 +166,13 @@ func SaveTorrent(meta *MetaInfo) string {
 	return torrentFile.Name()
 }
 
-func NewTorrentFor(filename string) (*MetaInfo, string) {
+func NewTorrentFor(filename string, tracker string) (*MetaInfo, string) {
 	var metaInfo *MetaInfo
 	metaInfo, err := CreateMetaInfoFromFileSystem(nil, filename, 0, false)
 	if err != nil {
 		panic(err)
 	}
-	metaInfo.Announce = "http://127.0.0.1:8085/announce"
-	metaInfo.CreatedBy = "remerge"
+	metaInfo.Announce = fmt.Sprintf("http://%s/announce")
 	torrentFile := SaveTorrent(metaInfo)
 	return metaInfo, torrentFile
 }

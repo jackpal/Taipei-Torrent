@@ -3,7 +3,6 @@ package torrent
 import (
 	"bytes"
 	"io"
-	"log"
 	"net"
 	"time"
 
@@ -100,7 +99,7 @@ func NewPeerState(conn net.Conn) *peerState {
 }
 
 func (p *peerState) Close() {
-	log.Println("Closing connection to", p.address)
+	logPrintln("Closing connection to", p.address)
 	p.conn.Close()
 	// No need to close p.writeChan. Further writes to p.conn will just fail.
 }
@@ -143,7 +142,7 @@ func (p *peerState) SetChoke(choke bool) {
 
 func (p *peerState) SetInterested(interested bool) {
 	if interested != p.am_interested {
-		// log.Println("SetInterested", interested, p.address)
+		// logPrintln("SetInterested", interested, p.address)
 		p.am_interested = interested
 		b := byte(NOT_INTERESTED)
 		if interested {
@@ -172,7 +171,7 @@ func (p *peerState) SendExtensions(port uint16) {
 	var buf bytes.Buffer
 	err := bencode.Marshal(&buf, handshake)
 	if err != nil {
-		//log.Println("Error when marshalling extension message")
+		//logPrintln("Error when marshalling extension message")
 		return
 	}
 
@@ -185,7 +184,7 @@ func (p *peerState) SendExtensions(port uint16) {
 }
 
 func (p *peerState) sendOneCharMessage(b byte) {
-	// log.Println("ocm", b, p.address)
+	// logPrintln("ocm", b, p.address)
 	p.sendMessage([]byte{b})
 }
 
@@ -234,7 +233,7 @@ func readNBOUint32(conn net.Conn) (n uint32, err error) {
 // listens for messages on a channel and sends them to a peer.
 
 func (p *peerState) peerWriter(errorChan chan peerMessage) {
-	// log.Println("Writing messages")
+	// logPrintln("Writing messages")
 	var lastWriteTime time.Time
 
 	for msg := range p.writeChan2 {
@@ -250,19 +249,19 @@ func (p *peerState) peerWriter(errorChan chan peerMessage) {
 		}
 		lastWriteTime = now
 
-		// log.Println("Writing", uint32(len(msg)), p.conn.RemoteAddr())
+		// logPrintln("Writing", uint32(len(msg)), p.conn.RemoteAddr())
 		err := writeNBOUint32(p.conn, uint32(len(msg)))
 		if err != nil {
-			log.Println(err)
+			logPrintln(err)
 			break
 		}
 		_, err = p.conn.Write(msg)
 		if err != nil {
-			// log.Println("Failed to write a message", p.address, len(msg), msg, err)
+			// logPrintln("Failed to write a message", p.address, len(msg), msg, err)
 			break
 		}
 	}
-	// log.Println("peerWriter exiting")
+	// logPrintln("peerWriter exiting")
 	errorChan <- peerMessage{p, nil}
 }
 
@@ -270,7 +269,7 @@ func (p *peerState) peerWriter(errorChan chan peerMessage) {
 // listens for messages from the peer and forwards them to a channel.
 
 func (p *peerState) peerReader(msgChan chan peerMessage) {
-	// log.Println("Reading messages")
+	// logPrintln("Reading messages")
 	for {
 		var n uint32
 		n, err := readNBOUint32(p.conn)
@@ -278,7 +277,7 @@ func (p *peerState) peerReader(msgChan chan peerMessage) {
 			break
 		}
 		if n > 130*1024 {
-			// log.Println("Message size too large: ", n)
+			// logPrintln("Message size too large: ", n)
 			break
 		}
 
@@ -298,11 +297,11 @@ func (p *peerState) peerReader(msgChan chan peerMessage) {
 	}
 
 	msgChan <- peerMessage{p, nil}
-	// log.Println("peerReader exiting")
+	// logPrintln("peerReader exiting")
 }
 
 func (p *peerState) sendMetadataRequest(piece int) {
-	log.Printf("Sending metadata request for piece %d to %s\n", piece, p.address)
+	log.Infof("Sending metadata request for piece %d to %s\n", piece, p.address)
 
 	m := map[string]int{
 		"msg_type": METADATA_REQUEST,

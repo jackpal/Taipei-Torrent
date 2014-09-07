@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
-	"log"
 	"os"
 	"path"
 	"strings"
@@ -89,7 +88,7 @@ func GetMetaInfo(dialer Dialer, torrent string) (metaInfo *MetaInfo, err error) 
 	} else if strings.HasPrefix(torrent, "magnet:") {
 		magnet, err := parseMagnet(torrent)
 		if err != nil {
-			log.Println("Couldn't parse magnet: ", err)
+			logPrintln("Couldn't parse magnet: ", err)
 			return nil, err
 		}
 
@@ -334,7 +333,7 @@ func WriteMetaInfoBytes(root string, w io.Writer) (err error) {
 	if err != nil {
 		return
 	}
-	// log.Printf("Metainfo: %#v", m)
+	// log.Infof("Metainfo: %#v", m)
 	err = m.Bencode(w)
 	if err != nil {
 		return
@@ -529,7 +528,7 @@ func getTrackerInfo(dialer Dialer, url string) (tr *TrackerResponse, err error) 
 	if r.StatusCode >= 400 {
 		data, _ := ioutil.ReadAll(r.Body)
 		reason := "Bad Request " + string(data)
-		log.Println(reason)
+		logPrintln(reason)
 		err = errors.New(reason)
 		return
 	}
@@ -552,7 +551,7 @@ func saveMetaInfo(metadata string) (err error) {
 
 	f, err := os.Create(info.Name + ".torrent")
 	if err != nil {
-		log.Println("Error when opening file for creation: ", err)
+		logPrintln("Error when opening file for creation: ", err)
 		return
 	}
 	defer f.Close()
