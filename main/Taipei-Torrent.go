@@ -10,7 +10,7 @@ import (
 	"runtime/pprof"
 
 	socks "github.com/hailiang/gosocks"
-	"github.com/remerge/torrent/torrent"
+	"github.com/remerge/torrent"
 	"github.com/remerge/torrent/tracker"
 )
 

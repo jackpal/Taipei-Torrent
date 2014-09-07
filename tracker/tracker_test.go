@@ -15,7 +15,7 @@ import (
 	"time"
 
 	"github.com/juju/loggo"
-	"github.com/remerge/torrent/torrent"
+	"github.com/remerge/torrent"
 )
 
 func TestScrapeURL(t *testing.T) {

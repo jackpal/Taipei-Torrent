@@ -17,7 +17,7 @@ import (
 
 	"github.com/jackpal/bencode-go"
 	"github.com/juju/loggo"
-	"github.com/remerge/torrent/torrent"
+	"github.com/remerge/torrent"
 )
 
 var log = loggo.GetLogger("torrent.tracker")
