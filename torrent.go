@@ -321,26 +321,26 @@ func (ts *TorrentSession) mightAcceptPeer(peer string) bool {
 }
 
 func (ts *TorrentSession) connectToPeer(peer string) {
-	logPrintln("Trying to contact", peer)
+	log.Debugf("trying to contact %s", peer)
 	if !ts.si.HaveTorrent {
 		return
 	}
 	conn, err := proxyNetDial(ts.flags.Dial, "tcp", peer)
 	if err != nil {
-		logPrintln("Failed to connect to", peer, err)
+		log.Errorf("failed to connect to %s: %s", peer, err)
 		return
 	}
 
 	_, err = conn.Write(ts.Header())
 	if err != nil {
-		logPrintln("Failed to send header to", peer, err)
+		log.Errorf("failed to send header to %s: %s", peer, err)
 		return
 	}
 
 	theirheader, err := readHeader(conn)
 
 	if err != nil {
-		logPrintln("error reading their header", err)
+		log.Errorf("failed to read their header: %s", err)
 		return
 	}
 
@@ -353,7 +353,7 @@ func (ts *TorrentSession) connectToPeer(peer string) {
 		id:       id,
 		conn:     conn,
 	}
-	logPrintln("Connected to", peer)
+	log.Debugf("connected to", peer)
 	ts.AddPeer(btconn)
 }
 
@@ -421,7 +421,7 @@ func (t *TorrentSession) ClosePeer(peer *peerState) {
 		t.si.ME.Transferring = false
 	}
 
-	logPrintln("Closing peer", peer.address)
+	log.Debugf("closing peer %s", peer.address)
 	_ = t.removeRequests(peer)
 	peer.Close()
 	delete(t.peers, peer.address)
@@ -505,7 +505,7 @@ func (t *TorrentSession) DoTorrent() {
 				peers := t.ti.Peers
 				if len(peers) > 0 {
 					const peerLen = 6
-					logPrintln("Tracker gave us", len(peers)/peerLen, "peers")
+					log.Debugf("tracker gave us %d peers", len(peers)/peerLen)
 					for i := 0; i < len(peers); i += peerLen {
 						peer := nettools.BinaryToDottedPort(peers[i : i+peerLen])
 						if t.mightAcceptPeer(peer) {
@@ -608,7 +608,7 @@ func (t *TorrentSession) chokePeers() (err error) {
 	for _, peer := range peers {
 		if peer.peer_interested {
 			peer.computeDownloadRate()
-			log.Infof("%s %g bps", peer.address, peer.DownloadBPS())
+			log.Debugf("%s %g bps", peer.address, peer.DownloadBPS())
 			chokers = append(chokers, Choker(peer))
 		}
 	}
@@ -621,7 +621,7 @@ func (t *TorrentSession) chokePeers() (err error) {
 		shouldChoke := i >= unchokeCount
 		if peer, ok := c.(*peerState); ok {
 			if shouldChoke != peer.am_choking {
-				log.Infof("Changing choke status %v -> %v", peer.address, shouldChoke)
+				log.Debugf("Changing choke status %v -> %v", peer.address, shouldChoke)
 				peer.SetChoke(shouldChoke)
 			}
 		}
@@ -766,8 +766,7 @@ func (t *TorrentSession) RecordBlock(p *peerState, piece, begin, length uint32) 
 			if t.totalPieces > 0 {
 				percentComplete = float32(t.goodPieces*100) / float32(t.totalPieces)
 			}
-			logPrintln("Have", t.goodPieces, "of", t.totalPieces,
-				"pieces", percentComplete, "% complete.")
+			log.Debugf("got %s of %s pieces (%d%% complete)", t.goodPieces, t.totalPieces, percentComplete)
 			if t.goodPieces == t.totalPieces {
 				t.Done <- true
 				t.fetchTrackerInfo("completed")

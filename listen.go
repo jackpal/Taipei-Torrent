@@ -3,6 +3,7 @@ package torrent
 import (
 	"fmt"
 	"net"
+	"regexp"
 )
 
 // btConn wraps an incoming network connection and contains metadata that helps
@@ -34,7 +35,7 @@ func ListenForPeerConnections(flags *TorrentFlags) (conChan chan *btConn, listen
 			conn, err := listener.Accept()
 			if err != nil {
 				// https://code.google.com/p/go/issues/detail?id=4373
-				if err.Error() == "use of closed network connection" {
+				if matched, _ := regexp.MatchString("use of closed network connection", err.Error()); matched {
 					return
 				}
 				logPrintln("Listener accept failed:", err)

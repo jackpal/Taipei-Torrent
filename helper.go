@@ -60,10 +60,10 @@ func NewTorrentClient(dir string, port int) *TorrentClient {
 					// return
 				}
 			case <-tc.quitChan:
-				logPrintln("terminate client main loop")
+				log.Debugf("terminate client main loop")
 				return
 			case c := <-newConn:
-				log.Infof("New bt connection for ih %x", c.Infohash)
+				log.Debugf("new connection for ih %x", c.Infohash)
 				if ts, ok := tc.Sessions[c.Infohash]; ok {
 					ts.AcceptNewPeer(c)
 				}
