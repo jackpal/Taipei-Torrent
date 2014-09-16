@@ -17,7 +17,6 @@ import (
 	"time"
 
 	"github.com/jackpal/bencode-go"
-	"github.com/nictuku/nettools"
 )
 
 const (
@@ -507,7 +506,8 @@ func (t *TorrentSession) DoTorrent() {
 					const peerLen = 6
 					log.Debugf("tracker gave us %d peers", len(peers)/peerLen)
 					for i := 0; i < len(peers); i += peerLen {
-						peer := nettools.BinaryToDottedPort(peers[i : i+peerLen])
+						port := peers[i : i+peerLen]
+						peer := fmt.Sprintf("%d.%d.%d.%d:%d", port[0], port[1], port[2], port[3], (uint16(port[4])<<8)|uint16(port[5]))
 						if t.mightAcceptPeer(peer) {
 							newPeerCount++
 							go t.connectToPeer(peer)

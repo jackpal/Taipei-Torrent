@@ -73,14 +73,6 @@ Third-party Packages
 
 http://code.google.com/p/bencode-go - Bencode encoder/decoder
 
-http://code.google.com/p/go-nat-pmp - NAT-PMP firewall client
-
-https://github.com/hailiang/gosocks - SOCKS5 proxy support
-
-https://github.com/nictuku/dht      - Distributed Hash Table
-
-https://github.com/nictuku/nettools - Network utilities
-
 Google+ Community
 -----------------
 
