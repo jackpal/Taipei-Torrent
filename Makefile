@@ -1,4 +1,4 @@
-PACKAGE := github.com/remerge/rex
+PACKAGE := github.com/remerge/torrent
 
 # http://stackoverflow.com/questions/322936/common-gnu-makefile-directory-path#comment11704496_324782
 TOP := $(dir $(CURDIR)/$(word $(words $(MAKEFILE_LIST)),$(MAKEFILE_LIST)))

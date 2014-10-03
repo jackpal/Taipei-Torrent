@@ -352,7 +352,7 @@ func (ts *TorrentSession) connectToPeer(peer string) {
 		id:       id,
 		conn:     conn,
 	}
-	log.Debugf("connected to", peer)
+	log.Debugf("connected to %s", peer)
 	ts.AddPeer(btconn)
 }
 
@@ -542,7 +542,7 @@ func (t *TorrentSession) DoTorrent() {
 			} else if interval > maxInterval {
 				interval = maxInterval
 			}
-			log.Debugf("..checking again in", interval, "seconds.")
+			log.Debugf("checking again in %d seconds", interval)
 			retrackerChan = time.Tick(time.Duration(interval) * time.Second)
 
 		case pm := <-t.peerMessageChan:
@@ -766,7 +766,7 @@ func (t *TorrentSession) RecordBlock(p *peerState, piece, begin, length uint32) 
 			if t.totalPieces > 0 {
 				percentComplete = float32(t.goodPieces*100) / float32(t.totalPieces)
 			}
-			log.Debugf("got %s of %s pieces (%d%% complete)", t.goodPieces, t.totalPieces, percentComplete)
+			log.Debugf("got %d of %d pieces (%f%% complete)", t.goodPieces, t.totalPieces, percentComplete)
 			if t.goodPieces == t.totalPieces {
 				t.Done <- true
 				t.fetchTrackerInfo("completed")
