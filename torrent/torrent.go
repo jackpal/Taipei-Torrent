@@ -125,7 +125,7 @@ type TorrentSession struct {
 	trackerReportChan    chan ClientStatusReport
 	trackerInfoChan      chan *TrackerResponse
 	hintNewPeerChan      chan string
-	addPeerChan          chan *btConn
+	addPeerChan          chan *BtConn
 	peers                map[string]*peerState
 	peerMessageChan      chan peerMessage
 	pieceSet             *Bitset // The pieces we have
@@ -360,7 +360,7 @@ func (ts *TorrentSession) connectToPeer(peer string) {
 	peersInfoHash := string(theirheader[8:28])
 	id := string(theirheader[28:48])
 
-	btconn := &btConn{
+	btconn := &BtConn{
 		header:   theirheader,
 		Infohash: peersInfoHash,
 		id:       id,
@@ -370,7 +370,7 @@ func (ts *TorrentSession) connectToPeer(peer string) {
 	ts.AddPeer(btconn)
 }
 
-func (t *TorrentSession) AcceptNewPeer(btconn *btConn) {
+func (t *TorrentSession) AcceptNewPeer(btconn *BtConn) {
 	_, err := btconn.conn.Write(t.Header())
 	if err != nil {
 		return
@@ -379,11 +379,11 @@ func (t *TorrentSession) AcceptNewPeer(btconn *btConn) {
 }
 
 // Can be called from any goroutine
-func (t *TorrentSession) AddPeer(btconn *btConn) {
+func (t *TorrentSession) AddPeer(btconn *BtConn) {
 	t.addPeerChan <- btconn
 }
 
-func (t *TorrentSession) addPeerImp(btconn *btConn) {
+func (t *TorrentSession) addPeerImp(btconn *BtConn) {
 	if !t.si.HaveTorrent && !t.si.FromMagnet {
 		log.Println("Rejecting peer because we don't have a torrent yet.")
 		btconn.conn.Close()
@@ -492,7 +492,7 @@ func (t *TorrentSession) DoTorrent() {
 	keepAliveChan := time.Tick(60 * time.Second)
 	var retrackerChan <-chan time.Time
 	t.hintNewPeerChan = make(chan string)
-	t.addPeerChan = make(chan *btConn)
+	t.addPeerChan = make(chan *BtConn)
 	if !t.trackerLessMode {
 		// Start out polling tracker every 20 seconds until we get a response.
 		// Maybe be exponential backoff here?
