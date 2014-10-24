@@ -9,22 +9,23 @@ import (
 
 // btConn wraps an incoming network connection and contains metadata that helps
 // identify which active torrentSession it's relevant for.
-type btConn struct {
-	conn     net.Conn
-	header   []byte
-	Infohash string
-	id       string
+type BtConn struct {
+	conn       net.Conn
+	RemoteAddr net.Addr
+	header     []byte
+	Infohash   string
+	id         string
 }
 
 // listenForPeerConnections listens on a TCP port for incoming connections and
 // demuxes them to the appropriate active torrentSession based on the InfoHash
 // in the header.
-func ListenForPeerConnections(flags *TorrentFlags) (conChan chan *btConn, listenPort int, err error) {
+func ListenForPeerConnections(flags *TorrentFlags) (conChan chan *BtConn, listenPort int, err error) {
 	listener, listenPort, err := CreateListener(flags)
 	if err != nil {
 		return
 	}
-	conChan = make(chan *btConn)
+	conChan = make(chan *BtConn)
 	_, portstring, err := net.SplitHostPort(listener.Addr().String())
 	if err != nil {
 		log.Printf("Listener failed while finding the host/port for %v: %v", portstring, err)
@@ -45,11 +46,12 @@ func ListenForPeerConnections(flags *TorrentFlags) (conChan chan *btConn, listen
 			}
 			peersInfoHash := string(header[8:28])
 			id := string(header[28:48])
-			conChan <- &btConn{
-				header:   header,
-				Infohash: peersInfoHash,
-				id:       id,
-				conn:     conn,
+			conChan <- &BtConn{
+				header:     header,
+				Infohash:   peersInfoHash,
+				id:         id,
+				conn:       conn,
+				RemoteAddr: conn.RemoteAddr(),
 			}
 		}
 	}()
