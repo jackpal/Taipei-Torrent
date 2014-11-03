@@ -65,6 +65,7 @@ func CreateListener(flags *TorrentFlags) (listener net.Listener, externalPort in
 	if err != nil {
 		panic(err)
 	}
+	listenPort = listener.Addr().(*net.TCPAddr).Port
 	log.Debugf("listening for peers on port %d", listenPort)
 	externalPort = listenPort
 	return
