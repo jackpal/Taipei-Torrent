@@ -71,7 +71,7 @@ or
 Third-party Packages
 --------------------
 
-http://code.google.com/p/bencode-go - Bencode encoder/decoder
+https://github.com/jackpal/bencode-go - Bencode encoder/decoder
 
 http://code.google.com/p/go-nat-pmp - NAT-PMP firewall client
 
