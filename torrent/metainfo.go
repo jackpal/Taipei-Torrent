@@ -240,6 +240,9 @@ func CreateMetaInfoFromFileSystem(fs MetaInfoFileSystem, root string, pieceLengt
 	var m *MetaInfo = &MetaInfo{}
 	var fileInfo os.FileInfo
 	fileInfo, err = fs.Stat(root)
+	if err != nil {
+		return
+	}
 	var totalLength int64
 	if fileInfo.IsDir() {
 		err = m.addFiles(fs, root)
