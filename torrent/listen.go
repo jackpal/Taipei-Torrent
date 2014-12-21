@@ -97,12 +97,17 @@ func CreatePortMapping(flags *TorrentFlags) (nat NAT, err error) {
 		nat, err = Discover()
 	}
 	if flags.UseNATPMP {
+		var gatewayIP net.IP
 		if flags.Gateway == "" {
-			err = fmt.Errorf("useNATPMP requires gateway")
-			return
+			fmt.Printf("useNATPMP but gateway not provided, trying discovery")
+			gatewayIP, err = DiscoverGateway()
+			if err != nil {
+				return
+			}
+		} else {
+			gatewayIP = net.ParseIP(flags.Gateway)
 		}
 		log.Println("Using NAT-PMP to open port.")
-		gatewayIP := net.ParseIP(flags.Gateway)
 		if gatewayIP == nil {
 			err = fmt.Errorf("Could not parse gateway %q", flags.Gateway)
 		}
