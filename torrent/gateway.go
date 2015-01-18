@@ -3,7 +3,6 @@ package torrent
 import (
 	"bytes"
 	"io/ioutil"
-	"log"
 	"net"
 	"os/exec"
 	"runtime"
