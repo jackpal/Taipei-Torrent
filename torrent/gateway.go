@@ -43,6 +43,38 @@ func getWindowsGatewayInfo() (ip net.IP, err error) {
 	return
 }
 
+func getDarwinGatewayInfo() (ip net.IP, err error) {
+	routeCmd := exec.Command("route", "-n", "get", "0.0.0.0")
+	stdOut, err := routeCmd.StdoutPipe()
+	if err != nil {
+		return
+	}
+	if err = routeCmd.Start(); err != nil {
+		return
+	}
+	output, err := ioutil.ReadAll(stdOut)
+	if err != nil {
+		return
+	}
+
+	// Darwin route out format is always like this:
+	//    route to: default
+	// destination: default
+	//        mask: default
+	//     gateway: 192.168.1.1
+	outputLines := bytes.Split(output, []byte("\n"))
+	for _, line := range outputLines {
+		if bytes.Contains(line, []byte("gateway:")) {
+			gatewayFields := bytes.Fields(line)
+			ip = net.ParseIP(string(gatewayFields[1]))
+			break
+		}
+	}
+
+	err = routeCmd.Wait()
+	return
+}
+
 func getLinuxGatewayInfo() (ip net.IP, err error) {
 	routeCmd := exec.Command("route", "-n")
 	stdOut, err := routeCmd.StdoutPipe()
@@ -77,6 +109,8 @@ func DiscoverGateway() (ip net.IP, err error) {
 	switch runtime.GOOS {
 	default:
 		ip, err = getLinuxGatewayInfo()
+	case "darwin":
+		ip, err = getDarwinGatewayInfo()
 	case "windows":
 		ip, err = getWindowsGatewayInfo()
 	}

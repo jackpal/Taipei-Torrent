@@ -99,11 +99,12 @@ func CreatePortMapping(flags *TorrentFlags) (nat NAT, err error) {
 	if flags.UseNATPMP {
 		var gatewayIP net.IP
 		if flags.Gateway == "" {
-			fmt.Printf("useNATPMP but gateway not provided, trying discovery")
+			log.Printf("useNATPMP but gateway not provided, trying discovery")
 			gatewayIP, err = DiscoverGateway()
 			if err != nil {
 				return
 			}
+			log.Printf("...discovered gateway IP: %s", gatewayIP)
 		} else {
 			gatewayIP = net.ParseIP(flags.Gateway)
 		}
