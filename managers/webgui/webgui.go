@@ -11,9 +11,15 @@ import (
 
 type WebGui struct {
 	//Why double-pointer? Because methods defined by an interface have to act on values
-	//This makes self-modification difficult
+	//This makes self-modification difficult. The "solutions" I've found
+	//are a) using a []TorrentControl or b) this double-pointer stuff
 	torrentCtrl **torrent.TorrentControl
 	WebPort     int
+}
+
+func NewWebGui(port int) WebGui {
+	ref := &torrent.TorrentControl{}
+	return WebGui{&ref, port}
 }
 
 func (wg WebGui) Start(tc *torrent.TorrentControl) error {

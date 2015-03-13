@@ -113,7 +113,7 @@ func main() {
 	managers := make([]torrent.TorrentManager, 0)
 
 	if *createWebGui != 0 {
-		managers = append(managers, webgui.WebGui{WebPort: *createWebGui})
+		managers = append(managers, webgui.NewWebGui(*createWebGui))
 	}
 
 	log.Println("Starting Torrents.")
