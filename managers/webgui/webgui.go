@@ -10,16 +10,19 @@ import (
 )
 
 type WebGui struct {
-	TorrentCtrl torrent.TorrentControl
+	//Why double-pointer? Because methods defined by an interface have to act on values
+	//This makes self-modification difficult
+	torrentCtrl **torrent.TorrentControl
 	WebPort     int
 }
 
-func (wg WebGui) Start() error {
-	if wg.TorrentCtrl.TorrentSessions != nil {
+func (wg WebGui) Start(tc *torrent.TorrentControl) error {
+	(*wg.torrentCtrl) = tc
+	if tc.TorrentSessions != nil {
 		go wg.start(wg.WebPort)
 		return nil
 	} else {
-		return errors.New("Didn't get a TorrentControl before starting.")
+		return errors.New("Didn't get a valid TorrentControl when starting.")
 	}
 }
 
@@ -48,7 +51,7 @@ func (wg *WebGui) start(port int) {
 		updateTime.SetText(fmt.Sprintln(time.Now().Format("2006-01-02 15:04:05")))
 		e.MarkDirty(updateTime)
 
-		torrlist := wg.TorrentCtrl.GetTorrentList()
+		torrlist := (**wg.torrentCtrl).GetTorrentList()
 		for i := len(torrentLabels); i < len(torrlist); i++ {
 			newLabel := gwu.NewLabel("pants")
 			torrentLabels = append(torrentLabels, newLabel)
@@ -58,7 +61,7 @@ func (wg *WebGui) start(port int) {
 
 		for i, labl := range torrentLabels {
 			if i < len(torrlist) {
-				mpa, _ := wg.TorrentCtrl.GetStatus(torrlist[i])
+				mpa, _ := (**wg.torrentCtrl).GetStatus(torrlist[i])
 				labl.SetText(mpa["Name"] + "  At  " + mpa["Percent"] + "%")
 			} else {
 				labl.SetText("")

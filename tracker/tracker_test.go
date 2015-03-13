@@ -419,12 +419,7 @@ func testHelperProcessImp(args []string) (err error) {
 			FileDir:   fileDir,
 			SeedRatio: seedRatio,
 		}
-		var torrentSessions map[string]*torrent.TorrentSession
-		torrentSessions = torrent.GetSessions(&torrentFlags, torrentFiles)
-		if err != nil {
-			return
-		}
-		err = torrent.RunTorrents(&torrentFlags, torrentSessions)
+		err = torrent.RunTorrents(&torrentFlags, torrentFiles, []TorrentManager{})
 		if err != nil {
 			return
 		}

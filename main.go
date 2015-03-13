@@ -108,26 +108,16 @@ func main() {
 		}(*memprofile)
 	}
 
-	//Since it's possible someone might want more than one manager at a time, store them in an array.
+	//Since it's possible someone might want more than one manager at a time
+	//e.g. a local gui and a remote gui, store them in an array.
 	managers := make([]torrent.TorrentManager, 0)
-	torrentSessions := torrent.GetSessions(torrentFlags, args)
-	torrentControl := torrent.TorrentControl{torrentSessions}
 
 	if *createWebGui != 0 {
-		managers = append(managers, webgui.WebGui{torrentControl, *createWebGui})
-	}
-
-	log.Println("Starting Managers.")
-	for _, tm := range managers {
-		err := tm.Start()
-		if err != nil {
-			log.Println("Error loading manager:", tm)
-			log.Println("Error:", err)
-		}
+		managers = append(managers, webgui.WebGui{WebPort: *createWebGui})
 	}
 
 	log.Println("Starting Torrents.")
-	err := torrent.RunTorrents(torrentFlags, torrentSessions)
+	err := torrent.RunTorrents(torrentFlags, args, managers)
 	if err != nil {
 		log.Fatal("Could not run torrents", args, err)
 	}

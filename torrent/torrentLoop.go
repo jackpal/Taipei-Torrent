@@ -28,23 +28,7 @@ type TorrentFlags struct {
 	Gateway string
 }
 
-func GetSessions(flags *TorrentFlags, torrentFiles []string) map[string]*TorrentSession {
-	torrentSessions := make(map[string]*TorrentSession)
-
-	for _, torrentFile := range torrentFiles {
-		var ts *TorrentSession
-		ts, err := NewTorrentSession(flags, torrentFile, uint16(flags.Port))
-		if err != nil {
-			log.Println("Could not create torrent session.", err)
-		}
-		log.Printf("Creating torrent session for %x", ts.M.InfoHash)
-		torrentSessions[ts.M.InfoHash] = ts
-	}
-
-	return torrentSessions
-}
-
-func RunTorrents(flags *TorrentFlags, torrentSessions map[string]*TorrentSession) (err error) {
+func RunTorrents(flags *TorrentFlags, torrentFiles []string, managers []TorrentManager) (err error) {
 	conChan, listenPort, err := ListenForPeerConnections(flags)
 	if err != nil {
 		log.Println("Couldn't listen for peers connection: ", err)
@@ -53,6 +37,19 @@ func RunTorrents(flags *TorrentFlags, torrentSessions map[string]*TorrentSession
 	quitChan := listenSigInt()
 
 	doneChan := make(chan *TorrentSession)
+
+	torrentSessions := make(map[string]*TorrentSession)
+
+	for _, torrentFile := range torrentFiles {
+		var ts *TorrentSession
+		ts, err = NewTorrentSession(flags, torrentFile, uint16(listenPort))
+		if err != nil {
+			log.Println("Could not create torrent session.", err)
+			return
+		}
+		log.Printf("Starting torrent session for %x", ts.M.InfoHash)
+		torrentSessions[ts.M.InfoHash] = ts
+	}
 
 	for _, ts := range torrentSessions {
 		go func(ts *TorrentSession) {
@@ -64,6 +61,11 @@ func RunTorrents(flags *TorrentFlags, torrentSessions map[string]*TorrentSession
 	lpd := &Announcer{}
 	if flags.UseLPD {
 		lpd = startLPD(torrentSessions, uint16(listenPort))
+	}
+
+	torrentControl := TorrentControl{flags, torrentSessions, doneChan}
+	for _, manager := range managers {
+		manager.Start(&torrentControl)
 	}
 
 mainLoop:
