@@ -9,11 +9,13 @@ import (
 
 type TorrentManager interface {
 	Start(tc *TorrentControl) error
+	Close() error
 }
 
 type TorrentControl struct {
 	Flags           *TorrentFlags
-	TorrentSessions map[string]*TorrentSession
+	Nat             NAT
+	torrentSessions map[string]*TorrentSession
 	doneChan        chan<- *TorrentSession
 }
 
@@ -29,19 +31,42 @@ func (tc *TorrentControl) AddTorrent(torr string, start bool) (string, error) {
 		log.Println("Could not create torrent session.", err)
 		return "", err
 	}
+	if _, ok := tc.torrentSessions[ts.M.InfoHash]; ok {
+		log.Println("Already have that torrent session.")
+		return ts.M.InfoHash, nil
+	}
 	log.Printf("Creating torrent session for %x", ts.M.InfoHash)
-	tc.TorrentSessions[ts.M.InfoHash] = ts
+	tc.torrentSessions[ts.M.InfoHash] = ts
+	if start {
 	go func(ts *TorrentSession) {
 		ts.DoTorrent()
 		tc.doneChan <- ts
 	}(ts)
-	return "", errors.New("Not implemented yet.")
+	}
+	return ts.M.InfoHash, nil
+}
+
+//Puts a copy of the metadata provided as such for a torrent.
+//Useful if we're doing tricky things to get our metadata elsewhere
+func (tc *TorrentControl) PutMetaData(meta MetaInfo) error {
+	ts, ok := tc.torrentSessions[meta.InfoHash]
+	if !ok {
+		return errors.New("Infohash not found.")
+	}
+	if ts.running {
+		return errors.New("Torrent already running, can't update metadata.")
+	}
+
+	//TODO: Should probably make a new copy, just in case the manager wants to
+	// mangle this one for some unfathomable reason
+	ts.M = &meta
+	return nil
 }
 
 //Returns a copy of the metadata for a particular torrent if successful;
 //an zero-struct and error if not
 func (tc *TorrentControl) GetMetaData(infohash string) (MetaInfo, error) {
-	ts, ok := tc.TorrentSessions[infohash]
+	ts, ok := tc.torrentSessions[infohash]
 	if !ok {
 		return MetaInfo{}, errors.New("Infohash not found.")
 	}
@@ -59,7 +84,7 @@ func (tc *TorrentControl) GetStatus(infohash string) (map[string]string, error) 
 		return nil, errors.New("Not implemented yet.")
 	}
 
-	ts, ok := tc.TorrentSessions[infohash]
+	ts, ok := tc.torrentSessions[infohash]
 	if !ok {
 		return nil, errors.New("Infohash not found.")
 	}
@@ -75,13 +100,24 @@ func (tc *TorrentControl) GetStatus(infohash string) (map[string]string, error) 
 
 //Returns an array of infostrings for all the torrents
 func (tc *TorrentControl) GetTorrentList() []string {
-	infoH := make([]string, len(tc.TorrentSessions))
+	infoH := make([]string, len(tc.torrentSessions))
 	i := 0
-	for key := range tc.TorrentSessions {
+	for key := range tc.torrentSessions {
 		infoH[i] = key
 		i++
 	}
 	return infoH
+}
+
+//Gets the list of pieces that we have for a particular torrent
+//Returns a Bitset if successful; an error if not
+func (tc *TorrentControl) GetPiecesHave(infohash string) (Bitset, error) {
+	ts, ok := tc.torrentSessions[infohash]
+	if !ok {
+		return Bitset{}, errors.New("Infohash not found.")
+	}
+	nb := NewBitsetFromBytes(ts.pieceSet.n, ts.pieceSet.b)
+	return *nb, nil
 }
 
 //Sets the pieces wanted for a particular torrent
@@ -94,24 +130,24 @@ func (tc *TorrentControl) SetPiecesWanted(infohash string, wanted Bitset) error 
 //acceptable, and expected if we don't have any of the pieces requested;
 //Nil and an error is returned if there's something wrong with the request.
 //(bad infohash; wanted bitset is the wrong length, etc.)
-func (tc *TorrentControl) GetPieces(infohash string, wanted Bitset) ([]chunk, error) {
-	ts, ok := tc.TorrentSessions[infohash]
+func (tc *TorrentControl) GetPieces(infohash string, wanted Bitset) ([]Chunk, error) {
+	ts, ok := tc.torrentSessions[infohash]
 	if !ok {
 		return nil, errors.New("Infohash not found.")
 	}
 
 	if wanted.Len() != ts.pieceSet.Len() {
+		defer log.Println("torrent has ", ts.pieceSet.Len(), " while the request has ", wanted.Len())
 		return nil, errors.New("Wanted bitset is wrong length.")
 	}
 
-	returnPieces := make([]chunk, 0, 32)
+	returnPieces := make([]Chunk, 0, 32)
 	for i := 0; i < wanted.Len(); i++ {
 		if wanted.IsSet(i) && ts.pieceSet.IsSet(i) {
 			globalOffset := int64(i) * ts.M.Info.PieceLength
 
-			c := chunk{data: make([]byte, ts.pieceLength(i))}
-			c.i = int64(i)
-			_, err := ts.fileStore.ReadAt(c.data, globalOffset)
+			c := Chunk{I: int64(i), Data: make([]byte, ts.pieceLength(i))}
+			_, err := ts.fileStore.ReadAt(c.Data, globalOffset)
 			if err != nil {
 				log.Println("Error reading from file store:", err)
 			} else {
@@ -126,21 +162,21 @@ func (tc *TorrentControl) GetPieces(infohash string, wanted Bitset) ([]chunk, er
 //Adds pieces to the specified torrent.
 //Might seem kinda strange, but it's useful if we're using other transfer
 //mechanisms besides/instead of the bittorrent protocol.
-func (tc *TorrentControl) SendPieces(infohash string, pieces []chunk) error {
-	ts, ok := tc.TorrentSessions[infohash]
+func (tc *TorrentControl) PutPieces(infohash string, pieces []Chunk) error {
+	ts, ok := tc.torrentSessions[infohash]
 	if !ok {
 		return errors.New("Infohash not found.")
 	}
 
 	for _, piece := range pieces {
-		if !ts.pieceSet.IsSet(int(piece.i)) {
-			globalOffset := piece.i * ts.M.Info.PieceLength
-			_, err := ts.fileStore.WriteAt(piece.data, globalOffset)
+		if !ts.pieceSet.IsSet(int(piece.I)) {
+			globalOffset := piece.I * ts.M.Info.PieceLength
+			_, err := ts.fileStore.WriteAt(piece.Data, globalOffset)
 			if err != nil {
 				log.Println("Error writing to file store:", err)
 			}
-			if !ts.RecordPiece(uint32(piece.i), len(piece.data)) {
-				log.Println("Got a bad piece from manager:", piece.i)
+			if !ts.RecordPiece(uint32(piece.I), len(piece.Data)) {
+				log.Println("Got a bad piece from manager:", piece.I)
 			}
 		}
 	}
@@ -149,7 +185,18 @@ func (tc *TorrentControl) SendPieces(infohash string, pieces []chunk) error {
 }
 
 func (tc *TorrentControl) ResumeTorrent(infohash string) error {
-	return errors.New("Not implemented yet.")
+	ts, ok := tc.torrentSessions[infohash]
+	if !ok {
+		return errors.New("Infohash not found. " + infohash)
+	}
+	if ts.running {
+		return errors.New("Already running. " + infohash)
+	}
+	go func(ts *TorrentSession) {
+		ts.DoTorrent()
+		tc.doneChan <- ts
+	}(ts)
+	return nil
 }
 
 func (tc *TorrentControl) PauseTorrent(infohash string) error {
@@ -161,5 +208,9 @@ func (tc *TorrentControl) StopTorrent(infohash string) error {
 }
 
 func (tc *TorrentControl) RemoveTorrent(infohash string) error {
-	return errors.New("Not implemented yet.")
+	ts, ok := tc.torrentSessions[infohash]
+	if !ok {
+		return errors.New("Infohash not found.")
+	}
+	return ts.Quit()
 }

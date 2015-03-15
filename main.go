@@ -79,10 +79,18 @@ func main() {
 		return
 	}
 
+	//Since it's possible someone might want more than one manager at a time
+	//e.g. a local gui and a remote gui, store them in an array.
+	managers := make([]torrent.TorrentManager, 0)
+
+	if *createWebGui != 0 {
+		managers = append(managers, webgui.NewWebGui(*createWebGui))
+	}
+
 	args := flag.Args()
 	narg := flag.NArg()
 
-	if narg < 1 {
+	if narg < 1 && len(managers) == 0 { //If there's a manager, we'll make an exception since the user can add torrents with it later.
 		log.Println("Too few arguments. Torrent file or torrent URL required.")
 		usage()
 	}
@@ -106,14 +114,6 @@ func main() {
 			}
 			pprof.WriteHeapProfile(memf)
 		}(*memprofile)
-	}
-
-	//Since it's possible someone might want more than one manager at a time
-	//e.g. a local gui and a remote gui, store them in an array.
-	managers := make([]torrent.TorrentManager, 0)
-
-	if *createWebGui != 0 {
-		managers = append(managers, webgui.NewWebGui(*createWebGui))
 	}
 
 	log.Println("Starting Torrents.")

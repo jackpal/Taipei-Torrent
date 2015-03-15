@@ -2,7 +2,6 @@ package webgui
 
 import (
 	"code.google.com/p/gowut/gwu"
-	"errors"
 	"fmt"
 	"github.com/jackpal/Taipei-Torrent/torrent"
 	"strconv"
@@ -14,25 +13,32 @@ type WebGui struct {
 	//This makes self-modification difficult. The "solutions" I've found
 	//are a) using a []TorrentControl or b) this double-pointer stuff
 	torrentCtrl **torrent.TorrentControl
-	WebPort     int
+	server      gwu.Server
 }
 
 func NewWebGui(port int) WebGui {
 	ref := &torrent.TorrentControl{}
-	return WebGui{&ref, port}
+	return WebGui{
+		&ref,
+		gwu.NewServer("TaipeiTorrent", "localhost:"+strconv.Itoa(port)),
+	}
+}
+
+func (wg WebGui) Close() error {
+	wins := wg.server.SortedWins()
+	for _, win := range wins {
+		wg.server.RemoveWin(win)
+	}
+	return nil
 }
 
 func (wg WebGui) Start(tc *torrent.TorrentControl) error {
 	(*wg.torrentCtrl) = tc
-	if tc.TorrentSessions != nil {
-		go wg.start(wg.WebPort)
+		go wg.start()
 		return nil
-	} else {
-		return errors.New("Didn't get a valid TorrentControl when starting.")
-	}
 }
 
-func (wg *WebGui) start(port int) {
+func (wg *WebGui) start() {
 	// Create and build a window
 	win := gwu.NewWindow("main", "Status Info")
 	win.Style().SetFullWidth()
@@ -76,9 +82,7 @@ func (wg *WebGui) start(port int) {
 		}
 	}, gwu.ETYPE_STATE_CHANGE)
 	win.Add(t2)
-
-	server := gwu.NewServer("TaipeiTorrent", "localhost:"+strconv.Itoa(port))
-	server.SetText("TaipeiTorrent WebGui")
-	server.AddWin(win)
-	server.Start("main")
+	wg.server.SetText("TaipeiTorrent WebGui")
+	wg.server.AddWin(win)
+	wg.server.Start("main")
 }

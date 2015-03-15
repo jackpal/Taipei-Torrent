@@ -139,6 +139,7 @@ type TorrentSession struct {
 	torrentFile          string
 	chokePolicy          ChokePolicy
 	chokePolicyHeartbeat <-chan time.Time
+	running              bool
 }
 
 func NewTorrentSession(flags *TorrentFlags, torrent string, listenPort uint16) (ts *TorrentSession, err error) {
@@ -151,6 +152,7 @@ func NewTorrentSession(flags *TorrentFlags, torrent string, listenPort uint16) (
 		torrentFile:          torrent,
 		chokePolicy:          &ClassicChokePolicy{},
 		chokePolicyHeartbeat: time.Tick(10 * time.Second),
+		running:              false,
 	}
 	fromMagnet := strings.HasPrefix(torrent, "magnet:")
 	t.M, err = GetMetaInfo(flags.Dial, torrent)
@@ -481,6 +483,11 @@ func (t *TorrentSession) Shutdown() (err error) {
 }
 
 func (t *TorrentSession) DoTorrent() {
+	if t.running {
+		log.Println("DoTorrent got called on an already running TorrentSession:", t.M.InfoHash)
+		return
+	}
+	t.running = true
 	t.heartbeat = make(chan bool, 1)
 	if t.flags.UseDeadlockDetector {
 		go t.deadlockDetector()
