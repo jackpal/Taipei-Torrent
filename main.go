@@ -9,7 +9,8 @@ import (
 	"path"
 	"runtime/pprof"
 
-	socks "github.com/hailiang/gosocks"
+	"github.com/hailiang/socks"
+	"github.com/jackpal/Taipei-Torrent/managers/webgui"
 	"github.com/jackpal/Taipei-Torrent/torrent"
 	"github.com/jackpal/Taipei-Torrent/tracker"
 )
@@ -19,6 +20,7 @@ var (
 	memprofile    = flag.String("memprofile", "", "If not empty, writes memory heap allocations to the given file before the program exits")
 	createTorrent = flag.String("createTorrent", "", "If not empty, creates a torrent file from the given root. Writes to stdout")
 	createTracker = flag.String("createTracker", "", "Creates a tracker serving the given torrent file on the given address. Example --createTracker=:8080 to serve on port 8080.")
+	createWebGui  = flag.Int("createWebGui", 0, "Create a webgui on the specified port")
 
 	port                = flag.Int("port", 7777, "Port to listen on. 0 means pick random port. Note that 6881 is blacklisted by some trackers.")
 	fileDir             = flag.String("fileDir", ".", "path to directory where files are stored")
@@ -77,14 +79,19 @@ func main() {
 		return
 	}
 
+	//Since it's possible someone might want more than one manager at a time
+	//e.g. a local gui and a remote gui, store them in an array.
+	managers := make([]torrent.TorrentManager, 0)
+
+	if *createWebGui != 0 {
+		managers = append(managers, webgui.NewWebGui(*createWebGui))
+	}
+
 	args := flag.Args()
 	narg := flag.NArg()
-	if narg != 1 {
-		if narg < 1 {
-			log.Println("Too few arguments. Torrent file or torrent URL required.")
-		} else {
-			log.Printf("Too many arguments. (Expected 1): %v", args)
-		}
+
+	if narg < 1 && len(managers) == 0 { //If there's a manager, we'll make an exception since the user can add torrents with it later.
+		log.Println("Too few arguments. Torrent file or torrent URL required.")
 		usage()
 	}
 
@@ -109,9 +116,8 @@ func main() {
 		}(*memprofile)
 	}
 
-	log.Println("Starting.")
-
-	err := torrent.RunTorrents(torrentFlags, args)
+	log.Println("Starting Torrents.")
+	err := torrent.RunTorrents(torrentFlags, args, managers)
 	if err != nil {
 		log.Fatal("Could not run torrents", args, err)
 	}

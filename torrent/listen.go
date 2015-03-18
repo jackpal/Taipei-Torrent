@@ -20,8 +20,9 @@ type BtConn struct {
 // listenForPeerConnections listens on a TCP port for incoming connections and
 // demuxes them to the appropriate active torrentSession based on the InfoHash
 // in the header.
-func ListenForPeerConnections(flags *TorrentFlags) (conChan chan *BtConn, listenPort int, err error) {
-	listener, listenPort, err := CreateListener(flags)
+func ListenForPeerConnections(flags *TorrentFlags) (conChan chan *BtConn, listenPort int, nat NAT, err error) {
+	var listener net.Listener
+	listener, listenPort, nat, err = CreateListener(flags)
 	if err != nil {
 		return
 	}
@@ -58,8 +59,8 @@ func ListenForPeerConnections(flags *TorrentFlags) (conChan chan *BtConn, listen
 	return
 }
 
-func CreateListener(flags *TorrentFlags) (listener net.Listener, externalPort int, err error) {
-	nat, err := CreatePortMapping(flags)
+func CreateListener(flags *TorrentFlags) (listener net.Listener, externalPort int, nat NAT, err error) {
+	nat, err = CreatePortMapping(flags)
 	if err != nil {
 		err = fmt.Errorf("Unable to create NAT: %v", err)
 		return

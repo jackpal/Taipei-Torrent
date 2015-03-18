@@ -28,8 +28,8 @@ type TorrentFlags struct {
 	Gateway string
 }
 
-func RunTorrents(flags *TorrentFlags, torrentFiles []string) (err error) {
-	conChan, listenPort, err := ListenForPeerConnections(flags)
+func RunTorrents(flags *TorrentFlags, torrentFiles []string, managers []TorrentManager) (err error) {
+	conChan, listenPort, nat, err := ListenForPeerConnections(flags)
 	if err != nil {
 		log.Println("Couldn't listen for peers connection: ", err)
 		return
@@ -61,6 +61,11 @@ func RunTorrents(flags *TorrentFlags, torrentFiles []string) (err error) {
 	lpd := &Announcer{}
 	if flags.UseLPD {
 		lpd = startLPD(torrentSessions, uint16(listenPort))
+	}
+
+	torrentControl := TorrentControl{flags, nat, torrentSessions, doneChan}
+	for _, manager := range managers {
+		manager.Start(&torrentControl)
 	}
 
 mainLoop:

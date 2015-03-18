@@ -139,6 +139,7 @@ type TorrentSession struct {
 	torrentFile          string
 	chokePolicy          ChokePolicy
 	chokePolicyHeartbeat <-chan time.Time
+	running              bool
 }
 
 func NewTorrentSession(flags *TorrentFlags, torrent string, listenPort uint16) (ts *TorrentSession, err error) {
@@ -151,6 +152,7 @@ func NewTorrentSession(flags *TorrentFlags, torrent string, listenPort uint16) (
 		torrentFile:          torrent,
 		chokePolicy:          &ClassicChokePolicy{},
 		chokePolicyHeartbeat: time.Tick(10 * time.Second),
+		running:              false,
 	}
 	fromMagnet := strings.HasPrefix(torrent, "magnet:")
 	t.M, err = GetMetaInfo(flags.Dial, torrent)
@@ -481,6 +483,11 @@ func (t *TorrentSession) Shutdown() (err error) {
 }
 
 func (t *TorrentSession) DoTorrent() {
+	if t.running {
+		log.Println("DoTorrent got called on an already running TorrentSession:", t.M.InfoHash)
+		return
+	}
+	t.running = true
 	t.heartbeat = make(chan bool, 1)
 	if t.flags.UseDeadlockDetector {
 		go t.deadlockDetector()
@@ -806,47 +813,54 @@ func (t *TorrentSession) RecordBlock(p *peerState, piece, begin, length uint32) 
 		}
 		t.si.Downloaded += uint64(length)
 		if v.isComplete() {
-			delete(t.activePieces, int(piece))
-			ok, err = checkPiece(t.fileStore, t.totalSize, t.M, int(piece))
-			if !ok || err != nil {
+			if !t.RecordPiece(piece, v.pieceLength) {
 				log.Println("Closing peer that sent a bad piece", piece, p.id, err)
 				p.Close()
 				return
-			}
-			t.si.Left -= uint64(v.pieceLength)
-			t.pieceSet.Set(int(piece))
-			t.goodPieces++
-			var percentComplete float32 = 0
-			if t.totalPieces > 0 {
-				percentComplete = float32(t.goodPieces*100) / float32(t.totalPieces)
-			}
-			log.Println("Have", t.goodPieces, "of", t.totalPieces,
-				"pieces", percentComplete, "% complete.")
-			if t.goodPieces == t.totalPieces {
-				if !t.trackerLessMode {
-					t.fetchTrackerInfo("completed")
-				}
-				// TODO: Drop connections to all seeders.
-			}
-			for _, p := range t.peers {
-				if p.have != nil {
-					if int(piece) < p.have.n && p.have.IsSet(int(piece)) {
-						// We don't do anything special. We rely on the caller
-						// to decide if this peer is still interesting.
-					} else {
-						// log.Println("...telling ", p)
-						haveMsg := make([]byte, 5)
-						haveMsg[0] = HAVE
-						uint32ToBytes(haveMsg[1:5], piece)
-						p.sendMessage(haveMsg)
-					}
-				}
 			}
 		}
 	} else {
 		log.Println("Received a block we already have.", piece, block, p.address)
 	}
 	return
+}
+
+func (t *TorrentSession) RecordPiece(piece uint32, pieceLength int) bool {
+	delete(t.activePieces, int(piece))
+	ok, err := checkPiece(t.fileStore, t.totalSize, t.M, int(piece))
+	if !ok || err != nil {
+		return false
+	}
+	t.si.Left -= uint64(pieceLength)
+	t.pieceSet.Set(int(piece))
+	t.goodPieces++
+	var percentComplete float32 = 0
+	if t.totalPieces > 0 {
+		percentComplete = float32(t.goodPieces*100) / float32(t.totalPieces)
+	}
+	log.Println("Have", t.goodPieces, "of", t.totalPieces,
+		"pieces", percentComplete, "% complete.")
+	if t.goodPieces == t.totalPieces {
+		if !t.trackerLessMode {
+			t.fetchTrackerInfo("completed")
+		}
+		// TODO: Drop connections to all seeders.
+	}
+	for _, p := range t.peers {
+		if p.have != nil {
+			if int(piece) < p.have.n && p.have.IsSet(int(piece)) {
+				// We don't do anything special. We rely on the caller
+				// to decide if this peer is still interesting.
+			} else {
+				// log.Println("...telling ", p)
+				haveMsg := make([]byte, 5)
+				haveMsg[0] = HAVE
+				uint32ToBytes(haveMsg[1:5], piece)
+				p.sendMessage(haveMsg)
+			}
+		}
+	}
+	return true
 }
 
 func (t *TorrentSession) doChoke(p *peerState) (err error) {

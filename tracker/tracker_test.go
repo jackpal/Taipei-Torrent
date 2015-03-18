@@ -419,7 +419,7 @@ func testHelperProcessImp(args []string) (err error) {
 			FileDir:   fileDir,
 			SeedRatio: seedRatio,
 		}
-		err = torrent.RunTorrents(&torrentFlags, torrentFiles)
+		err = torrent.RunTorrents(&torrentFlags, torrentFiles, []torrent.TorrentManager{})
 		if err != nil {
 			return
 		}
