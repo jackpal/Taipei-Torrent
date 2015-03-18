@@ -9,22 +9,18 @@ import (
 )
 
 type WebGui struct {
-	//Why double-pointer? Because methods defined by an interface have to act on values
-	//This makes self-modification difficult. The "solutions" I've found
-	//are a) using a []TorrentControl or b) this double-pointer stuff
-	torrentCtrl **torrent.TorrentControl
+	torrentCtrl *torrent.TorrentControl
 	server      gwu.Server
 }
 
-func NewWebGui(port int) WebGui {
-	ref := &torrent.TorrentControl{}
-	return WebGui{
-		&ref,
+func NewWebGui(port int) *WebGui {
+	return &WebGui{
+		nil,
 		gwu.NewServer("TaipeiTorrent", "localhost:"+strconv.Itoa(port)),
 	}
 }
 
-func (wg WebGui) Close() error {
+func (wg *WebGui) Close() error {
 	wins := wg.server.SortedWins()
 	for _, win := range wins {
 		wg.server.RemoveWin(win)
@@ -32,8 +28,8 @@ func (wg WebGui) Close() error {
 	return nil
 }
 
-func (wg WebGui) Start(tc *torrent.TorrentControl) error {
-	(*wg.torrentCtrl) = tc
+func (wg *WebGui) Start(tc *torrent.TorrentControl) error {
+	wg.torrentCtrl = tc
 		go wg.start()
 		return nil
 }
@@ -63,7 +59,7 @@ func (wg *WebGui) start() {
 		updateTime.SetText(fmt.Sprintln(time.Now().Format("2006-01-02 15:04:05")))
 		e.MarkDirty(updateTime)
 
-		torrlist := (**wg.torrentCtrl).GetTorrentList()
+		torrlist := wg.torrentCtrl.GetTorrentList()
 		for i := len(torrentLabels); i < len(torrlist); i++ {
 			newLabel := gwu.NewLabel("pants")
 			torrentLabels = append(torrentLabels, newLabel)
@@ -73,7 +69,7 @@ func (wg *WebGui) start() {
 
 		for i, labl := range torrentLabels {
 			if i < len(torrlist) {
-				mpa, _ := (**wg.torrentCtrl).GetStatus(torrlist[i])
+				mpa, _ := wg.torrentCtrl.GetStatus(torrlist[i])
 				labl.SetText(mpa["Name"] + "  At  " + mpa["Percent"] + "%")
 			} else {
 				labl.SetText("")
