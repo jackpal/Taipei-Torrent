@@ -231,7 +231,7 @@ func (f *FileStoreFileAdapter) Close() (err error) {
 // Create a MetaInfo for a given file and file system.
 // If fs is nil then the OSMetaInfoFileSystem will be used.
 // If pieceLength is 0 then an optimal piece length will be chosen.
-func CreateMetaInfoFromFileSystem(fs MetaInfoFileSystem, root string, pieceLength int64, wantMD5Sum bool) (metaInfo *MetaInfo, err error) {
+func CreateMetaInfoFromFileSystem(fs MetaInfoFileSystem, root, tracker string, pieceLength int64, wantMD5Sum bool) (metaInfo *MetaInfo, err error) {
 	if fs == nil {
 		dir, file := path.Split(root)
 		fs = &OSMetaInfoFileSystem{dir}
@@ -294,6 +294,9 @@ func CreateMetaInfoFromFileSystem(fs MetaInfoFileSystem, root string, pieceLengt
 	}
 	m.Info.Pieces = string(sums)
 	m.UpdateInfoHash(metaInfo)
+	if tracker != "" {
+		m.Announce = "http://" + tracker + "/announce"
+	}
 	metaInfo = m
 	return
 }
@@ -331,9 +334,9 @@ func roundUpToPowerOfTwo(v uint64) uint64 {
 	return v
 }
 
-func WriteMetaInfoBytes(root string, w io.Writer) (err error) {
+func WriteMetaInfoBytes(root, tracker string, w io.Writer) (err error) {
 	var m *MetaInfo
-	m, err = CreateMetaInfoFromFileSystem(nil, root, 0, true)
+	m, err = CreateMetaInfoFromFileSystem(nil, root, tracker, 0, true)
 	if err != nil {
 		return
 	}
