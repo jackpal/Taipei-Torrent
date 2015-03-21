@@ -30,6 +30,7 @@ type FileStore interface {
 	io.WriterAt
 	io.Closer
 	SetCache(TorrentCache)
+	Commit(int, []byte, int64)
 }
 
 type fileStore struct {
@@ -146,10 +147,26 @@ func (f *fileStore) RawReadAt(p []byte, off int64) (n int, err error) {
 
 func (f *fileStore) WriteAt(p []byte, off int64) (int, error) {
 	if f.cache != nil {
-		f.cache.WriteAt(p, off)
+		needRawWrite := f.cache.WriteAt(p, off)
+		if needRawWrite != nil {
+			for _, nc := range needRawWrite {
+				f.RawWriteAt(nc.data, nc.i)
+			}
+		}
+		return len(p), nil
+	} else {
+		return f.RawWriteAt(p, off)
+	}
 	}
 
-	return f.RawWriteAt(p, off)
+func (f *fileStore) Commit(pieceNum int, piece []byte, off int64) {
+	if f.cache != nil {
+		_, err := f.RawWriteAt(piece, off)
+		if err != nil {
+			log.Panicln("Error committing to storage:", err)
+		}
+		f.cache.MarkCommitted(pieceNum)
+	}
 }
 
 func (f *fileStore) RawWriteAt(p []byte, off int64) (n int, err error) {
@@ -191,6 +208,10 @@ func (f *fileStore) RawWriteAt(p []byte, off int64) (n int, err error) {
 func (f *fileStore) Close() (err error) {
 	for i := range f.files {
 		f.files[i].file.Close()
+	}
+	if f.cache != nil {
+		f.cache.Close()
+		f.cache = nil
 	}
 	return
 }

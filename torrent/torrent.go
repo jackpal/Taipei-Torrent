@@ -240,11 +240,6 @@ func (t *TorrentSession) load() (err error) {
 		return
 	}
 
-	if t.flags.Cacher != nil {
-		cache := t.flags.Cacher.NewCache(t.M.InfoHash, t.totalSize)
-		t.fileStore.SetCache(cache)
-	}
-
 	if t.M.Info.PieceLength == 0 {
 		err = fmt.Errorf("Bad PieceLength: %v", t.M.Info.PieceLength)
 		return
@@ -256,6 +251,11 @@ func (t *TorrentSession) load() (err error) {
 		t.lastPieceLength = int(t.M.Info.PieceLength)
 	} else {
 		t.totalPieces++
+	}
+
+	if t.flags.Cacher != nil {
+		cache := t.flags.Cacher.NewCache(t.M.InfoHash, t.totalPieces, int(t.M.Info.PieceLength), t.totalSize)
+		t.fileStore.SetCache(cache)
 	}
 
 	t.goodPieces = 0
@@ -452,7 +452,7 @@ func (t *TorrentSession) ClosePeer(peer *peerState) {
 		t.si.ME.Transferring = false
 	}
 
-	log.Println("Closing peer", peer.address)
+	//log.Println("Closing peer", peer.address)
 	_ = t.removeRequests(peer)
 	peer.Close()
 	delete(t.peers, peer.address)
@@ -819,12 +819,14 @@ func (t *TorrentSession) RecordBlock(p *peerState, piece, begin, length uint32) 
 		t.si.Downloaded += uint64(length)
 		if v.isComplete() {
 			delete(t.activePieces, int(piece))
-			ok, err = checkPiece(t.fileStore, t.totalSize, t.M, int(piece))
+			var pieceBytes []byte
+			ok, err, pieceBytes = checkPiece(t.fileStore, t.totalSize, t.M, int(piece))
 			if !ok || err != nil {
 				log.Println("Closing peer that sent a bad piece", piece, p.id, err)
 				p.Close()
 				return
 			}
+			t.fileStore.Commit(int(piece), pieceBytes, t.M.Info.PieceLength*int64(piece))
 			t.si.Left -= uint64(v.pieceLength)
 			t.pieceSet.Set(int(piece))
 			t.goodPieces++

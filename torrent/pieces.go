@@ -96,9 +96,10 @@ func hashPiece(h chan chunk, result chan chunk) {
 	}
 }
 
-func checkPiece(fs FileStore, totalLength int64, m *MetaInfo, pieceIndex int) (good bool, err error) {
+func checkPiece(fs FileStore, totalLength int64, m *MetaInfo, pieceIndex int) (good bool, err error, piece []byte) {
 	ref := m.Info.Pieces
-	currentSum, err := computePieceSum(fs, totalLength, m.Info.PieceLength, pieceIndex)
+	var currentSum []byte
+	currentSum, err, piece = computePieceSum(fs, totalLength, m.Info.PieceLength, pieceIndex)
 	if err != nil {
 		return
 	}
@@ -112,10 +113,10 @@ func checkPiece(fs FileStore, totalLength int64, m *MetaInfo, pieceIndex int) (g
 	return
 }
 
-func computePieceSum(fs FileStore, totalLength int64, pieceLength int64, pieceIndex int) (sum []byte, err error) {
+func computePieceSum(fs FileStore, totalLength int64, pieceLength int64, pieceIndex int) (sum []byte, err error, piece []byte) {
 	numPieces := (totalLength + pieceLength - 1) / pieceLength
 	hasher := sha1.New()
-	piece := make([]byte, pieceLength)
+	piece = make([]byte, pieceLength)
 	if int64(pieceIndex) == numPieces-1 {
 		piece = piece[0 : totalLength-int64(pieceIndex)*pieceLength]
 	}

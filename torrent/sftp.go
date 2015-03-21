@@ -115,14 +115,8 @@ func (sfs *SftpFileSystem) Close() (err error) {
 }
 
 func (sfs *SftpFileSystem) ensureDirectory(fullPath string) error {
-	//The following is annoyingly necessary because:
-	// a) sftp doesn't have a MkdirAll
-	// b) path.Split() has issues with forward-slash vs. back-slash, when on windows vs. linux
+	fullPath = filepath.ToSlash(fullPath)
 	fullPath = pathpkg.Clean(fullPath)
-	fullPath = strings.Replace(fullPath, "\\", "/", -1)
-	for strings.Contains(fullPath, "//") {
-		fullPath = strings.Replace(fullPath, "//", "/", -1)
-	}
 	path := strings.Split(fullPath, "/")
 	path = path[:len(path)-1] //remove filename
 

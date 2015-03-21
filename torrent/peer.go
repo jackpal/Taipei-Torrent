@@ -100,7 +100,7 @@ func NewPeerState(conn net.Conn) *peerState {
 }
 
 func (p *peerState) Close() {
-	log.Println("Closing connection to", p.address)
+	//log.Println("Closing connection to", p.address)
 	p.conn.Close()
 	// No need to close p.writeChan. Further writes to p.conn will just fail.
 }

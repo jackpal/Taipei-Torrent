@@ -8,8 +8,8 @@ import (
 	"testing"
 )
 
-func TestCachedFileStoreRead(t *testing.T) {
-	rcp := NewRamCacheProvider(2000)
+func TestHDCachedFileStoreRead(t *testing.T) {
+	rcp := NewHdCacheProvider(2000)
 	for _, testFile := range tests {
 		fs, err := mkFileStore(testFile)
 		orig, _ := ioutil.ReadFile(testFile.path)

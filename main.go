@@ -33,7 +33,8 @@ var (
 	proxyAddress        = flag.String("proxyAddress", "", "Address of a SOCKS5 proxy to use.")
 	initialCheck        = flag.Bool("initialCheck", true, "Do an initial hash check on files when adding torrents")
 	useSFTP             = flag.String("useSFTP", "", "SFTP connection string, to store torrents over SFTP. e.g. 'username:password@192.168.1.25:22/path/'")
-	useRamCache         = flag.Int("useRamCache", 0, "Size in MiB of cache in ram, to reduce reads on torrent storage.")
+	useRamCache         = flag.Int("useRamCache", 0, "Size in MiB of cache in ram, to reduce traffic on torrent storage.")
+	useHdCache          = flag.Int("useHdCache", 0, "Size in MiB of cache in OS temp directory, to reduce traffic on torrent storage.")
 )
 
 func parseTorrentFlags() *torrent.TorrentFlags {
@@ -57,8 +58,16 @@ func parseTorrentFlags() *torrent.TorrentFlags {
 }
 
 func cacheproviderFromFlags() torrent.CacheProvider {
+	if (*useRamCache) > 0 && (*useHdCache) > 0 {
+		log.Panicln("Only one cache at a time, please.")
+	}
+
 	if (*useRamCache) > 0 {
 		return torrent.NewRamCacheProvider(*useRamCache)
+	}
+
+	if (*useHdCache) > 0 {
+		return torrent.NewHdCacheProvider(*useHdCache)
 	}
 	return nil
 }
