@@ -230,7 +230,7 @@ func (t *TorrentSession) load() (err error) {
 	}
 
 	var fileSystem FileSystem
-	fileSystem, err = NewOSFileSystem(dir)
+	fileSystem, err = t.flags.FileSystemProvider.NewFS(dir)
 	if err != nil {
 		return
 	}
@@ -240,25 +240,37 @@ func (t *TorrentSession) load() (err error) {
 		return
 	}
 
+	if t.flags.Cacher != nil {
+		cache := t.flags.Cacher.NewCache(t.M.InfoHash, t.totalSize)
+		t.fileStore.SetCache(cache)
+	}
+
 	if t.M.Info.PieceLength == 0 {
 		err = fmt.Errorf("Bad PieceLength: %v", t.M.Info.PieceLength)
 		return
 	}
+
+	t.totalPieces = int(t.totalSize / t.M.Info.PieceLength)
 	t.lastPieceLength = int(t.totalSize % t.M.Info.PieceLength)
 	if t.lastPieceLength == 0 { // last piece is a full piece
 		t.lastPieceLength = int(t.M.Info.PieceLength)
+	} else {
+		t.totalPieces++
 	}
 
-	start := time.Now()
-	good, bad, pieceSet, err := checkPieces(t.fileStore, t.totalSize, t.M)
-	end := time.Now()
-	log.Printf("Computed missing pieces (%.2f seconds)", end.Sub(start).Seconds())
-	if err != nil {
-		return
+	t.goodPieces = 0
+	bad := t.totalPieces
+	if t.flags.InitialCheck {
+		start := time.Now()
+		t.goodPieces, bad, t.pieceSet, err = checkPieces(t.fileStore, t.totalSize, t.M)
+		end := time.Now()
+		log.Printf("Computed missing pieces (%.2f seconds)", end.Sub(start).Seconds())
+		if err != nil {
+			return
+		}
+	} else {
+		t.pieceSet = NewBitset(t.totalPieces)
 	}
-	t.pieceSet = pieceSet
-	t.totalPieces = good + bad
-	t.goodPieces = good
 
 	left := uint64(bad) * uint64(t.M.Info.PieceLength)
 	if !t.pieceSet.IsSet(t.totalPieces - 1) {
@@ -266,7 +278,7 @@ func (t *TorrentSession) load() (err error) {
 	}
 	t.si.Left = left
 
-	log.Println("Good pieces:", good, "Bad pieces:", bad, "Bytes left:", left)
+	log.Println("Good pieces:", t.goodPieces, "Bad pieces:", bad, "Bytes left:", left)
 
 	// Enlarge any existing peers piece maps
 	for _, p := range t.peers {

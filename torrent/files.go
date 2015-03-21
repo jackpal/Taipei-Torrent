@@ -3,6 +3,7 @@ package torrent
 import (
 	"errors"
 	"io"
+	"log"
 )
 
 // Interface for a file.
@@ -11,6 +12,11 @@ type File interface {
 	io.ReaderAt
 	io.WriterAt
 	io.Closer
+}
+
+//Interface for a provider of filesystems.
+type FsProvider interface {
+	NewFS(directory string) (FileSystem, error)
 }
 
 // Interface for a file system. A file system contains files.
@@ -23,12 +29,14 @@ type FileStore interface {
 	io.ReaderAt
 	io.WriterAt
 	io.Closer
+	SetCache(TorrentCache)
 }
 
 type fileStore struct {
 	fileSystem FileSystem
 	offsets    []int64
 	files      []fileEntry // Stored in increasing globalOffset order
+	cache      TorrentCache
 }
 
 type fileEntry struct {
@@ -67,6 +75,10 @@ func NewFileStore(info *InfoDict, fileSystem FileSystem) (f FileStore, totalSize
 	return
 }
 
+func (f *fileStore) SetCache(cache TorrentCache) {
+	f.cache = cache
+}
+
 func (f *fileStore) find(offset int64) int {
 	// Binary search
 	offsets := f.offsets
@@ -84,7 +96,25 @@ func (f *fileStore) find(offset int64) int {
 	return low
 }
 
-func (f *fileStore) ReadAt(p []byte, off int64) (n int, err error) {
+func (f *fileStore) ReadAt(p []byte, off int64) (int, error) {
+	if f.cache == nil {
+		return f.RawReadAt(p, off)
+	}
+
+	unfullfilled := f.cache.ReadAt(p, off)
+
+	var retErr error
+	for _, unf := range unfullfilled {
+		_, err := f.RawReadAt(unf.data, unf.i)
+		if err != nil {
+			log.Println("Got an error on read (off=", unf.i, "len=", len(unf.data), ") from filestore:", err)
+			retErr = err
+		}
+	}
+	return len(p), retErr
+}
+
+func (f *fileStore) RawReadAt(p []byte, off int64) (n int, err error) {
 	index := f.find(off)
 	for len(p) > 0 && index < len(f.offsets) {
 		chunk := int64(len(p))
@@ -114,7 +144,15 @@ func (f *fileStore) ReadAt(p []byte, off int64) (n int, err error) {
 	return
 }
 
-func (f *fileStore) WriteAt(p []byte, off int64) (n int, err error) {
+func (f *fileStore) WriteAt(p []byte, off int64) (int, error) {
+	if f.cache != nil {
+		f.cache.WriteAt(p, off)
+	}
+
+	return f.RawWriteAt(p, off)
+}
+
+func (f *fileStore) RawWriteAt(p []byte, off int64) (n int, err error) {
 	index := f.find(off)
 	for len(p) > 0 && index < len(f.offsets) {
 		chunk := int64(len(p))

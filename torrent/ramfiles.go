@@ -1,5 +1,11 @@
 package torrent
 
+type ramFsProvider struct{}
+
+func (o ramFsProvider) NewFS(directory string) (fs FileSystem, err error) {
+	return &ramFileSystem{}, nil
+}
+
 // A RAM file system.
 type ramFileSystem struct {
 }
