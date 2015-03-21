@@ -418,6 +418,8 @@ func testHelperProcessImp(args []string) (err error) {
 			Port:      int(port),
 			FileDir:   fileDir,
 			SeedRatio: seedRatio,
+			FileSystemProvider: torrent.OsFsProvider{},
+			InitialCheck:       true,
 		}
 		err = torrent.RunTorrents(&torrentFlags, torrentFiles)
 		if err != nil {
