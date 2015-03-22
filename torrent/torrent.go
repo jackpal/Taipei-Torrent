@@ -489,6 +489,10 @@ func (t *TorrentSession) Shutdown() (err error) {
 	if t.dht != nil {
 		t.dht.Stop()
 	}
+	err = t.fileStore.Close()
+	if err != nil {
+		log.Println("Error closing filestore for torrent", t.M.Info.Name, ":", err)
+	}
 	return
 }
 

@@ -22,6 +22,10 @@ func (r *ramFileSystem) Open(name []string, length int64) (file File, err error)
 	return
 }
 
+func (r *ramFileSystem) Close() error {
+	return nil
+}
+
 func (r ramFile) ReadAt(p []byte, off int64) (n int, err error) {
 	n = copy(p, []byte(r)[off:])
 	return

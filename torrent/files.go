@@ -22,6 +22,7 @@ type FsProvider interface {
 // Interface for a file system. A file system contains files.
 type FileSystem interface {
 	Open(name []string, length int64) (file File, err error)
+	io.Closer
 }
 
 // A torrent file store.
@@ -212,6 +213,9 @@ func (f *fileStore) Close() (err error) {
 	if f.cache != nil {
 		f.cache.Close()
 		f.cache = nil
+	}
+	if f.fileSystem != nil {
+	err = f.fileSystem.Close()
 	}
 	return
 }
