@@ -19,6 +19,8 @@ Additional Features:
 --------------------
 
 + It can act as a tracker if you start it with the --createTracker flag
++ SFTP file system proxying enables torrenting large torrents on systems with
+  limited local file storage.
 
 FAQ:
 ----
@@ -34,7 +36,7 @@ A: See the LICENSE file.
 Current Status
 --------------
 
-+ Tested on Go 1.3
++ Tested on Go 1.4.2 and tip.
 + Tested on Windows, Linux and Mac OS X.
 + People tell me they've run it on Android, too.
 
@@ -75,14 +77,24 @@ https://github.com/jackpal/bencode-go - Bencode encoder/decoder
 
 http://code.google.com/p/go-nat-pmp - NAT-PMP firewall client
 
-https://github.com/hailiang/gosocks - SOCKS5 proxy support
+https://github.com/hailiang/socks - SOCKS5 proxy support
 
 https://github.com/nictuku/dht      - Distributed Hash Table
 
 https://github.com/nictuku/nettools - Network utilities
 
+https://github.com/pkg/sftp - SFTP protocol
+
+
 Google+ Community
 -----------------
 
 https://plus.google.com/u/0/communities/100997865549971977580
+
+Other Notable Go BitTorrent Implementations
+-------------------------------------------
+
+I haven't used these, but they may be worth checking out:
+
+https://github.com/anacrolix/torrent
 
