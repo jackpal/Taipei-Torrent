@@ -230,7 +230,7 @@ func (t *TorrentSession) load() (err error) {
 	}
 
 	var fileSystem FileSystem
-	fileSystem, err = NewOSFileSystem(dir)
+	fileSystem, err = t.flags.FileSystemProvider.NewFS(dir)
 	if err != nil {
 		return
 	}
@@ -244,21 +244,33 @@ func (t *TorrentSession) load() (err error) {
 		err = fmt.Errorf("Bad PieceLength: %v", t.M.Info.PieceLength)
 		return
 	}
+
+	t.totalPieces = int(t.totalSize / t.M.Info.PieceLength)
 	t.lastPieceLength = int(t.totalSize % t.M.Info.PieceLength)
 	if t.lastPieceLength == 0 { // last piece is a full piece
 		t.lastPieceLength = int(t.M.Info.PieceLength)
+	} else {
+		t.totalPieces++
 	}
 
-	start := time.Now()
-	good, bad, pieceSet, err := checkPieces(t.fileStore, t.totalSize, t.M)
-	end := time.Now()
-	log.Printf("Computed missing pieces (%.2f seconds)", end.Sub(start).Seconds())
-	if err != nil {
-		return
+	if t.flags.Cacher != nil {
+		cache := t.flags.Cacher.NewCache(t.M.InfoHash, t.totalPieces, int(t.M.Info.PieceLength), t.totalSize)
+		t.fileStore.SetCache(cache)
 	}
-	t.pieceSet = pieceSet
-	t.totalPieces = good + bad
-	t.goodPieces = good
+
+	t.goodPieces = 0
+	bad := t.totalPieces
+	if t.flags.InitialCheck {
+		start := time.Now()
+		t.goodPieces, bad, t.pieceSet, err = checkPieces(t.fileStore, t.totalSize, t.M)
+		end := time.Now()
+		log.Printf("Computed missing pieces (%.2f seconds)", end.Sub(start).Seconds())
+		if err != nil {
+			return
+		}
+	} else {
+		t.pieceSet = NewBitset(t.totalPieces)
+	}
 
 	left := uint64(bad) * uint64(t.M.Info.PieceLength)
 	if !t.pieceSet.IsSet(t.totalPieces - 1) {
@@ -266,7 +278,7 @@ func (t *TorrentSession) load() (err error) {
 	}
 	t.si.Left = left
 
-	log.Println("Good pieces:", good, "Bad pieces:", bad, "Bytes left:", left)
+	log.Println("Good pieces:", t.goodPieces, "Bad pieces:", bad, "Bytes left:", left)
 
 	// Enlarge any existing peers piece maps
 	for _, p := range t.peers {
@@ -440,7 +452,7 @@ func (t *TorrentSession) ClosePeer(peer *peerState) {
 		t.si.ME.Transferring = false
 	}
 
-	log.Println("Closing peer", peer.address)
+	//log.Println("Closing peer", peer.address)
 	_ = t.removeRequests(peer)
 	peer.Close()
 	delete(t.peers, peer.address)
@@ -807,12 +819,14 @@ func (t *TorrentSession) RecordBlock(p *peerState, piece, begin, length uint32) 
 		t.si.Downloaded += uint64(length)
 		if v.isComplete() {
 			delete(t.activePieces, int(piece))
-			ok, err = checkPiece(t.fileStore, t.totalSize, t.M, int(piece))
+			var pieceBytes []byte
+			ok, err, pieceBytes = checkPiece(t.fileStore, t.totalSize, t.M, int(piece))
 			if !ok || err != nil {
 				log.Println("Closing peer that sent a bad piece", piece, p.id, err)
 				p.Close()
 				return
 			}
+			t.fileStore.Commit(int(piece), pieceBytes, t.M.Info.PieceLength*int64(piece))
 			t.si.Left -= uint64(v.pieceLength)
 			t.pieceSet.Set(int(piece))
 			t.goodPieces++

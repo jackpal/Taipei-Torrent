@@ -17,7 +17,9 @@ type osFile struct {
 	filePath string
 }
 
-func NewOSFileSystem(directory string) (fs FileSystem, err error) {
+type OsFsProvider struct{}
+
+func (o OsFsProvider) NewFS(directory string) (fs FileSystem, err error) {
 	return &osFileSystem{directory}, nil
 }
 

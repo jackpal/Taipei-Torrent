@@ -9,7 +9,7 @@ import (
 	"path"
 	"runtime/pprof"
 
-	socks "github.com/hailiang/gosocks"
+	"github.com/hailiang/socks"
 	"github.com/jackpal/Taipei-Torrent/torrent"
 	"github.com/jackpal/Taipei-Torrent/tracker"
 )
@@ -31,6 +31,10 @@ var (
 	useDHT              = flag.Bool("useDHT", false, "Use DHT to get peers.")
 	trackerlessMode     = flag.Bool("trackerlessMode", false, "Do not get peers from the tracker. Good for testing DHT mode.")
 	proxyAddress        = flag.String("proxyAddress", "", "Address of a SOCKS5 proxy to use.")
+	initialCheck        = flag.Bool("initialCheck", true, "Do an initial hash check on files when adding torrents")
+	useSFTP             = flag.String("useSFTP", "", "SFTP connection string, to store torrents over SFTP. e.g. 'username:password@192.168.1.25:22/path/'")
+	useRamCache         = flag.Int("useRamCache", 0, "Size in MiB of cache in ram, to reduce traffic on torrent storage.")
+	useHdCache          = flag.Int("useHdCache", 0, "Size in MiB of cache in OS temp directory, to reduce traffic on torrent storage.")
 )
 
 func parseTorrentFlags() *torrent.TorrentFlags {
@@ -46,8 +50,33 @@ func parseTorrentFlags() *torrent.TorrentFlags {
 		UseNATPMP:           *useNATPMP,
 		TrackerlessMode:     *trackerlessMode,
 		// IP address of gateway
-		Gateway: *gateway,
+		Gateway:            *gateway,
+		InitialCheck:       *initialCheck,
+		FileSystemProvider: fsproviderFromFlags(),
+		Cacher:             cacheproviderFromFlags(),
 	}
+}
+
+func cacheproviderFromFlags() torrent.CacheProvider {
+	if (*useRamCache) > 0 && (*useHdCache) > 0 {
+		log.Panicln("Only one cache at a time, please.")
+	}
+
+	if (*useRamCache) > 0 {
+		return torrent.NewRamCacheProvider(*useRamCache)
+	}
+
+	if (*useHdCache) > 0 {
+		return torrent.NewHdCacheProvider(*useHdCache)
+	}
+	return nil
+}
+
+func fsproviderFromFlags() torrent.FsProvider {
+	if len(*useSFTP) > 0 {
+		return torrent.NewSftpFsProvider(*useSFTP)
+	}
+	return torrent.OsFsProvider{}
 }
 
 func dialerFromFlags() torrent.Dialer {

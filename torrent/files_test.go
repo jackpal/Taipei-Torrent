@@ -2,7 +2,8 @@ package torrent
 
 import (
 	"crypto/sha1"
-	"fmt"
+	"encoding/hex"
+	"io/ioutil"
 	"testing"
 )
 
@@ -30,7 +31,7 @@ var tests []testFile = []testFile{{
 
 func mkFileStore(tf testFile) (fs *fileStore, err error) {
 	f := fileEntry{tf.fileLen, &osFile{tf.path}}
-	return &fileStore{nil, []int64{0}, []fileEntry{f}}, nil
+	return &fileStore{fileSystem: nil, offsets: []int64{0}, files: []fileEntry{f}}, nil
 }
 
 func TestFileStoreRead(t *testing.T) {
@@ -44,11 +45,13 @@ func TestFileStoreRead(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		h := sha1.New()
-		h.Write(ret)
-		sum := fmt.Sprintf("%X", h.Sum(nil))
-		if sum != testFile.hash {
-			t.Errorf("Wanted %v, got %v\n", testFile.hash, sum)
+		orig, _ := ioutil.ReadFile(testFile.path)
+		wantedsum := sha1.Sum(orig[:testFile.fileLen])
+		sum1Str := hex.EncodeToString(wantedsum[0:])
+		gotsum := sha1.Sum(ret)
+		sum2Str := hex.EncodeToString(gotsum[0:])
+		if sum1Str != sum2Str {
+			t.Errorf("Wanted %v, got %v\n", sum1Str, sum2Str)
 		}
 	}
 }

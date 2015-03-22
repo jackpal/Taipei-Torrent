@@ -26,6 +26,15 @@ type TorrentFlags struct {
 
 	// IP address of gateway used for NAT-PMP
 	Gateway string
+
+	//Provides the filesystems added torrents are saved to
+	FileSystemProvider FsProvider
+
+	//Whether to check file hashes when adding torrents
+	InitialCheck bool
+
+	//Provides cache to each torrent
+	Cacher CacheProvider
 }
 
 func RunTorrents(flags *TorrentFlags, torrentFiles []string) (err error) {
