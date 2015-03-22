@@ -207,6 +207,10 @@ func (f *FileStoreFileSystemAdapter) Open(name []string, length int64) (file Fil
 	return
 }
 
+func (f *FileStoreFileSystemAdapter) Close() error {
+	return nil
+}
+
 func (f *FileStoreFileAdapter) ReadAt(p []byte, off int64) (n int, err error) {
 	return f.f.ReadAt(p, off)
 }

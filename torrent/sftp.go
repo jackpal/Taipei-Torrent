@@ -111,6 +111,12 @@ func (sfs *SftpFileSystem) Open(name []string, length int64) (File, error) {
 }
 
 func (sfs *SftpFileSystem) Close() (err error) {
+	sfs.closed = true
+	err = sfs.sftpClient.Close()
+	sfs.sshClient.Close()
+	if err != nil {
+		log.Println("Error closing sftp client:", err)
+	}
 	return
 }
 

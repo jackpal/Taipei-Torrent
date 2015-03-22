@@ -74,6 +74,7 @@ type RamCache struct {
 }
 
 func (r *RamCache) Close() {
+	//We don't need to do anything. The garbage collector will take care of it.
 }
 
 func (r *RamCache) ReadAt(p []byte, off int64) []chunk {
