@@ -62,7 +62,7 @@ func main() {
 	flag.Parse()
 
 	if *createTorrent != "" {
-		err := torrent.WriteMetaInfoBytes(*createTorrent, os.Stdout)
+		err := torrent.WriteMetaInfoBytes(*createTorrent, *createTracker, os.Stdout)
 		if err != nil {
 			log.Fatal("Could not create torrent file:", err)
 		}
