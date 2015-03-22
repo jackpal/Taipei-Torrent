@@ -198,7 +198,7 @@ func newTorrentClient(name string, port int, torrentFile string, fileDir string,
 
 func createTorrentFile(torrentFileName, root, announcePath string) (err error) {
 	var metaInfo *torrent.MetaInfo
-    metaInfo, err = torrent.CreateMetaInfoFromFileSystem(nil, root, "127.0.0.1:8080", 0, false)
+	metaInfo, err = torrent.CreateMetaInfoFromFileSystem(nil, root, "127.0.0.1:8080", 0, false)
 	if err != nil {
 		return
 	}
@@ -414,9 +414,9 @@ func testHelperProcessImp(args []string) (err error) {
 		var seedRatio float64
 		seedRatio, err = strconv.ParseFloat(seedRatioStr, 64)
 		torrentFlags := torrent.TorrentFlags{
-			Port:      int(port),
-			FileDir:   fileDir,
-			SeedRatio: seedRatio,
+			Port:               int(port),
+			FileDir:            fileDir,
+			SeedRatio:          seedRatio,
 			FileSystemProvider: torrent.OsFsProvider{},
 			InitialCheck:       true,
 		}

@@ -64,13 +64,13 @@ func (r *RamCacheProvider) NewCache(infohash string, numPieces int, pieceSize in
 //'isByteSet' for [i] indicates for box 'i' if a byte has been written to
 type RamCache struct {
 	pieceSize   int
-	maxCapacity   int
-	actualUsage   int
+	maxCapacity int
+	actualUsage int
 	atimes      []time.Time
-	store         [][]byte
-	isBoxFull     Bitset
+	store       [][]byte
+	isBoxFull   Bitset
 	isBoxCommit Bitset
-	isByteSet     []Bitset
+	isByteSet   []Bitset
 }
 
 func (r *RamCache) Close() {
@@ -187,7 +187,7 @@ func (r *RamCache) trim() []chunk {
 		if r.actualUsage == r.maxCapacity {
 			return nil
 		}
-}
+	}
 
 	retVal := make([]chunk, 0)
 

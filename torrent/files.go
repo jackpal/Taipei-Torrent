@@ -158,7 +158,7 @@ func (f *fileStore) WriteAt(p []byte, off int64) (int, error) {
 	} else {
 		return f.RawWriteAt(p, off)
 	}
-	}
+}
 
 func (f *fileStore) Commit(pieceNum int, piece []byte, off int64) {
 	if f.cache != nil {
@@ -215,7 +215,7 @@ func (f *fileStore) Close() (err error) {
 		f.cache = nil
 	}
 	if f.fileSystem != nil {
-	err = f.fileSystem.Close()
+		err = f.fileSystem.Close()
 	}
 	return
 }
