@@ -1159,14 +1159,22 @@ type MetadataMessage struct {
 	TotalSize uint  `bencode:"total_size"`
 }
 
+//From bittorrent.org, a bep 9 data message is structured as follows:
+//d8:msg_typei1e5:piecei0e10:total_sizei34256eexxxx
+//xxxx being the piece data
+//So, simplest approach: search for 'ee' as the end of bencoded data
+func getMetadataPiece(msg []byte) ([]byte, error) {
+	for i := 0; i < len(msg)-1; i++ {
+		if msg[i] == 'e' && msg[i+1] == 'e' {
+			return msg[i+2:], nil
+		}
+	}
+	return nil, errors.New("Couldn't find an appropriate end to the bencoded message.")
+}
+
 func (t *TorrentSession) DoMetadata(msg []byte, p *peerState) {
-	// We need a buffered reader because the raw data is put directly
-	// after the bencoded data, and a simple reader will get all its bytes
-	// eaten. A buffered reader will keep a reference to where the
-	// bdecoding ended.
-	br := bufio.NewReader(bytes.NewReader(msg))
 	var message MetadataMessage
-	err := bencode.Unmarshal(br, &message)
+	err := bencode.Unmarshal(bytes.NewReader(msg), &message)
 	if err != nil {
 		log.Println("Error when parsing metadata: ", err)
 		return
@@ -1177,14 +1185,12 @@ func (t *TorrentSession) DoMetadata(msg []byte, p *peerState) {
 	case METADATA_REQUEST:
 		//TODO: Answer to metadata request
 	case METADATA_DATA:
-
-		var piece bytes.Buffer
-		_, err := io.Copy(&piece, br)
+		piece, err := getMetadataPiece(msg)
 		if err != nil {
 			log.Println("Error when getting metadata piece: ", err)
 			return
 		}
-		t.si.ME.Pieces[message.Piece] = piece.Bytes()
+		t.si.ME.Pieces[message.Piece] = piece
 
 		finished := true
 		for idx, data := range t.si.ME.Pieces {
