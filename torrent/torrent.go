@@ -1,7 +1,6 @@
 package torrent
 
 import (
-	"bufio"
 	"bytes"
 	"crypto/sha1"
 	"errors"
