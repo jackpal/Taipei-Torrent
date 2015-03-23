@@ -20,6 +20,7 @@ type TorrentFlags struct {
 	UseUPnP             bool
 	UseNATPMP           bool
 	TrackerlessMode     bool
+	ExecOnSeeding       string
 
 	// The dial function to use. Nil means use net.Dial
 	Dial Dialer

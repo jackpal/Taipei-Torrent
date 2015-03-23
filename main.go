@@ -35,6 +35,7 @@ var (
 	useSFTP             = flag.String("useSFTP", "", "SFTP connection string, to store torrents over SFTP. e.g. 'username:password@192.168.1.25:22/path/'")
 	useRamCache         = flag.Int("useRamCache", 0, "Size in MiB of cache in ram, to reduce traffic on torrent storage.")
 	useHdCache          = flag.Int("useHdCache", 0, "Size in MiB of cache in OS temp directory, to reduce traffic on torrent storage.")
+	execOnSeeding       = flag.String("execOnSeeding", "", "Command to execute when torrent has fully downloaded and has begun seeding.")
 )
 
 func parseTorrentFlags() *torrent.TorrentFlags {
@@ -54,6 +55,7 @@ func parseTorrentFlags() *torrent.TorrentFlags {
 		InitialCheck:       *initialCheck,
 		FileSystemProvider: fsproviderFromFlags(),
 		Cacher:             cacheproviderFromFlags(),
+		ExecOnSeeding:      *execOnSeeding,
 	}
 }
 
