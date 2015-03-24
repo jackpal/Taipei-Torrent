@@ -158,6 +158,13 @@ func NewTorrentSession(flags *TorrentFlags, torrent string, listenPort uint16) (
 	if err != nil {
 		return
 	}
+
+	if t.M.Announce == "" && len(t.M.AnnounceList) == 0 {
+		t.trackerLessMode = true
+	} else {
+		t.trackerLessMode = t.flags.TrackerlessMode
+	}
+
 	dhtAllowed := flags.UseDHT && t.M.Info.Private == 0
 	if dhtAllowed {
 		// TODO: UPnP UDP port mapping.
@@ -207,12 +214,6 @@ func (t *TorrentSession) load() (err error) {
 	if e := t.M.Encoding; e != "" && e != "UTF-8" {
 		err = fmt.Errorf("Unknown encoding %v", e)
 		return
-	}
-
-	if t.M.Announce == "" && len(t.M.AnnounceList) == 0 {
-		t.trackerLessMode = true
-	} else {
-		t.trackerLessMode = t.flags.TrackerlessMode
 	}
 
 	ext := ".torrent"
@@ -1190,6 +1191,11 @@ func (t *TorrentSession) DoMetadata(msg []byte, p *peerState) {
 	case METADATA_REQUEST:
 		//TODO: Answer to metadata request
 	case METADATA_DATA:
+		if t.si.HaveTorrent {
+			log.Println("Received metadata we don't need, from", p.address)
+			return
+		}
+
 		piece, err := getMetadataPiece(msg)
 		if err != nil {
 			log.Println("Error when getting metadata piece: ", err)
