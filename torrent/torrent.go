@@ -12,10 +12,13 @@ import (
 	"math/rand"
 	"net"
 	"os"
+	"os/exec"
+	"os/signal"
 	"path"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	bencode "github.com/jackpal/bencode-go"
@@ -497,6 +500,7 @@ func (t *TorrentSession) Shutdown() (err error) {
 }
 
 func (t *TorrentSession) DoTorrent() {
+	var execOnSeedingNotificationSent bool = false
 	t.heartbeat = make(chan bool, 1)
 	if t.flags.UseDeadlockDetector {
 		go t.deadlockDetector()
@@ -505,6 +509,7 @@ func (t *TorrentSession) DoTorrent() {
 	heartbeatChan := time.Tick(1 * time.Second)
 	keepAliveChan := time.Tick(60 * time.Second)
 	var retrackerChan <-chan time.Time
+	var childChan = make(chan os.Signal)
 	t.hintNewPeerChan = make(chan string)
 	t.addPeerChan = make(chan *BtConn)
 	if !t.trackerLessMode {
@@ -528,9 +533,23 @@ func (t *TorrentSession) DoTorrent() {
 
 	for {
 		var peersRequestResults chan map[dht.InfoHash][]string
+		var seedingNotificationCmd *exec.Cmd
 		peersRequestResults = nil
 		if t.dht != nil {
 			peersRequestResults = t.dht.PeersRequestResults
+		}
+		if !execOnSeedingNotificationSent && t.goodPieces == t.totalPieces && len(t.flags.ExecOnSeeding) > 0 {
+			seedingNotificationCmd = exec.Command(t.flags.ExecOnSeeding)
+			seedingNotificationCmd.Env = []string{
+				fmt.Sprintf("TORRENT_FILE=%s", t.torrentFile),
+				fmt.Sprintf("TORRENT_INFOHASH=%x", t.M.InfoHash),
+			}
+			err := seedingNotificationCmd.Start()
+			if err != nil {
+				log.Printf("Error while executing %v: %v\n", t.flags.ExecOnSeeding, err)
+			}
+			signal.Notify(childChan, syscall.SIGCHLD)
+			execOnSeedingNotificationSent = true
 		}
 		select {
 		case <-t.chokePolicyHeartbeat:
@@ -542,6 +561,11 @@ func (t *TorrentSession) DoTorrent() {
 		case <-retrackerChan:
 			if !t.trackerLessMode {
 				t.fetchTrackerInfo("")
+			}
+		case <-childChan:
+			err := seedingNotificationCmd.Wait()
+			if err != nil {
+				log.Println("Error in wait:", err)
 			}
 		case dhtInfoHashPeers := <-peersRequestResults:
 			newPeerCount := 0
