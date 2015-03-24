@@ -207,7 +207,7 @@ func (t *TorrentSession) load() (err error) {
 		return
 	}
 
-	if t.M.Announce == "" {
+	if t.M.Announce == "" && len(t.M.AnnounceList) == 0 {
 		t.trackerLessMode = true
 	} else {
 		t.trackerLessMode = t.flags.TrackerlessMode
