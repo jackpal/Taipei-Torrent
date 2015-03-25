@@ -121,12 +121,8 @@ func main() {
 
 	args := flag.Args()
 	narg := flag.NArg()
-	if narg != 1 {
-		if narg < 1 {
-			log.Println("Too few arguments. Torrent file or torrent URL required.")
-		} else {
-			log.Printf("Too many arguments. (Expected 1): %v", args)
-		}
+	if narg < 1 {
+		log.Println("Too few arguments. Torrent file or torrent URL required.")
 		usage()
 	}
 

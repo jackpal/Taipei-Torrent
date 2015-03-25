@@ -166,17 +166,6 @@ func NewTorrentSession(flags *TorrentFlags, torrent string, listenPort uint16) (
 	}
 
 	dhtAllowed := flags.UseDHT && t.M.Info.Private == 0
-	if dhtAllowed {
-		// TODO: UPnP UDP port mapping.
-		cfg := dht.NewConfig()
-		cfg.Port = int(listenPort)
-		cfg.NumTargetPeers = TARGET_NUM_PEERS
-		if t.dht, err = dht.New(cfg); err != nil {
-			log.Println("DHT node creation error", err)
-			return
-		}
-		go t.dht.Run()
-	}
 
 	t.si = &SessionInfo{
 		PeerId:        peerId(),
@@ -488,9 +477,6 @@ func (t *TorrentSession) Shutdown() (err error) {
 	for _, peer := range t.peers {
 		t.ClosePeer(peer)
 	}
-	if t.dht != nil {
-		t.dht.Stop()
-	}
 	err = t.fileStore.Close()
 	if err != nil {
 		log.Println("Error closing filestore for torrent", t.M.Info.Name, ":", err)
@@ -529,11 +515,6 @@ func (t *TorrentSession) DoTorrent() {
 	defer t.Shutdown()
 
 	for {
-		var peersRequestResults chan map[dht.InfoHash][]string
-		peersRequestResults = nil
-		if t.dht != nil {
-			peersRequestResults = t.dht.PeersRequestResults
-		}
 		if !t.execOnSeedingDone && t.goodPieces == t.totalPieces && len(t.flags.ExecOnSeeding) > 0 {
 			t.execOnSeeding()
 			t.execOnSeedingDone = true
@@ -549,23 +530,6 @@ func (t *TorrentSession) DoTorrent() {
 			if !t.trackerLessMode {
 				t.fetchTrackerInfo("")
 			}
-		case dhtInfoHashPeers := <-peersRequestResults:
-			newPeerCount := 0
-			// key = infoHash. The torrent client currently only
-			// supports one download at a time, so let's assume
-			// it's the case.
-			for _, peers := range dhtInfoHashPeers {
-				for _, peer := range peers {
-					peer = dht.DecodePeerAddress(peer)
-					if t.mightAcceptPeer(peer) {
-						newPeerCount++
-						if t.si.HaveTorrent {
-							go t.connectToPeer(peer)
-						}
-					}
-				}
-			}
-			// log.Println("Contacting", newPeerCount, "new peers (thanks DHT!)")
 		case ti := <-t.trackerInfoChan:
 			t.ti = ti
 			log.Println("Torrent has", t.ti.Complete, "seeders and", t.ti.Incomplete, "leachers.")

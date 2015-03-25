@@ -2,6 +2,7 @@ package torrent
 
 import (
 	"encoding/hex"
+	"github.com/nictuku/dht"
 	"log"
 	"net"
 	"os"
@@ -48,6 +49,11 @@ func RunTorrents(flags *TorrentFlags, torrentFiles []string) (err error) {
 
 	doneChan := make(chan *TorrentSession)
 
+	var dhtNode dht.DHT
+	if flags.UseDHT {
+		dhtNode = *startDHT(flags.Port)
+	}
+
 	torrentSessions := make(map[string]*TorrentSession)
 
 	for _, torrentFile := range torrentFiles {
@@ -58,6 +64,7 @@ func RunTorrents(flags *TorrentFlags, torrentFiles []string) (err error) {
 			return
 		}
 		log.Printf("Starting torrent session for %x", ts.M.InfoHash)
+		ts.dht = &dhtNode
 		torrentSessions[ts.M.InfoHash] = ts
 	}
 
@@ -95,6 +102,18 @@ mainLoop:
 			if ts, ok := torrentSessions[c.Infohash]; ok {
 				ts.AcceptNewPeer(c)
 			}
+		case dhtPeers := <-dhtNode.PeersRequestResults:
+			for key, peers := range dhtPeers {
+				if ts, ok := torrentSessions[string(key)]; ok {
+					log.Printf("Received %d DHT peers for torrent session %x\n", len(peers), []byte(key))
+					for _, peer := range peers {
+						peer = dht.DecodePeerAddress(peer)
+						ts.HintNewPeer(peer)
+					}
+				} else {
+					log.Printf("Received DHT peer for an unknown torrent session %x\n", []byte(key))
+				}
+			}
 		case announce := <-lpd.Announces:
 			hexhash, err := hex.DecodeString(announce.Infohash)
 			if err != nil {
@@ -106,6 +125,9 @@ mainLoop:
 				ts.HintNewPeer(announce.Peer)
 			}
 		}
+	}
+	if flags.UseDHT {
+		dhtNode.Stop()
 	}
 	return
 }
@@ -127,4 +149,20 @@ func startLPD(torrentSessions map[string]*TorrentSession, listenPort uint16) (lp
 		}
 	}
 	return
+}
+
+func startDHT(listenPort int) *dht.DHT {
+	// TODO: UPnP UDP port mapping.
+	cfg := dht.NewConfig()
+	cfg.Port = listenPort
+	cfg.NumTargetPeers = TARGET_NUM_PEERS
+	dhtnode, err := dht.New(cfg)
+	if err != nil {
+		log.Println("DHT node creation error:", err)
+		return nil
+	}
+
+	go dhtnode.Run()
+
+	return dhtnode
 }
