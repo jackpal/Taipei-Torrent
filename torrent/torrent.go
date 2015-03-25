@@ -201,7 +201,7 @@ func (t *TorrentSession) reload(metadata string) (err error) {
 }
 
 func (t *TorrentSession) load() (err error) {
-	log.Printf("[%s] Tracker: %v, Comment: %v, InfoHash: %x, Encoding: %v, Private: %v",
+	log.Printf("[ %s ] Tracker: %v, Comment: %v, InfoHash: %x, Encoding: %v, Private: %v",
 		t.M.Info.Name, t.M.AnnounceList, t.M.Comment, t.M.InfoHash, t.M.Encoding, t.M.Info.Private)
 	if e := t.M.Encoding; e != "" && e != "UTF-8" {
 		err = fmt.Errorf("Unknown encoding %v", e)
@@ -258,7 +258,7 @@ func (t *TorrentSession) load() (err error) {
 		start := time.Now()
 		t.goodPieces, bad, t.pieceSet, err = checkPieces(t.fileStore, t.totalSize, t.M)
 		end := time.Now()
-		log.Printf("[%s] Computed missing pieces (%.2f seconds)", t.M.Info.Name, end.Sub(start).Seconds())
+		log.Printf("[ %s ] Computed missing pieces (%.2f seconds)", t.M.Info.Name, end.Sub(start).Seconds())
 		if err != nil {
 			return
 		}
@@ -647,7 +647,7 @@ func (t *TorrentSession) DoTorrent() {
 }
 
 func (t *TorrentSession) chokePeers() (err error) {
-	log.Printf("[%s] Choking peers", t.M.Info.Name)
+	log.Printf("[ %s ] Choking peers", t.M.Info.Name)
 	peers := t.peers
 	chokers := make([]Choker, 0, len(peers))
 	for _, peer := range peers {
@@ -666,7 +666,7 @@ func (t *TorrentSession) chokePeers() (err error) {
 		shouldChoke := i >= unchokeCount
 		if peer, ok := c.(*peerState); ok {
 			if shouldChoke != peer.am_choking {
-				log.Printf("[%s] Changing choke status %v -> %v", t.M.Info.Name, peer.address, shouldChoke)
+				log.Printf("[ %s ] Changing choke status %v -> %v", t.M.Info.Name, peer.address, shouldChoke)
 				peer.SetChoke(shouldChoke)
 			}
 		}
@@ -900,7 +900,7 @@ func (t *TorrentSession) extensionMessage(message []byte, p *peerState) (err err
 	if message[0] == EXTENSION {
 		err := t.DoExtension(message[1:], p)
 		if err != nil {
-			log.Printf("[%s] Failed extensions for %s: %s\n", t.M.Info.Name, p.address, err)
+			log.Printf("[ %s ] Failed extensions for %s: %s\n", t.M.Info.Name, p.address, err)
 		}
 	}
 	return
@@ -1055,7 +1055,7 @@ func (t *TorrentSession) generalMessage(message []byte, p *peerState) (err error
 	case EXTENSION:
 		err := t.DoExtension(message[1:], p)
 		if err != nil {
-			log.Printf("[%s] Failed extensions for %s: %s\n", t.M.Info.Name, p.address, err)
+			log.Printf("[ %s ] Failed extensions for %s: %s\n", t.M.Info.Name, p.address, err)
 		}
 
 		if t.si.HaveTorrent {
@@ -1196,7 +1196,7 @@ func (t *TorrentSession) DoMetadata(msg []byte, p *peerState) {
 		sha.Write(b)
 		actual := string(sha.Sum(nil))
 		if actual != t.M.InfoHash {
-			log.Printf("[%s] Invalid metadata; got %x\n", t.M.Info.Name, actual)
+			log.Printf("[ %s ] Invalid metadata; got %x\n", t.M.Info.Name, actual)
 		}
 
 		metadata := string(b)
@@ -1206,7 +1206,7 @@ func (t *TorrentSession) DoMetadata(msg []byte, p *peerState) {
 		}
 		t.reload(metadata)
 	case METADATA_REJECT:
-		log.Printf("[%s] %s didn't want to send piece %d\n", t.M.Info.Name, p.address, message.Piece)
+		log.Printf("[ %s ] %s didn't want to send piece %d\n", t.M.Info.Name, p.address, message.Piece)
 	default:
 		log.Println("[", t.M.Info.Name, "] Didn't understand metadata extension type: ", mt)
 	}

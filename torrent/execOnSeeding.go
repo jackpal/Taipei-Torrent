@@ -14,16 +14,16 @@ func (t *TorrentSession) execOnSeeding() {
 	}
 	starterr := cmd.Start()
 	if starterr != nil {
-		log.Printf("Error starting '%s': %v\n", t.flags.ExecOnSeeding, starterr)
+		log.Printf("[ %s ] Error starting '%s': %v\n", t.M.Info.Name, t.flags.ExecOnSeeding, starterr)
 		return
 	}
 
 	go func() {
 		err := cmd.Wait()
 		if err != nil {
-			log.Printf("Error while executing '%s': %v\n", t.flags.ExecOnSeeding, err)
+			log.Printf("[ %s ] Error while executing '%s': %v\n", t.M.Info.Name, t.flags.ExecOnSeeding, err)
 		} else {
-			log.Printf("Executing finished on '%s'\n", t.flags.ExecOnSeeding)
+			log.Printf("[ %s ] Executing finished on '%s'\n", t.M.Info.Name, t.flags.ExecOnSeeding)
 		}
 	}()
 }
