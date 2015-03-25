@@ -166,6 +166,9 @@ func NewTorrentSession(flags *TorrentFlags, torrent string, listenPort uint16) (
 	}
 
 	dhtAllowed := flags.UseDHT && t.M.Info.Private == 0
+	if flags.UseDHT && !dhtAllowed {
+		log.Println("[", t.M.Info.Name, "] Can't use DHT because torrent is marked Private.")
+	}
 
 	t.si = &SessionInfo{
 		PeerId:        peerId(),
@@ -188,7 +191,7 @@ func (t *TorrentSession) reload(metadata string) (err error) {
 	var info InfoDict
 	err = bencode.Unmarshal(bytes.NewReader([]byte(metadata)), &info)
 	if err != nil {
-		log.Println("Error when reloading torrent: ", err)
+		log.Println("[", t.M.Info.Name, "] Error when reloading torrent: ", err)
 		return
 	}
 
@@ -198,8 +201,8 @@ func (t *TorrentSession) reload(metadata string) (err error) {
 }
 
 func (t *TorrentSession) load() (err error) {
-	log.Printf("Tracker: %v, Comment: %v, InfoHash: %x, Encoding: %v, Private: %v",
-		t.M.AnnounceList, t.M.Comment, t.M.InfoHash, t.M.Encoding, t.M.Info.Private)
+	log.Printf("[%s] Tracker: %v, Comment: %v, InfoHash: %x, Encoding: %v, Private: %v",
+		t.M.Info.Name, t.M.AnnounceList, t.M.Comment, t.M.InfoHash, t.M.Encoding, t.M.Info.Private)
 	if e := t.M.Encoding; e != "" && e != "UTF-8" {
 		err = fmt.Errorf("Unknown encoding %v", e)
 		return
@@ -255,7 +258,7 @@ func (t *TorrentSession) load() (err error) {
 		start := time.Now()
 		t.goodPieces, bad, t.pieceSet, err = checkPieces(t.fileStore, t.totalSize, t.M)
 		end := time.Now()
-		log.Printf("Computed missing pieces (%.2f seconds)", end.Sub(start).Seconds())
+		log.Printf("[%s] Computed missing pieces (%.2f seconds)", t.M.Info.Name, end.Sub(start).Seconds())
 		if err != nil {
 			return
 		}
@@ -269,7 +272,7 @@ func (t *TorrentSession) load() (err error) {
 	}
 	t.si.Left = left
 
-	log.Println("Good pieces:", t.goodPieces, "Bad pieces:", bad, "Bytes left:", left)
+	log.Println("[", t.M.Info.Name, "] Good pieces:", t.goodPieces, "Bad pieces:", bad, "Bytes left:", left)
 
 	// Enlarge any existing peers piece maps
 	for _, p := range t.peers {
@@ -294,7 +297,7 @@ func (t *TorrentSession) pieceLength(piece int) int {
 
 func (t *TorrentSession) fetchTrackerInfo(event string) {
 	m, si := t.M, t.si
-	log.Println("Stats: Uploaded", si.Uploaded, "Downloaded", si.Downloaded, "Left", si.Left)
+	log.Println("[", t.M.Info.Name, "] Stats: Uploaded", si.Uploaded, "Downloaded", si.Downloaded, "Left", si.Left)
 	t.trackerReportChan <- ClientStatusReport{
 		event, m.InfoHash, si.PeerId, si.Port, si.Uploaded, si.Downloaded, si.Left}
 }
@@ -343,13 +346,13 @@ func (ts *TorrentSession) connectToPeer(peer string) {
 	}
 	conn, err := proxyNetDial(ts.flags.Dial, "tcp", peer)
 	if err != nil {
-		// log.Println("Failed to connect to", peer, err)
+		// log.Println("[", ts.M.Info.Name, "] Failed to connect to", peer, err)
 		return
 	}
 
 	_, err = conn.Write(ts.Header())
 	if err != nil {
-		log.Println("Failed to send header to", peer, err)
+		log.Println("[", ts.M.Info.Name, "] Failed to send header to", peer, err)
 		return
 	}
 
@@ -367,7 +370,7 @@ func (ts *TorrentSession) connectToPeer(peer string) {
 		id:       id,
 		conn:     conn,
 	}
-	// log.Println("Connected to", peer)
+	// log.Println("[", ts.M.Info.Name, "] Connected to", peer)
 	ts.AddPeer(btconn)
 }
 
@@ -386,13 +389,13 @@ func (t *TorrentSession) AddPeer(btconn *BtConn) {
 
 func (t *TorrentSession) addPeerImp(btconn *BtConn) {
 	if !t.si.HaveTorrent && !t.si.FromMagnet {
-		log.Println("Rejecting peer because we don't have a torrent yet.")
+		log.Println("[", t.M.Info.Name, "] Rejecting peer because we don't have a torrent yet.")
 		btconn.conn.Close()
 		return
 	}
 	for _, p := range t.peers {
 		if p.id == btconn.id {
-			log.Println("Rejecting peer because already have a peer with the same id.")
+			log.Println("[", t.M.Info.Name, "] Rejecting peer because already have a peer with the same id.")
 			btconn.conn.Close()
 			return
 		}
@@ -401,9 +404,9 @@ func (t *TorrentSession) addPeerImp(btconn *BtConn) {
 	theirheader := btconn.header
 
 	peer := btconn.conn.RemoteAddr().String()
-	// log.Println("Adding peer", peer)
+	// log.Println("[", t.M.Info.Name, "] Adding peer", peer)
 	if len(t.peers) >= MAX_NUM_PEERS {
-		log.Println("We have enough peers. Rejecting additional peer", peer)
+		log.Println("[", t.M.Info.Name, "] We have enough peers. Rejecting additional peer", peer)
 		btconn.conn.Close()
 		return
 	}
@@ -433,7 +436,7 @@ func (t *TorrentSession) addPeerImp(btconn *BtConn) {
 
 	if int(theirheader[5])&0x10 == 0x10 {
 		ps.SendExtensions(t.si.Port)
-	} else {
+	} else if t.pieceSet != nil {
 		ps.SendBitfield(t.pieceSet)
 	}
 }
@@ -443,7 +446,7 @@ func (t *TorrentSession) ClosePeer(peer *peerState) {
 		t.si.ME.Transferring = false
 	}
 
-	//log.Println("Closing peer", peer.address)
+	//log.Println("[", t.M.Info.Name, "] Closing peer", peer.address)
 	_ = t.removeRequests(peer)
 	peer.Close()
 	delete(t.peers, peer.address)
@@ -461,9 +464,9 @@ func (t *TorrentSession) deadlockDetector() {
 			lastHeartbeat = time.Now()
 		case <-time.After(15 * time.Second):
 			age := time.Now().Sub(lastHeartbeat)
-			log.Println("Starvation or deadlock of main thread detected. Look in the stack dump for what DoTorrent() is currently doing.")
-			log.Println("Last heartbeat", age.Seconds(), "seconds ago")
-			panic("Killed by deadlock detector")
+			log.Println("[", t.M.Info.Name, "] Starvation or deadlock of main thread detected. Look in the stack dump for what DoTorrent() is currently doing.")
+			log.Println("[", t.M.Info.Name, "] Last heartbeat", age.Seconds(), "seconds ago")
+			panic("[" + t.M.Info.Name + "] Killed by deadlock detector")
 		}
 	}
 }
@@ -477,9 +480,11 @@ func (t *TorrentSession) Shutdown() (err error) {
 	for _, peer := range t.peers {
 		t.ClosePeer(peer)
 	}
-	err = t.fileStore.Close()
-	if err != nil {
-		log.Println("Error closing filestore for torrent", t.M.Info.Name, ":", err)
+	if t.fileStore != nil {
+		err = t.fileStore.Close()
+		if err != nil {
+			log.Println("[", t.M.Info.Name, "] Error closing filestore:", err)
+		}
 	}
 	return
 }
@@ -489,7 +494,7 @@ func (t *TorrentSession) DoTorrent() {
 	if t.flags.UseDeadlockDetector {
 		go t.deadlockDetector()
 	}
-	log.Println("Fetching torrent.")
+	log.Println("[", t.M.Info.Name, "] Fetching torrent.")
 	heartbeatChan := time.Tick(1 * time.Second)
 	keepAliveChan := time.Tick(60 * time.Second)
 	var retrackerChan <-chan time.Time
@@ -532,14 +537,14 @@ func (t *TorrentSession) DoTorrent() {
 			}
 		case ti := <-t.trackerInfoChan:
 			t.ti = ti
-			log.Println("Torrent has", t.ti.Complete, "seeders and", t.ti.Incomplete, "leachers.")
+			log.Println("[", t.M.Info.Name, "] Torrent has", t.ti.Complete, "seeders and", t.ti.Incomplete, "leachers.")
 			if !t.trackerLessMode {
 				newPeerCount := 0
 				{
 					peers := t.ti.Peers
 					if len(peers) > 0 {
 						const peerLen = 6
-						log.Println("Tracker gave us", len(peers)/peerLen, "peers")
+						log.Println("[", t.M.Info.Name, "] Tracker gave us", len(peers)/peerLen, "peers")
 						for i := 0; i < len(peers); i += peerLen {
 							peer := nettools.BinaryToDottedPort(peers[i : i+peerLen])
 							if t.mightAcceptPeer(peer) {
@@ -553,7 +558,7 @@ func (t *TorrentSession) DoTorrent() {
 					peers6 := t.ti.Peers6
 					if len(peers6) > 0 {
 						const peerLen = 18
-						log.Println("Tracker gave us", len(peers6)/peerLen, "IPv6 peers")
+						log.Println("[", t.M.Info.Name, "] Tracker gave us", len(peers6)/peerLen, "IPv6 peers")
 						for i := 0; i < len(peers6); i += peerLen {
 							peerEntry := peers6[i : i+peerLen]
 							host := net.IP(peerEntry[0:16])
@@ -566,7 +571,7 @@ func (t *TorrentSession) DoTorrent() {
 						}
 					}
 				}
-				log.Println("Contacting", newPeerCount, "new peers")
+				log.Println("[", t.M.Info.Name, "] Contacting", newPeerCount, "new peers")
 			}
 
 			interval := t.ti.Interval
@@ -577,7 +582,7 @@ func (t *TorrentSession) DoTorrent() {
 			} else if interval > maxInterval {
 				interval = maxInterval
 			}
-			log.Println("..checking again in", interval, "seconds.")
+			log.Println("[", t.M.Info.Name, "] ..checking again in", interval, "seconds.")
 			retrackerChan = time.Tick(time.Duration(interval) * time.Second)
 
 		case pm := <-t.peerMessageChan:
@@ -586,7 +591,7 @@ func (t *TorrentSession) DoTorrent() {
 			err2 := t.DoMessage(peer, message)
 			if err2 != nil {
 				if err2 != io.EOF {
-					log.Println("Closing peer", peer.address, "because", err2)
+					log.Println("[", t.M.Info.Name, "] Closing peer", peer.address, "because", err2)
 				}
 				t.ClosePeer(peer)
 			}
@@ -598,11 +603,11 @@ func (t *TorrentSession) DoTorrent() {
 			if t.si.Downloaded > 0 {
 				ratio = float64(t.si.Uploaded) / float64(t.si.Downloaded)
 			}
-			log.Println("Peers:", len(t.peers), "downloaded:", t.si.Downloaded,
+			log.Println("[", t.M.Info.Name, "] Peers:", len(t.peers), "downloaded:", t.si.Downloaded,
 				"uploaded:", t.si.Uploaded, "ratio", ratio)
-			log.Println("good, total", t.goodPieces, t.totalPieces)
-			if t.goodPieces == t.totalPieces && ratio >= t.flags.SeedRatio {
-				log.Println("Achieved target seed ratio", t.flags.SeedRatio)
+			log.Println("[", t.M.Info.Name, "] Pieces: good", t.goodPieces, "total", t.totalPieces)
+			if t.totalPieces != 0 && t.goodPieces == t.totalPieces && ratio >= t.flags.SeedRatio {
+				log.Println("[", t.M.Info.Name, "] Achieved target seed ratio", t.flags.SeedRatio)
 				return
 			}
 			if len(t.peers) < TARGET_NUM_PEERS && (t.totalPieces == 0 || t.goodPieces < t.totalPieces) {
@@ -619,14 +624,14 @@ func (t *TorrentSession) DoTorrent() {
 			now := time.Now()
 			for _, peer := range t.peers {
 				if peer.lastReadTime.Second() != 0 && now.Sub(peer.lastReadTime) > 3*time.Minute {
-					// log.Println("Closing peer", peer.address, "because timed out.")
+					// log.Println("[", t.M.Info.Name, "] Closing peer", peer.address, "because timed out.")
 					t.ClosePeer(peer)
 					continue
 				}
 				err2 := t.doCheckRequests(peer)
 				if err2 != nil {
 					if err2 != io.EOF {
-						log.Println("Closing peer", peer.address, "because", err2)
+						log.Println("[", t.M.Info.Name, "] Closing peer", peer.address, "because", err2)
 					}
 					t.ClosePeer(peer)
 					continue
@@ -635,14 +640,14 @@ func (t *TorrentSession) DoTorrent() {
 			}
 
 		case <-t.quit:
-			log.Println("Quitting torrent session")
+			log.Println("[", t.M.Info.Name, "] Quitting torrent session")
 			return
 		}
 	}
 }
 
 func (t *TorrentSession) chokePeers() (err error) {
-	log.Printf("Choking peers")
+	log.Printf("[%s] Choking peers", t.M.Info.Name)
 	peers := t.peers
 	chokers := make([]Choker, 0, len(peers))
 	for _, peer := range peers {
@@ -661,7 +666,7 @@ func (t *TorrentSession) chokePeers() (err error) {
 		shouldChoke := i >= unchokeCount
 		if peer, ok := c.(*peerState); ok {
 			if shouldChoke != peer.am_choking {
-				log.Printf("Changing choke status %v -> %v", peer.address, shouldChoke)
+				log.Printf("[%s] Changing choke status %v -> %v", t.M.Info.Name, peer.address, shouldChoke)
 				peer.SetChoke(shouldChoke)
 			}
 		}
@@ -756,7 +761,7 @@ func (t *TorrentSession) requestBlockImp(p *peerState, piece int, block int, req
 			length = left
 		}
 	}
-	// log.Println("Requesting block", piece, ".", block, length, request)
+	// log.Println("[", t.M.Info.Name, "] Requesting block", piece, ".", block, length, request)
 	req[0] = opcode
 	uint32ToBytes(req[1:5], uint32(piece))
 	uint32ToBytes(req[5:9], uint32(begin))
@@ -773,7 +778,7 @@ func (t *TorrentSession) requestBlockImp(p *peerState, piece int, block int, req
 
 func (t *TorrentSession) RecordBlock(p *peerState, piece, begin, length uint32) (err error) {
 	block := begin / STANDARD_BLOCK_LENGTH
-	// log.Println("Received block", piece, ".", block)
+	// log.Println("[", t.M.Info.Name, "] Received block", piece, ".", block)
 	requestIndex := (uint64(piece) << 32) | uint64(begin)
 	delete(p.our_requests, requestIndex)
 	v, ok := t.activePieces[int(piece)]
@@ -796,7 +801,7 @@ func (t *TorrentSession) RecordBlock(p *peerState, piece, begin, length uint32) 
 			var pieceBytes []byte
 			ok, err, pieceBytes = checkPiece(t.fileStore, t.totalSize, t.M, int(piece))
 			if !ok || err != nil {
-				log.Println("Closing peer that sent a bad piece", piece, p.id, err)
+				log.Println("[", t.M.Info.Name, "] Closing peer that sent a bad piece", piece, p.id, err)
 				p.Close()
 				return
 			}
@@ -808,7 +813,7 @@ func (t *TorrentSession) RecordBlock(p *peerState, piece, begin, length uint32) 
 			if t.totalPieces > 0 {
 				percentComplete = float32(t.goodPieces*100) / float32(t.totalPieces)
 			}
-			log.Println("Have", t.goodPieces, "of", t.totalPieces,
+			log.Println("[", t.M.Info.Name, "] Have", t.goodPieces, "of", t.totalPieces,
 				"pieces", percentComplete, "% complete.")
 			if t.goodPieces == t.totalPieces {
 				if !t.trackerLessMode {
@@ -822,7 +827,7 @@ func (t *TorrentSession) RecordBlock(p *peerState, piece, begin, length uint32) 
 						// We don't do anything special. We rely on the caller
 						// to decide if this peer is still interesting.
 					} else {
-						// log.Println("...telling ", p)
+						// log.Println("[", t.M.Info.Name, "] ...telling ", p)
 						haveMsg := make([]byte, 5)
 						haveMsg[0] = HAVE
 						uint32ToBytes(haveMsg[1:5], piece)
@@ -832,7 +837,7 @@ func (t *TorrentSession) RecordBlock(p *peerState, piece, begin, length uint32) 
 			}
 		}
 	} else {
-		log.Println("Received a block we already have.", piece, block, p.address)
+		log.Println("[", t.M.Info.Name, "] Received a block we already have.", piece, block, p.address)
 	}
 	return
 }
@@ -848,7 +853,7 @@ func (t *TorrentSession) removeRequests(p *peerState) (err error) {
 		piece := int(k >> 32)
 		begin := int(k & 0xffffffff)
 		block := begin / STANDARD_BLOCK_LENGTH
-		// log.Println("Forgetting we requested block ", piece, ".", block)
+		// log.Println("[", t.M.Info.Name, "] Forgetting we requested block ", piece, ".", block)
 		t.removeRequest(piece, block)
 	}
 	p.our_requests = make(map[uint64]time.Time, MAX_OUR_REQUESTS)
@@ -868,7 +873,7 @@ func (t *TorrentSession) doCheckRequests(p *peerState) (err error) {
 		if now.Sub(v).Seconds() > 30 {
 			piece := int(k >> 32)
 			block := int(k&0xffffffff) / STANDARD_BLOCK_LENGTH
-			// log.Println("timing out request of", piece, ".", block)
+			// log.Println("[", t.M.Info.Name, "] timing out request of", piece, ".", block)
 			t.removeRequest(piece, block)
 		}
 	}
@@ -895,7 +900,7 @@ func (t *TorrentSession) extensionMessage(message []byte, p *peerState) (err err
 	if message[0] == EXTENSION {
 		err := t.DoExtension(message[1:], p)
 		if err != nil {
-			log.Printf("Failed extensions for %s: %s\n", p.address, err)
+			log.Printf("[%s] Failed extensions for %s: %s\n", t.M.Info.Name, p.address, err)
 		}
 	}
 	return
@@ -906,13 +911,13 @@ func (t *TorrentSession) generalMessage(message []byte, p *peerState) (err error
 
 	switch messageId {
 	case CHOKE:
-		// log.Println("choke", p.address)
+		// log.Println("[", t.M.Info.Name, "] choke", p.address)
 		if len(message) != 1 {
 			return errors.New("Unexpected length")
 		}
 		err = t.doChoke(p)
 	case UNCHOKE:
-		// log.Println("unchoke", p.address)
+		// log.Println("[", t.M.Info.Name, "] unchoke", p.address)
 		if len(message) != 1 {
 			return errors.New("Unexpected length")
 		}
@@ -924,14 +929,14 @@ func (t *TorrentSession) generalMessage(message []byte, p *peerState) (err error
 			}
 		}
 	case INTERESTED:
-		// log.Println("interested", p)
+		// log.Println("[", t.M.Info.Name, "] interested", p)
 		if len(message) != 1 {
 			return errors.New("Unexpected length")
 		}
 		p.peer_interested = true
 		t.chokePeers()
 	case NOT_INTERESTED:
-		// log.Println("not interested", p)
+		// log.Println("[", t.M.Info.Name, "] not interested", p)
 		if len(message) != 1 {
 			return errors.New("Unexpected length")
 		}
@@ -951,7 +956,7 @@ func (t *TorrentSession) generalMessage(message []byte, p *peerState) (err error
 			return errors.New("have index is out of range.")
 		}
 	case BITFIELD:
-		// log.Println("bitfield", p.address)
+		// log.Println("[", t.M.Info.Name, "] bitfield", p.address)
 		if !p.can_receive_bitfield {
 			return errors.New("Late bitfield operation")
 		}
@@ -961,7 +966,7 @@ func (t *TorrentSession) generalMessage(message []byte, p *peerState) (err error
 		}
 		t.checkInteresting(p)
 	case REQUEST:
-		// log.Println("request", p.address)
+		// log.Println("[", t.M.Info.Name, "] request", p.address)
 		if len(message) != 13 {
 			return errors.New("Unexpected message length")
 		}
@@ -1016,7 +1021,7 @@ func (t *TorrentSession) generalMessage(message []byte, p *peerState) (err error
 		t.RecordBlock(p, index, begin, uint32(length))
 		err = t.RequestBlock(p)
 	case CANCEL:
-		// log.Println("cancel")
+		// log.Println("[", t.M.Info.Name, "] cancel")
 		if len(message) != 13 {
 			return errors.New("Unexpected message length")
 		}
@@ -1050,7 +1055,7 @@ func (t *TorrentSession) generalMessage(message []byte, p *peerState) (err error
 	case EXTENSION:
 		err := t.DoExtension(message[1:], p)
 		if err != nil {
-			log.Printf("Failed extensions for %s: %s\n", p.address, err)
+			log.Printf("[%s] Failed extensions for %s: %s\n", t.M.Info.Name, p.address, err)
 		}
 
 		if t.si.HaveTorrent {
@@ -1085,7 +1090,7 @@ func (t *TorrentSession) DoExtension(msg []byte, p *peerState) (err error) {
 	if msg[0] == EXTENSION_HANDSHAKE {
 		err = bencode.Unmarshal(bytes.NewReader(msg[1:]), &h)
 		if err != nil {
-			log.Println("Error when unmarshaling extension handshake")
+			log.Println("[", t.M.Info.Name, "] Error when unmarshaling extension handshake")
 			return err
 		}
 
@@ -1114,10 +1119,10 @@ func (t *TorrentSession) DoExtension(msg []byte, p *peerState) (err error) {
 		case "ut_metadata":
 			t.DoMetadata(msg[1:], p)
 		default:
-			log.Println("Unknown extension: ", ext)
+			log.Println("[", t.M.Info.Name, "] Unknown extension: ", ext)
 		}
 	} else {
-		log.Println("Unknown extension: ", int(msg[0]))
+		log.Println("[", t.M.Info.Name, "] Unknown extension: ", int(msg[0]))
 	}
 
 	return nil
@@ -1146,7 +1151,7 @@ func (t *TorrentSession) DoMetadata(msg []byte, p *peerState) {
 	var message MetadataMessage
 	err := bencode.Unmarshal(bytes.NewReader(msg), &message)
 	if err != nil {
-		log.Println("Error when parsing metadata: ", err)
+		log.Println("[", t.M.Info.Name, "] Error when parsing metadata:", err)
 		return
 	}
 
@@ -1156,13 +1161,13 @@ func (t *TorrentSession) DoMetadata(msg []byte, p *peerState) {
 		//TODO: Answer to metadata request
 	case METADATA_DATA:
 		if t.si.HaveTorrent {
-			log.Println("Received metadata we don't need, from", p.address)
+			log.Println("[", t.M.Info.Name, "] Received metadata we don't need, from", p.address)
 			return
 		}
 
 		piece, err := getMetadataPiece(msg)
 		if err != nil {
-			log.Println("Error when getting metadata piece: ", err)
+			log.Println("[", t.M.Info.Name, "] Error when getting metadata piece: ", err)
 			return
 		}
 		t.si.ME.Pieces[message.Piece] = piece
@@ -1179,7 +1184,7 @@ func (t *TorrentSession) DoMetadata(msg []byte, p *peerState) {
 			break
 		}
 
-		log.Println("Finished downloading metadata!")
+		log.Println("[", t.M.Info.Name, "] Finished downloading metadata!")
 		var full bytes.Buffer
 		for _, piece := range t.si.ME.Pieces {
 			full.Write(piece)
@@ -1191,8 +1196,7 @@ func (t *TorrentSession) DoMetadata(msg []byte, p *peerState) {
 		sha.Write(b)
 		actual := string(sha.Sum(nil))
 		if actual != t.M.InfoHash {
-			log.Println("Invalid metadata")
-			log.Printf("Expected %x, got %x\n", t.M.InfoHash, actual)
+			log.Printf("[%s] Invalid metadata; got %x\n", t.M.Info.Name, actual)
 		}
 
 		metadata := string(b)
@@ -1202,15 +1206,15 @@ func (t *TorrentSession) DoMetadata(msg []byte, p *peerState) {
 		}
 		t.reload(metadata)
 	case METADATA_REJECT:
-		log.Printf("%s didn't want to send piece %d\n", p.address, message.Piece)
+		log.Printf("[%s] %s didn't want to send piece %d\n", t.M.Info.Name, p.address, message.Piece)
 	default:
-		log.Println("Didn't understand metadata extension type: ", mt)
+		log.Println("[", t.M.Info.Name, "] Didn't understand metadata extension type: ", mt)
 	}
 }
 
 func (t *TorrentSession) sendRequest(peer *peerState, index, begin, length uint32) (err error) {
 	if !peer.am_choking {
-		// log.Println("Sending block", index, begin, length)
+		// log.Println("[", t.M.Info.Name, "] Sending block", index, begin, length)
 		buf := make([]byte, length+9)
 		buf[0] = PIECE
 		uint32ToBytes(buf[1:5], index)

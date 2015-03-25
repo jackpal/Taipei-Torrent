@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/md5"
 	"crypto/sha1"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -99,6 +100,10 @@ func GetMetaInfo(dialer Dialer, torrent string) (metaInfo *MetaInfo, err error) 
 		}
 
 		metaInfo = &MetaInfo{InfoHash: string(ih), AnnounceList: magnet.Trackers}
+
+		//Gives us something to call the torrent until metadata can be procurred
+		metaInfo.Info.Name = hex.EncodeToString([]byte(ih))
+
 		return metaInfo, err
 
 	} else {
