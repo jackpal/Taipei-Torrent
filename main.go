@@ -4,10 +4,12 @@ import (
 	"flag"
 	"log"
 	"math"
+	"math/rand"
 	"os"
 	"os/signal"
 	"path"
 	"runtime/pprof"
+	"time"
 
 	"github.com/hailiang/socks"
 	"github.com/jackpal/Taipei-Torrent/torrent"
@@ -41,7 +43,7 @@ var (
 func parseTorrentFlags() *torrent.TorrentFlags {
 	return &torrent.TorrentFlags{
 		Dial:                dialerFromFlags(),
-		Port:                *port,
+		Port:                portFromFlags(),
 		FileDir:             *fileDir,
 		SeedRatio:           *seedRatio,
 		UseDeadlockDetector: *useDeadlockDetector,
@@ -57,6 +59,15 @@ func parseTorrentFlags() *torrent.TorrentFlags {
 		Cacher:             cacheproviderFromFlags(),
 		ExecOnSeeding:      *execOnSeeding,
 	}
+}
+
+func portFromFlags() int {
+	if *port != 0 {
+		return *port
+	}
+
+	rr := rand.New(rand.NewSource(time.Now().UnixNano()))
+	return rr.Intn(48000) + 1025
 }
 
 func cacheproviderFromFlags() torrent.CacheProvider {
