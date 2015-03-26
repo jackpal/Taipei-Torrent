@@ -33,11 +33,12 @@ var (
 	useDHT              = flag.Bool("useDHT", false, "Use DHT to get peers.")
 	trackerlessMode     = flag.Bool("trackerlessMode", false, "Do not get peers from the tracker. Good for testing DHT mode.")
 	proxyAddress        = flag.String("proxyAddress", "", "Address of a SOCKS5 proxy to use.")
-	initialCheck        = flag.Bool("initialCheck", true, "Do an initial hash check on files when adding torrents")
+	initialCheck        = flag.Bool("initialCheck", true, "Do an initial hash check on files when adding torrents.")
 	useSFTP             = flag.String("useSFTP", "", "SFTP connection string, to store torrents over SFTP. e.g. 'username:password@192.168.1.25:22/path/'")
 	useRamCache         = flag.Int("useRamCache", 0, "Size in MiB of cache in ram, to reduce traffic on torrent storage.")
 	useHdCache          = flag.Int("useHdCache", 0, "Size in MiB of cache in OS temp directory, to reduce traffic on torrent storage.")
 	execOnSeeding       = flag.String("execOnSeeding", "", "Command to execute when torrent has fully downloaded and has begun seeding.")
+	quickResume         = flag.Bool("quickResume", false, "Save torrenting data to resume faster. '-initialCheck' should be set to false, to prevent hash check on resume.")
 )
 
 func parseTorrentFlags() *torrent.TorrentFlags {
@@ -58,6 +59,7 @@ func parseTorrentFlags() *torrent.TorrentFlags {
 		FileSystemProvider: fsproviderFromFlags(),
 		Cacher:             cacheproviderFromFlags(),
 		ExecOnSeeding:      *execOnSeeding,
+		QuickResume:        *quickResume,
 	}
 }
 

@@ -3,9 +3,11 @@ package torrent
 import (
 	"bytes"
 	"crypto/sha1"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"log"
 	"math"
 	"math/rand"
@@ -253,19 +255,42 @@ func (t *TorrentSession) load() (err error) {
 	}
 
 	t.goodPieces = 0
-	bad := t.totalPieces
 	if t.flags.InitialCheck {
 		start := time.Now()
-		t.goodPieces, bad, t.pieceSet, err = checkPieces(t.fileStore, t.totalSize, t.M)
+		t.goodPieces, _, t.pieceSet, err = checkPieces(t.fileStore, t.totalSize, t.M)
 		end := time.Now()
-		log.Printf("[ %s ] Computed missing pieces (%.2f seconds)", t.M.Info.Name, end.Sub(start).Seconds())
+		log.Printf("[ %s ] Computed missing pieces (%.2f seconds)\n", t.M.Info.Name, end.Sub(start).Seconds())
 		if err != nil {
 			return
 		}
-	} else {
-		t.pieceSet = NewBitset(t.totalPieces)
+	} else if t.flags.QuickResume {
+		resumeFilePath := "./" + hex.EncodeToString([]byte(t.M.InfoHash)) + "-haveBitset"
+		if resumeFile, err := os.Open(resumeFilePath); err == nil {
+			rfstat, _ := resumeFile.Stat()
+			tBA := make([]byte, 2*rfstat.Size())
+			count, _ := resumeFile.Read(tBA)
+			t.pieceSet = NewBitsetFromBytes(t.totalPieces, tBA[:count])
+			if t.pieceSet == nil {
+				return fmt.Errorf("[ %s ] Malformed resume data: %v", t.M.Info.Name, resumeFilePath)
+			}
+
+			for i := 0; i < t.totalPieces; i++ {
+				if t.pieceSet.IsSet(i) {
+					t.goodPieces++
+				}
+			}
+			log.Printf("[ %s ] Got piece list from haveBitset file.\n", t.M.Info.Name)
+		} else {
+			log.Printf("[ %s ] Couldn't open haveBitset file: %v", t.M.Info.Name, err)
+		}
 	}
 
+	if t.pieceSet == nil { //Blank slate it is then.
+		t.pieceSet = NewBitset(t.totalPieces)
+		log.Printf("[ %s ] Starting from scratch.\n", t.M.Info.Name)
+	}
+
+	bad := t.totalPieces - t.goodPieces
 	left := uint64(bad) * uint64(t.M.Info.PieceLength)
 	if !t.pieceSet.IsSet(t.totalPieces - 1) {
 		left = left - uint64(t.M.Info.PieceLength) + uint64(t.lastPieceLength)
@@ -809,6 +834,9 @@ func (t *TorrentSession) RecordBlock(p *peerState, piece, begin, length uint32) 
 			t.si.Left -= uint64(v.pieceLength)
 			t.pieceSet.Set(int(piece))
 			t.goodPieces++
+			if t.flags.QuickResume {
+				ioutil.WriteFile("./"+hex.EncodeToString([]byte(t.M.InfoHash))+"-haveBitset", t.pieceSet.Bytes(), 0777)
+			}
 			var percentComplete float32 = 0
 			if t.totalPieces > 0 {
 				percentComplete = float32(t.goodPieces*100) / float32(t.totalPieces)

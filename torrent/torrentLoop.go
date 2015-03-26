@@ -37,6 +37,9 @@ type TorrentFlags struct {
 
 	//Provides cache to each torrent
 	Cacher CacheProvider
+
+	//Whether to write and use *.haveBitset resume data
+	QuickResume bool
 }
 
 func RunTorrents(flags *TorrentFlags, torrentFiles []string) (err error) {
