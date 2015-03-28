@@ -3,7 +3,9 @@ package torrent
 
 import (
 	"log"
+	"math"
 	"sort"
+	"sync/atomic"
 	"time"
 )
 
@@ -36,45 +38,95 @@ func (a byTime) Len() int           { return len(a) }
 func (a byTime) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
 func (a byTime) Less(i, j int) bool { return a[i].atime.Before(a[j].atime) }
 
-//This simple provider creates a ram cache for each torrent.
-//Each cache has size capacity (in MiB).
+//This provider creates a ram cache for each torrent.
+//Each time a cache is created or closed, all cache
+//are recalculated so they total <= capacity (in MiB).
 type RamCacheProvider struct {
 	capacity int
+	caches   map[string]*RamCache
 }
 
 func NewRamCacheProvider(capacity int) CacheProvider {
-	rc := &RamCacheProvider{capacity}
+	rc := &RamCacheProvider{capacity, make(map[string]*RamCache)}
 	return rc
 }
 
 func (r *RamCacheProvider) NewCache(infohash string, numPieces int, pieceSize int, torrentLength int64) TorrentCache {
-	maxNumPieces := (int64(r.capacity) * 1024 * 1024) / int64(pieceSize)
-	rc := &RamCache{pieceSize, int(maxNumPieces), 0, make([]time.Time, numPieces),
-		make([][]byte, numPieces), *NewBitset(numPieces), *NewBitset(numPieces), make([]Bitset, numPieces)}
+	i := uint32(1)
+	rc := &RamCache{pieceSize: pieceSize, atimes: make([]time.Time, numPieces), store: make([][]byte, numPieces),
+		isBoxFull: *NewBitset(numPieces), isBoxCommit: *NewBitset(numPieces), isByteSet: make([]Bitset, numPieces),
+		torrentLength: torrentLength, cacheProvider: r, capacity: &i, infohash: infohash}
+
+	r.caches[infohash] = rc
+	r.rebalance(true)
 	return rc
 }
 
+//Rebalance the cache capacity allocations; has to be called on each cache creation or deletion.
+//'shouldTrim', if true, causes trimCommitted() to be called on all the caches. Recommended if a new cache was created
+//because otherwise the old caches would stay over the new capacity until their next WriteAt happens.
+func (r *RamCacheProvider) rebalance(shouldTrim bool) {
+	//Cache size is a diminishing return thing:
+	//The more of it a torrent has, the less of a difference additional cache makes.
+	//Thus, instead of scaling the distribution lineraly with torrent size, we'll do it by square-root
+	log.Println("Rebalancing caches...")
+	var scalingTotal float64
+	sqrts := make(map[string]float64)
+	for i, cache := range r.caches {
+		sqrts[i] = math.Sqrt(float64(cache.torrentLength))
+		scalingTotal += sqrts[i]
+	}
+
+	scalingFactor := float64(r.capacity*1024*1024) / scalingTotal
+	for i, cache := range r.caches {
+		newCap := int(math.Floor(scalingFactor * sqrts[i] / float64(cache.pieceSize)))
+		if newCap == 0 {
+			newCap = 1 //Something's better than nothing!
+		}
+		log.Printf("Setting cache '%x' to new capacity %v (%v MiB)", cache.infohash, newCap, float32(newCap*cache.pieceSize)/float32(1024*1024))
+		cache.setCapacity(newCap)
+	}
+
+	if shouldTrim {
+		for _, cache := range r.caches {
+			cache.trimCommitted()
+		}
+	}
+}
+
+func (r *RamCacheProvider) cacheClosed(infohash string) {
+	delete(r.caches, infohash)
+	r.rebalance(false)
+}
+
 //'pieceSize' is the size of the average piece
-//'maxCapacity' is how many pieces the cache can hold
+//'capacity' is how many pieces the cache can hold
 //'actualUsage' is how many pieces the cache has at the moment
 //'atime' is an array of access times for each stored box
 //'store' is an array of "boxes" ([]byte of 1 piece each)
 //'isBoxFull' indicates if a box entirely contains written data
 //'isBoxCommit' indicates if a box has been committed to storage
 //'isByteSet' for [i] indicates for box 'i' if a byte has been written to
+//'torrentLength' is the number of bytes in the torrent
+//'cacheProvider' is a pointer to the cacheProvider that created this cache
+//'infohash' is the infohash of the torrent
 type RamCache struct {
-	pieceSize   int
-	maxCapacity int
-	actualUsage int
-	atimes      []time.Time
-	store       [][]byte
-	isBoxFull   Bitset
-	isBoxCommit Bitset
-	isByteSet   []Bitset
+	pieceSize     int
+	capacity      *uint32 //Access only through getter/setter
+	actualUsage   int
+	atimes        []time.Time
+	store         [][]byte
+	isBoxFull     Bitset
+	isBoxCommit   Bitset
+	isByteSet     []Bitset
+	torrentLength int64
+	cacheProvider *RamCacheProvider
+	infohash      string
 }
 
 func (r *RamCache) Close() {
-	//We don't need to do anything. The garbage collector will take care of it.
+	r.cacheProvider.cacheClosed(r.infohash)
+	//We don't need to do anything else. The garbage collector will take care of it.
 }
 
 func (r *RamCache) ReadAt(p []byte, off int64) []chunk {
@@ -155,7 +207,7 @@ func (r *RamCache) WriteAt(p []byte, off int64) []chunk {
 		boxI++
 		boxOff = 0
 	}
-	if r.actualUsage > r.maxCapacity {
+	if r.actualUsage > r.getCapacity() {
 		return r.trim()
 	}
 	return nil
@@ -177,16 +229,33 @@ func (r *RamCache) removeBox(boxI int) {
 	r.actualUsage--
 }
 
-//Trim excess data. Returns any uncommitted chunks that were trimmed
-func (r *RamCache) trim() []chunk {
-	//Trim stuff that's already been committed first
+func (r *RamCache) getCapacity() int {
+	return int(atomic.LoadUint32(r.capacity))
+}
+
+func (r *RamCache) setCapacity(capacity int) {
+	atomic.StoreUint32(r.capacity, uint32(capacity))
+}
+
+//Trim stuff that's already been committed
+//Return true if we got underneath capacity, false if not.
+func (r *RamCache) trimCommitted() bool {
 	for i := 0; i < r.isBoxCommit.Len(); i++ {
 		if r.isBoxCommit.IsSet(i) {
 			r.removeBox(i)
 		}
-		if r.actualUsage == r.maxCapacity {
-			return nil
+		if r.actualUsage <= r.getCapacity() {
+			return true
 		}
+	}
+	return false
+}
+
+//Trim excess data. Returns any uncommitted chunks that were trimmed
+func (r *RamCache) trim() []chunk {
+
+	if r.trimCommitted() {
+		return nil
 	}
 
 	retVal := make([]chunk, 0)
@@ -203,7 +272,7 @@ func (r *RamCache) trim() []chunk {
 
 	sort.Sort(byTime(tATA))
 
-	deficit := r.actualUsage - r.maxCapacity
+	deficit := r.actualUsage - r.getCapacity()
 	for i := 0; i < deficit; i++ {
 		deadBox := tATA[i].index
 		data := r.store[deadBox]
@@ -236,6 +305,8 @@ func (r *RamCache) trim() []chunk {
 	return retVal
 }
 
+//Simple utility for dumping a []byte to log.
+//It skips over sections of '0', unlike encoding/hex.Dump()
 func Dump(buff []byte) {
 	log.Println("Dumping []byte len=", len(buff))
 	for i := 0; i < len(buff); i += 16 {

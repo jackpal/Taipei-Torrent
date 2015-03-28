@@ -6,36 +6,80 @@ import (
 	"io"
 	"io/ioutil"
 	"log"
+	"math"
 	"os"
 	"path/filepath"
 	"sort"
 	"strconv"
+	"sync/atomic"
 	"time"
 )
 
-//This simple provider creates an HD cache for each torrent.
-//Each cache has size capacity (in MiB).
+//This provider creates an HD cache for each torrent.
+//Each time a cache is created or closed, all cache
+//are recalculated so they total <= capacity (in MiB).
 type HdCacheProvider struct {
 	capacity int
+	caches   map[string]*HdCache
 }
 
 func NewHdCacheProvider(capacity int) CacheProvider {
 	os.Mkdir(filepath.FromSlash(os.TempDir()+"/taipeitorrent"), 0777)
-	rc := &HdCacheProvider{capacity}
+	rc := &HdCacheProvider{capacity, make(map[string]*HdCache)}
 	return rc
 }
 
 func (r *HdCacheProvider) NewCache(infohash string, numPieces int, pieceSize int, torrentLength int64) TorrentCache {
-	maxNumPieces := (int64(r.capacity) * 1024 * 1024) / int64(pieceSize)
-	rc := &HdCache{pieceSize, int(maxNumPieces), 0, make([]time.Time, numPieces), *NewBitset(numPieces),
-		*NewBitset(numPieces), *NewBitset(numPieces), make([]Bitset, numPieces),
-		filepath.FromSlash(os.TempDir() + "/taipeitorrent/" + hex.EncodeToString([]byte(infohash)) + "-")}
+	i := uint32(1)
+	rc := &HdCache{pieceSize: pieceSize, atimes: make([]time.Time, numPieces), boxExists: *NewBitset(numPieces),
+		isBoxFull: *NewBitset(numPieces), isBoxCommit: *NewBitset(numPieces), isByteSet: make([]Bitset, numPieces),
+		boxPrefix:     filepath.FromSlash(os.TempDir() + "/taipeitorrent/" + hex.EncodeToString([]byte(infohash)) + "-"),
+		torrentLength: torrentLength, cacheProvider: r, capacity: &i, infohash: infohash}
 	rc.empty() //clear out any detritus from previous runs
+	r.caches[infohash] = rc
+	r.rebalance(true)
 	return rc
 }
 
+//Rebalance the cache capacity allocations; has to be called on each cache creation or deletion.
+//'shouldTrim', if true, causes trimCommitted() to be called on all the caches. Recommended if a new cache was created
+//because otherwise the old caches would stay over the new capacity until their next WriteAt happens.
+func (r *HdCacheProvider) rebalance(shouldTrim bool) {
+	//Cache size is a diminishing return thing:
+	//The more of it a torrent has, the less of a difference additional cache makes.
+	//Thus, instead of scaling the distribution lineraly with torrent size, we'll do it by square-root
+	log.Println("Rebalancing caches...")
+	var scalingTotal float64
+	sqrts := make(map[string]float64)
+	for i, cache := range r.caches {
+		sqrts[i] = math.Sqrt(float64(cache.torrentLength))
+		scalingTotal += sqrts[i]
+	}
+
+	scalingFactor := float64(r.capacity*1024*1024) / scalingTotal
+	for i, cache := range r.caches {
+		newCap := int(math.Floor(scalingFactor * sqrts[i] / float64(cache.pieceSize)))
+		if newCap == 0 {
+			newCap = 1 //Something's better than nothing!
+		}
+		log.Printf("Setting cache '%x' to new capacity %v (%v MiB)", cache.infohash, newCap, float32(newCap*cache.pieceSize)/float32(1024*1024))
+		cache.setCapacity(newCap)
+	}
+
+	if shouldTrim {
+		for _, cache := range r.caches {
+			cache.trimCommitted()
+		}
+	}
+}
+
+func (r *HdCacheProvider) cacheClosed(infohash string) {
+	delete(r.caches, infohash)
+	r.rebalance(false)
+}
+
 //'pieceSize' is the size of the average piece
-//'maxCapacity' is how many pieces the cache can hold
+//'capacity' is how many pieces the cache can hold
 //'actualUsage' is how many pieces the cache has at the moment
 //'atime' is an array of access times for each stored box
 //'boxExists' indicates if a box is existent in cache
@@ -43,19 +87,26 @@ func (r *HdCacheProvider) NewCache(infohash string, numPieces int, pieceSize int
 //'isBoxCommit' indicates if a box has been committed to storage
 //'isByteSet' for [i] indicates for box 'i' if a byte has been written to
 //'boxPrefix' is the partial path to the boxes.
+//'torrentLength' is the number of bytes in the torrent
+//'cacheProvider' is a pointer to the cacheProvider that created this cache
+//'infohash' is the infohash of the torrent
 type HdCache struct {
-	pieceSize   int
-	maxCapacity int
-	actualUsage int
-	atimes      []time.Time
-	boxExists   Bitset
-	isBoxFull   Bitset
-	isBoxCommit Bitset
-	isByteSet   []Bitset
-	boxPrefix   string
+	pieceSize     int
+	capacity      *uint32 //Access only through getter/setter
+	actualUsage   int
+	atimes        []time.Time
+	boxExists     Bitset
+	isBoxFull     Bitset
+	isBoxCommit   Bitset
+	isByteSet     []Bitset
+	boxPrefix     string
+	torrentLength int64
+	cacheProvider *HdCacheProvider
+	infohash      string
 }
 
 func (r *HdCache) Close() {
+	r.cacheProvider.cacheClosed(r.infohash)
 	r.empty()
 }
 
@@ -189,7 +240,7 @@ func (r *HdCache) WriteAt(p []byte, off int64) []chunk {
 		boxI++
 		boxOff = 0
 	}
-	if r.actualUsage > r.maxCapacity {
+	if r.actualUsage > r.getCapacity() {
 		return r.trim()
 	}
 	return nil
@@ -216,16 +267,33 @@ func (r *HdCache) removeBox(boxI int) {
 	}
 }
 
-//Trim excess data. Returns any uncommitted chunks that were trimmed
-func (r *HdCache) trim() []chunk {
-	//Trim stuff that's already been committed first
+func (r *HdCache) getCapacity() int {
+	return int(atomic.LoadUint32(r.capacity))
+}
+
+func (r *HdCache) setCapacity(capacity int) {
+	atomic.StoreUint32(r.capacity, uint32(capacity))
+}
+
+//Trim stuff that's already been committed
+//Return true if we got underneath capacity, false if not.
+func (r *HdCache) trimCommitted() bool {
 	for i := 0; i < r.isBoxCommit.Len(); i++ {
 		if r.isBoxCommit.IsSet(i) {
 			r.removeBox(i)
 		}
-		if r.actualUsage == r.maxCapacity {
-			return nil
+		if r.actualUsage <= r.getCapacity() {
+			return true
 		}
+	}
+	return false
+}
+
+//Trim excess data. Returns any uncommitted chunks that were trimmed
+func (r *HdCache) trim() []chunk {
+
+	if r.trimCommitted() {
+		return nil
 	}
 
 	retVal := make([]chunk, 0)
@@ -242,7 +310,7 @@ func (r *HdCache) trim() []chunk {
 
 	sort.Sort(byTime(tATA))
 
-	deficit := r.actualUsage - r.maxCapacity
+	deficit := r.actualUsage - r.getCapacity()
 	for i := 0; i < deficit; i++ {
 		deadBox := tATA[i].index
 		data, err := ioutil.ReadFile(r.boxPrefix + strconv.Itoa(deadBox))
