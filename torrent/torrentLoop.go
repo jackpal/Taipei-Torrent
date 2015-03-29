@@ -40,6 +40,9 @@ type TorrentFlags struct {
 
 	//Whether to write and use *.haveBitset resume data
 	QuickResume bool
+
+	//How many torrents should be active at a time
+	MaxActive int
 }
 
 func RunTorrents(flags *TorrentFlags, torrentFiles []string) (err error) {
@@ -50,7 +53,9 @@ func RunTorrents(flags *TorrentFlags, torrentFiles []string) (err error) {
 	}
 	quitChan := listenSigInt()
 
-	doneChan := make(chan *TorrentSession)
+	createChan := make(chan string, flags.MaxActive)
+	startChan := make(chan *TorrentSession, 1)
+	doneChan := make(chan *TorrentSession, 1)
 
 	var dhtNode dht.DHT
 	if flags.UseDHT {
@@ -59,46 +64,76 @@ func RunTorrents(flags *TorrentFlags, torrentFiles []string) (err error) {
 
 	torrentSessions := make(map[string]*TorrentSession)
 
-	for _, torrentFile := range torrentFiles {
-		var ts *TorrentSession
-		ts, err = NewTorrentSession(flags, torrentFile, uint16(listenPort))
-		if err != nil {
-			log.Println("Could not create torrent session.", err)
-			return
+	go func() {
+		for torrentFile := range createChan {
+			ts, err := NewTorrentSession(flags, torrentFile, uint16(listenPort))
+			if err != nil {
+				log.Println("Could not create torrent session.", err)
+				doneChan <- &TorrentSession{}
+			} else {
+				log.Printf("Created torrent session for %s", ts.M.Info.Name)
+				startChan <- ts
+			}
 		}
-		log.Printf("Starting torrent session for %x", ts.M.InfoHash)
-		ts.dht = &dhtNode
-		torrentSessions[ts.M.InfoHash] = ts
+	}()
+
+	torrentQueue := []string{}
+	if len(torrentFiles) > flags.MaxActive {
+		torrentQueue = torrentFiles[flags.MaxActive:]
 	}
 
-	for _, ts := range torrentSessions {
-		go func(ts *TorrentSession) {
-			ts.DoTorrent()
-			doneChan <- ts
-		}(ts)
+	for i, torrentFile := range torrentFiles {
+		if i < flags.MaxActive {
+			createChan <- torrentFile
+		} else {
+			break
+		}
 	}
 
 	lpd := &Announcer{}
 	if flags.UseLPD {
-		lpd = startLPD(torrentSessions, uint16(listenPort))
+		lpd, err = NewAnnouncer(uint16(listenPort))
+		if err != nil {
+			log.Println("Couldn't listen for Local Peer Discoveries: ", err)
+			flags.UseLPD = false
+		}
 	}
 
+	theWorldisEnding := false
 mainLoop:
 	for {
 		select {
+		case ts := <-startChan:
+			if !theWorldisEnding {
+				ts.dht = &dhtNode
+				if flags.UseLPD {
+					lpd.Announce(ts.M.InfoHash)
+				}
+				torrentSessions[ts.M.InfoHash] = ts
+				log.Printf("Starting torrent session for %s", ts.M.Info.Name)
+				go func(t *TorrentSession) {
+					t.DoTorrent()
+					doneChan <- t
+				}(ts)
+			}
 		case ts := <-doneChan:
 			delete(torrentSessions, ts.M.InfoHash)
+			if flags.UseLPD {
+				lpd.StopAnnouncing(ts.M.InfoHash)
+			}
+			if !theWorldisEnding && len(torrentQueue) > 0 {
+				createChan <- torrentQueue[0]
+				torrentQueue = torrentQueue[1:]
+				continue mainLoop
+			}
+
 			if len(torrentSessions) == 0 {
 				break mainLoop
 			}
 		case <-quitChan:
+			theWorldisEnding = true
 			for _, ts := range torrentSessions {
-				err := ts.Quit()
-				if err != nil {
-					log.Println("Failed: ", err)
-				} else {
-					log.Println("Done")
-				}
+				go ts.Quit()
 			}
 		case c := <-conChan:
 			log.Printf("New bt connection for ih %x", c.Infohash)
@@ -121,7 +156,6 @@ mainLoop:
 			hexhash, err := hex.DecodeString(announce.Infohash)
 			if err != nil {
 				log.Println("Err with hex-decoding:", err)
-				break
 			}
 			if ts, ok := torrentSessions[string(hexhash)]; ok {
 				log.Printf("Received LPD announce for ih %s", announce.Infohash)
@@ -139,19 +173,6 @@ func listenSigInt() chan os.Signal {
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt, os.Kill)
 	return c
-}
-
-func startLPD(torrentSessions map[string]*TorrentSession, listenPort uint16) (lpd *Announcer) {
-	lpd, err := NewAnnouncer(listenPort)
-	if err != nil {
-		log.Println("Couldn't listen for Local Peer Discoveries: ", err)
-		return
-	} else {
-		for _, ts := range torrentSessions {
-			lpd.Announce(ts.M.InfoHash)
-		}
-	}
-	return
 }
 
 func startDHT(listenPort int) *dht.DHT {
