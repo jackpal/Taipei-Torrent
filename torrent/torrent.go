@@ -153,7 +153,7 @@ func NewTorrentSession(flags *TorrentFlags, torrent string, listenPort uint16) (
 		torrentFile:          torrent,
 		chokePolicy:          &ClassicChokePolicy{},
 		chokePolicyHeartbeat: time.Tick(10 * time.Second),
-		execOnSeedingDone:    false,
+		execOnSeedingDone:    len(flags.ExecOnSeeding) == 0,
 	}
 	fromMagnet := strings.HasPrefix(torrent, "magnet:")
 	t.M, err = GetMetaInfo(flags.Dial, torrent)
@@ -247,11 +247,6 @@ func (t *TorrentSession) load() (err error) {
 		t.lastPieceLength = int(t.M.Info.PieceLength)
 	} else {
 		t.totalPieces++
-	}
-
-	if t.flags.Cacher != nil {
-		cache := t.flags.Cacher.NewCache(t.M.InfoHash, t.totalPieces, int(t.M.Info.PieceLength), t.totalSize)
-		t.fileStore.SetCache(cache)
 	}
 
 	t.goodPieces = 0
@@ -519,7 +514,12 @@ func (t *TorrentSession) DoTorrent() {
 	if t.flags.UseDeadlockDetector {
 		go t.deadlockDetector()
 	}
-	log.Println("[", t.M.Info.Name, "] Fetching torrent.")
+
+	if t.flags.Cacher != nil {
+		cache := t.flags.Cacher.NewCache(t.M.InfoHash, t.totalPieces, int(t.M.Info.PieceLength), t.totalSize)
+		t.fileStore.SetCache(cache)
+	}
+
 	heartbeatChan := time.Tick(1 * time.Second)
 	keepAliveChan := time.Tick(60 * time.Second)
 	var retrackerChan <-chan time.Time
@@ -545,7 +545,7 @@ func (t *TorrentSession) DoTorrent() {
 	defer t.Shutdown()
 
 	for {
-		if !t.execOnSeedingDone && t.goodPieces == t.totalPieces && len(t.flags.ExecOnSeeding) > 0 {
+		if !t.execOnSeedingDone && t.goodPieces == t.totalPieces {
 			t.execOnSeeding()
 			t.execOnSeedingDone = true
 		}

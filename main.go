@@ -39,6 +39,7 @@ var (
 	useHdCache          = flag.Int("useHdCache", 0, "Size in MiB of cache in OS temp directory, to reduce traffic on torrent storage.")
 	execOnSeeding       = flag.String("execOnSeeding", "", "Command to execute when torrent has fully downloaded and has begun seeding.")
 	quickResume         = flag.Bool("quickResume", false, "Save torrenting data to resume faster. '-initialCheck' should be set to false, to prevent hash check on resume.")
+	maxActive           = flag.Int("maxActive", 16, "How many torrents should be active at a time. Torrents added beyond this value are queued.")
 )
 
 func parseTorrentFlags() *torrent.TorrentFlags {
@@ -60,6 +61,7 @@ func parseTorrentFlags() *torrent.TorrentFlags {
 		Cacher:             cacheproviderFromFlags(),
 		ExecOnSeeding:      *execOnSeeding,
 		QuickResume:        *quickResume,
+		MaxActive:          *maxActive,
 	}
 }
 
