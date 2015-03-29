@@ -419,6 +419,9 @@ func testHelperProcessImp(args []string) (err error) {
 			SeedRatio:          seedRatio,
 			FileSystemProvider: torrent.OsFsProvider{},
 			InitialCheck:       true,
+			MaxActive:          1,
+			ExecOnSeeding:      "",
+			Cacher:				torrent.NewRamCacheProvider(1),
 		}
 		err = torrent.RunTorrents(&torrentFlags, torrentFiles)
 		if err != nil {
