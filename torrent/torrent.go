@@ -199,6 +199,11 @@ func (t *TorrentSession) reload(metadata string) (err error) {
 
 	t.M.Info = info
 	err = t.load()
+
+	if t.flags.Cacher != nil && t.fileStore != nil {
+		cache := t.flags.Cacher.NewCache(t.M.InfoHash, t.totalPieces, int(t.M.Info.PieceLength), t.totalSize)
+		t.fileStore.SetCache(cache)
+	}
 	return
 }
 
@@ -515,7 +520,7 @@ func (t *TorrentSession) DoTorrent() {
 		go t.deadlockDetector()
 	}
 
-	if t.flags.Cacher != nil {
+	if t.flags.Cacher != nil && t.fileStore != nil {
 		cache := t.flags.Cacher.NewCache(t.M.InfoHash, t.totalPieces, int(t.M.Info.PieceLength), t.totalSize)
 		t.fileStore.SetCache(cache)
 	}
