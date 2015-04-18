@@ -11,9 +11,9 @@ import (
 	"runtime/pprof"
 	"time"
 
-	"github.com/hailiang/socks"
 	"github.com/jackpal/Taipei-Torrent/torrent"
 	"github.com/jackpal/Taipei-Torrent/tracker"
+	"h12.me/socks"
 )
 
 var (
