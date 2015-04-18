@@ -2,6 +2,7 @@ package torrent
 
 import (
 	"fmt"
+	gateway "github.com/jackpal/go-gateway"
 	"log"
 	"net"
 	"strconv"
@@ -100,7 +101,7 @@ func CreatePortMapping(flags *TorrentFlags) (nat NAT, err error) {
 		var gatewayIP net.IP
 		if flags.Gateway == "" {
 			log.Printf("useNATPMP but gateway not provided, trying discovery")
-			gatewayIP, err = DiscoverGateway()
+			gatewayIP, err = gateway.DiscoverGateway()
 			if err != nil {
 				return
 			}
