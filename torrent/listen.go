@@ -2,7 +2,7 @@ package torrent
 
 import (
 	"fmt"
-	gateway "github.com/jackpal/go-gateway"
+	"github.com/jackpal/gateway"
 	"log"
 	"net"
 	"strconv"
