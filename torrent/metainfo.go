@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"golang.org/x/net/proxy"
 	"io"
 	"io/ioutil"
 	"log"
@@ -79,7 +80,7 @@ func getSliceSliceString(m map[string]interface{}, k string) (aas [][]string) {
 	return
 }
 
-func GetMetaInfo(dialer Dialer, torrent string) (metaInfo *MetaInfo, err error) {
+func GetMetaInfo(dialer proxy.Dialer, torrent string) (metaInfo *MetaInfo, err error) {
 	var input io.ReadCloser
 	if strings.HasPrefix(torrent, "http:") {
 		r, err := proxyHttpGet(dialer, torrent)
@@ -535,7 +536,7 @@ type MetaDataExchange struct {
 	Pieces       [][]byte
 }
 
-func getTrackerInfo(dialer Dialer, url string) (tr *TrackerResponse, err error) {
+func getTrackerInfo(dialer proxy.Dialer, url string) (tr *TrackerResponse, err error) {
 	r, err := proxyHttpGet(dialer, url)
 	if err != nil {
 		return

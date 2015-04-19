@@ -3,13 +3,11 @@ package torrent
 import (
 	"encoding/hex"
 	"github.com/nictuku/dht"
+	"golang.org/x/net/proxy"
 	"log"
-	"net"
 	"os"
 	"os/signal"
 )
-
-type Dialer func(network, addr string) (net.Conn, error)
 
 type TorrentFlags struct {
 	Port                int
@@ -24,7 +22,7 @@ type TorrentFlags struct {
 	ExecOnSeeding       string
 
 	// The dial function to use. Nil means use net.Dial
-	Dial Dialer
+	Dial proxy.Dialer
 
 	// IP address of gateway used for NAT-PMP
 	Gateway string
