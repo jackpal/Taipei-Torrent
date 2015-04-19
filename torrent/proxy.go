@@ -18,6 +18,9 @@ func proxyHttpGet(dialer proxy.Dialer, url string) (r *http.Response, e error) {
 }
 
 func proxyHttpClient(dialer proxy.Dialer) (client *http.Client) {
+	if dialer == nil {
+		dialer = proxy.Direct;
+	}
 	tr := &http.Transport{Dial: dialer.Dial}
 	client = &http.Client{Transport: tr}
 	return
