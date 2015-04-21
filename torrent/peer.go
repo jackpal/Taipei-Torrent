@@ -7,6 +7,8 @@ import (
 	"net"
 	"time"
 
+	"github.com/jackpal/Taipei-Torrent/bitset"
+
 	bencode "github.com/jackpal/bencode-go"
 )
 
@@ -25,7 +27,7 @@ type peerState struct {
 	writeChan       chan []byte
 	writeChan2      chan []byte
 	lastReadTime    time.Time
-	have            *Bitset // What the peer has told us it has
+	have            *bitset.Bitset // What the peer has told us it has
 	conn            net.Conn
 	am_choking      bool // this client is choking the peer
 	am_interested   bool // this client is interested in the peer
@@ -153,7 +155,7 @@ func (p *peerState) SetInterested(interested bool) {
 	}
 }
 
-func (p *peerState) SendBitfield(bs *Bitset) {
+func (p *peerState) SendBitfield(bs *bitset.Bitset) {
 	msg := make([]byte, len(bs.Bytes())+1)
 	msg[0] = BITFIELD
 	copy(msg[1:], bs.Bytes())

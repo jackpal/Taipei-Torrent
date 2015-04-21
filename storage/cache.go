@@ -1,5 +1,5 @@
 // cache
-package torrent
+package storage
 
 import (
 	"log"
@@ -7,17 +7,24 @@ import (
 	"sort"
 	"sync/atomic"
 	"time"
+
+	"github.com/jackpal/Taipei-Torrent/bitset"
 )
 
 type CacheProvider interface {
 	NewCache(infohash string, numPieces int, pieceLength int, totalSize int64) TorrentCache
 }
 
+type Chunk struct {
+	I    int64
+	Data []byte
+}
+
 type TorrentCache interface {
 	//Read what's cached, returns parts that weren't available to read.
-	ReadAt(p []byte, offset int64) []chunk
+	ReadAt(p []byte, offset int64) []Chunk
 	//Writes to cache, returns uncommitted data that has been trimmed.
-	WriteAt(p []byte, offset int64) []chunk
+	WriteAt(p []byte, offset int64) []Chunk
 	//Marks a piece as committed to permanent storage.
 	MarkCommitted(piece int)
 	//Close the cache and free all the things
@@ -53,9 +60,18 @@ func NewRamCacheProvider(capacity int) CacheProvider {
 
 func (r *RamCacheProvider) NewCache(infohash string, numPieces int, pieceSize int, torrentLength int64) TorrentCache {
 	i := uint32(1)
-	rc := &RamCache{pieceSize: pieceSize, atimes: make([]time.Time, numPieces), store: make([][]byte, numPieces),
-		isBoxFull: *NewBitset(numPieces), isBoxCommit: *NewBitset(numPieces), isByteSet: make([]Bitset, numPieces),
-		torrentLength: torrentLength, cacheProvider: r, capacity: &i, infohash: infohash}
+	rc := &RamCache{
+		pieceSize:     pieceSize,
+		atimes:        make([]time.Time, numPieces),
+		store:         make([][]byte, numPieces),
+		isBoxFull:     bitset.New(numPieces),
+		isBoxCommit:   bitset.New(numPieces),
+		isByteSet:     make([]*bitset.Bitset, numPieces),
+		torrentLength: torrentLength,
+		cacheProvider: r,
+		capacity:      &i,
+		infohash:      infohash,
+	}
 
 	r.caches[infohash] = rc
 	r.rebalance(true)
@@ -99,27 +115,31 @@ func (r *RamCacheProvider) cacheClosed(infohash string) {
 	r.rebalance(false)
 }
 
-//'pieceSize' is the size of the average piece
-//'capacity' is how many pieces the cache can hold
-//'actualUsage' is how many pieces the cache has at the moment
-//'atime' is an array of access times for each stored box
-//'store' is an array of "boxes" ([]byte of 1 piece each)
-//'isBoxFull' indicates if a box entirely contains written data
-//'isBoxCommit' indicates if a box has been committed to storage
-//'isByteSet' for [i] indicates for box 'i' if a byte has been written to
-//'torrentLength' is the number of bytes in the torrent
-//'cacheProvider' is a pointer to the cacheProvider that created this cache
-//'infohash' is the infohash of the torrent
 type RamCache struct {
+	// How many pieces the cache can hold
+	capacity *uint32 //Access only through getter/setter
+
+	// How many pieces the cache has at the moment
+	actualUsage int
+
+	// Access times for each stored box
+	atimes []time.Time
+
+	// Bitset of boxes that entirely contain written data
+	isBoxFull *bitset.Bitset
+
+	// Bitset of boxes committed to storage
+	isBoxCommit *bitset.Bitset
+
+	// Slice of written bytes
+	isByteSet []*bitset.Bitset
+
+	// Array of boxes, where a box is a []byte for 1 piece
+	store [][]byte
+
 	pieceSize     int
-	capacity      *uint32 //Access only through getter/setter
-	actualUsage   int
-	atimes        []time.Time
-	store         [][]byte
-	isBoxFull     Bitset
-	isBoxCommit   Bitset
-	isByteSet     []Bitset
 	torrentLength int64
+	// Pointer to the CacheProvider that created this cache
 	cacheProvider *RamCacheProvider
 	infohash      string
 }
@@ -129,8 +149,8 @@ func (r *RamCache) Close() {
 	//We don't need to do anything else. The garbage collector will take care of it.
 }
 
-func (r *RamCache) ReadAt(p []byte, off int64) []chunk {
-	unfulfilled := make([]chunk, 0)
+func (r *RamCache) ReadAt(p []byte, off int64) []Chunk {
+	unfulfilled := make([]Chunk, 0)
 
 	boxI := int(off / int64(r.pieceSize))
 	boxOff := int(off % int64(r.pieceSize))
@@ -143,13 +163,13 @@ func (r *RamCache) ReadAt(p []byte, off int64) []chunk {
 			}
 			if len(unfulfilled) > 0 {
 				last := unfulfilled[len(unfulfilled)-1]
-				if last.i+int64(len(last.data)) == off+int64(i) {
+				if last.I+int64(len(last.Data)) == off+int64(i) {
 					unfulfilled = unfulfilled[:len(unfulfilled)-1]
-					i = int(last.i - off)
-					end += len(last.data)
+					i = int(last.I - off)
+					end += len(last.Data)
 				}
 			}
-			unfulfilled = append(unfulfilled, chunk{off + int64(i), p[i : i+end]})
+			unfulfilled = append(unfulfilled, Chunk{off + int64(i), p[i : i+end]})
 			i += end
 		} else if r.isBoxFull.IsSet(boxI) { //definitely in cache
 			i += copy(p[i:], r.store[boxI][boxOff:])
@@ -173,7 +193,7 @@ func (r *RamCache) ReadAt(p []byte, off int64) []chunk {
 				i++
 			}
 			for _, intt := range missing[1:] {
-				unfulfilled = append(unfulfilled, chunk{off + int64(intt.a), p[intt.a:intt.b]})
+				unfulfilled = append(unfulfilled, Chunk{off + int64(intt.a), p[intt.a:intt.b]})
 			}
 		}
 		boxI++
@@ -182,7 +202,7 @@ func (r *RamCache) ReadAt(p []byte, off int64) []chunk {
 	return unfulfilled
 }
 
-func (r *RamCache) WriteAt(p []byte, off int64) []chunk {
+func (r *RamCache) WriteAt(p []byte, off int64) []Chunk {
 	boxI := int(off / int64(r.pieceSize))
 	boxOff := int(off % int64(r.pieceSize))
 
@@ -197,8 +217,8 @@ func (r *RamCache) WriteAt(p []byte, off int64) []chunk {
 		if copied == r.pieceSize {
 			r.isBoxFull.Set(boxI)
 		} else {
-			if r.isByteSet[boxI].n == 0 {
-				r.isByteSet[boxI] = *NewBitset(r.pieceSize)
+			if r.isByteSet[boxI] == nil {
+				r.isByteSet[boxI] = bitset.New(r.pieceSize)
 			}
 			for j := boxOff; j < boxOff+copied; j++ {
 				r.isByteSet[boxI].Set(j)
@@ -217,14 +237,14 @@ func (r *RamCache) MarkCommitted(piece int) {
 	if r.store[piece] != nil {
 		r.isBoxFull.Set(piece)
 		r.isBoxCommit.Set(piece)
-		r.isByteSet[piece] = *NewBitset(0)
+		r.isByteSet[piece] = bitset.New(0)
 	}
 }
 
 func (r *RamCache) removeBox(boxI int) {
 	r.isBoxFull.Clear(boxI)
 	r.isBoxCommit.Clear(boxI)
-	r.isByteSet[boxI] = *NewBitset(0)
+	r.isByteSet[boxI] = bitset.New(0)
 	r.store[boxI] = nil
 	r.actualUsage--
 }
@@ -252,13 +272,13 @@ func (r *RamCache) trimCommitted() bool {
 }
 
 //Trim excess data. Returns any uncommitted chunks that were trimmed
-func (r *RamCache) trim() []chunk {
+func (r *RamCache) trim() []Chunk {
 
 	if r.trimCommitted() {
 		return nil
 	}
 
-	retVal := make([]chunk, 0)
+	retVal := make([]Chunk, 0)
 
 	//Still need more space? figure out what's oldest
 	//RawWrite it to storage, and clear that then
@@ -277,7 +297,7 @@ func (r *RamCache) trim() []chunk {
 		deadBox := tATA[i].index
 		data := r.store[deadBox]
 		if r.isBoxFull.IsSet(deadBox) { //Easy, the whole box has to go
-			retVal = append(retVal, chunk{int64(deadBox) * int64(r.pieceSize), data})
+			retVal = append(retVal, Chunk{int64(deadBox) * int64(r.pieceSize), data})
 		} else { //Ugh, we'll just trim anything unused from the start and the end, and send that.
 			off := int64(0)
 			endData := r.pieceSize
@@ -298,7 +318,7 @@ func (r *RamCache) trim() []chunk {
 					break
 				}
 			}
-			retVal = append(retVal, chunk{int64(deadBox)*int64(r.pieceSize) + off, data[off:endData]})
+			retVal = append(retVal, Chunk{int64(deadBox)*int64(r.pieceSize) + off, data[off:endData]})
 		}
 		r.removeBox(deadBox)
 	}

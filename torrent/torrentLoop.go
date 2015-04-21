@@ -2,11 +2,14 @@ package torrent
 
 import (
 	"encoding/hex"
-	"github.com/nictuku/dht"
-	"golang.org/x/net/proxy"
 	"log"
 	"os"
 	"os/signal"
+
+	"github.com/jackpal/Taipei-Torrent/storage"
+
+	"github.com/nictuku/dht"
+	"golang.org/x/net/proxy"
 )
 
 type TorrentFlags struct {
@@ -28,13 +31,13 @@ type TorrentFlags struct {
 	Gateway string
 
 	//Provides the filesystems added torrents are saved to
-	FileSystemProvider FsProvider
+	FileSystemProvider storage.FsProvider
 
 	//Whether to check file hashes when adding torrents
 	InitialCheck bool
 
 	//Provides cache to each torrent
-	Cacher CacheProvider
+	Cacher storage.CacheProvider
 
 	//Whether to write and use *.haveBitset resume data
 	QuickResume bool

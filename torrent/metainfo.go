@@ -7,13 +7,16 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"golang.org/x/net/proxy"
 	"io"
 	"io/ioutil"
 	"log"
 	"os"
 	"path"
 	"strings"
+
+	"golang.org/x/net/proxy"
+
+	"github.com/jackpal/Taipei-Torrent/storage"
 
 	bencode "github.com/jackpal/bencode-go"
 	"github.com/nictuku/dht"
@@ -194,7 +197,7 @@ type FileStoreFileAdapter struct {
 	f MetaInfoFile
 }
 
-func (f *FileStoreFileSystemAdapter) Open(name []string, length int64) (file File, err error) {
+func (f *FileStoreFileSystemAdapter) Open(name []string, length int64) (file storage.File, err error) {
 	var ff MetaInfoFile
 	ff, err = f.m.Open(path.Join(name...))
 	if err != nil {

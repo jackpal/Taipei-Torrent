@@ -1,5 +1,5 @@
 // hdcache
-package torrent
+package storage
 
 import (
 	"encoding/hex"
@@ -13,6 +13,8 @@ import (
 	"strconv"
 	"sync/atomic"
 	"time"
+
+	"github.com/jackpal/Taipei-Torrent/bitset"
 )
 
 //This provider creates an HD cache for each torrent.
@@ -31,10 +33,19 @@ func NewHdCacheProvider(capacity int) CacheProvider {
 
 func (r *HdCacheProvider) NewCache(infohash string, numPieces int, pieceSize int, torrentLength int64) TorrentCache {
 	i := uint32(1)
-	rc := &HdCache{pieceSize: pieceSize, atimes: make([]time.Time, numPieces), boxExists: *NewBitset(numPieces),
-		isBoxFull: *NewBitset(numPieces), isBoxCommit: *NewBitset(numPieces), isByteSet: make([]Bitset, numPieces),
+	rc := &HdCache{
+		pieceSize:     pieceSize,
+		atimes:        make([]time.Time, numPieces),
+		boxExists:     bitset.New(numPieces),
+		isBoxFull:     bitset.New(numPieces),
+		isBoxCommit:   bitset.New(numPieces),
+		isByteSet:     make([]*bitset.Bitset, numPieces),
 		boxPrefix:     filepath.FromSlash(os.TempDir() + "/taipeitorrent/" + hex.EncodeToString([]byte(infohash)) + "-"),
-		torrentLength: torrentLength, cacheProvider: r, capacity: &i, infohash: infohash}
+		torrentLength: torrentLength,
+		cacheProvider: r,
+		capacity:      &i,
+		infohash:      infohash,
+	}
 	rc.empty() //clear out any detritus from previous runs
 	r.caches[infohash] = rc
 	r.rebalance(true)
@@ -78,30 +89,36 @@ func (r *HdCacheProvider) cacheClosed(infohash string) {
 	r.rebalance(false)
 }
 
-//'pieceSize' is the size of the average piece
-//'capacity' is how many pieces the cache can hold
-//'actualUsage' is how many pieces the cache has at the moment
-//'atime' is an array of access times for each stored box
-//'boxExists' indicates if a box is existent in cache
-//'isBoxFull' indicates if a box entirely contains written data
-//'isBoxCommit' indicates if a box has been committed to storage
-//'isByteSet' for [i] indicates for box 'i' if a byte has been written to
-//'boxPrefix' is the partial path to the boxes.
-//'torrentLength' is the number of bytes in the torrent
-//'cacheProvider' is a pointer to the cacheProvider that created this cache
-//'infohash' is the infohash of the torrent
 type HdCache struct {
-	pieceSize     int
-	capacity      *uint32 //Access only through getter/setter
-	actualUsage   int
-	atimes        []time.Time
-	boxExists     Bitset
-	isBoxFull     Bitset
-	isBoxCommit   Bitset
-	isByteSet     []Bitset
-	boxPrefix     string
-	torrentLength int64
+	// How many pieces the cache can hold
+	capacity *uint32 //Access only through getter/setter
+
+	// How many pieces the cache has at the moment
+	actualUsage int
+
+	// Access times for each stored box
+	atimes []time.Time
+
+	// Bitset of existing boxes
+	boxExists *bitset.Bitset
+
+	// Bitset of boxes that entirely contain written data
+	isBoxFull *bitset.Bitset
+
+	// Bitset of boxes committed to storage
+	isBoxCommit *bitset.Bitset
+
+	// Slice of written bytes
+	isByteSet []*bitset.Bitset
+
+	// Partial path to the boxes
+	boxPrefix string
+
+	// CacheProvider that created this cache
 	cacheProvider *HdCacheProvider
+
+	pieceSize     int
+	torrentLength int64
 	infohash      string
 }
 
@@ -116,8 +133,8 @@ func (r *HdCache) empty() {
 	}
 }
 
-func (r *HdCache) ReadAt(p []byte, off int64) []chunk {
-	unfulfilled := make([]chunk, 0)
+func (r *HdCache) ReadAt(p []byte, off int64) []Chunk {
+	unfulfilled := make([]Chunk, 0)
 
 	boxI := int(off / int64(r.pieceSize))
 	boxOff := int(off % int64(r.pieceSize))
@@ -130,13 +147,13 @@ func (r *HdCache) ReadAt(p []byte, off int64) []chunk {
 			}
 			if len(unfulfilled) > 0 {
 				last := unfulfilled[len(unfulfilled)-1]
-				if last.i+int64(len(last.data)) == off+int64(i) {
+				if last.I+int64(len(last.Data)) == off+int64(i) {
 					unfulfilled = unfulfilled[:len(unfulfilled)-1]
-					i = int(last.i - off)
-					end += len(last.data)
+					i = int(last.I - off)
+					end += len(last.Data)
 				}
 			}
-			unfulfilled = append(unfulfilled, chunk{off + int64(i), p[i : i+end]})
+			unfulfilled = append(unfulfilled, Chunk{off + int64(i), p[i : i+end]})
 			i += end
 		} else if r.isBoxFull.IsSet(boxI) { //definitely in cache
 			box, err := os.Open(r.boxPrefix + strconv.Itoa(boxI))
@@ -183,7 +200,7 @@ func (r *HdCache) ReadAt(p []byte, off int64) []chunk {
 				i++
 			}
 			for _, intt := range missing[1:] {
-				unfulfilled = append(unfulfilled, chunk{off + int64(intt.a), p[intt.a:intt.b]})
+				unfulfilled = append(unfulfilled, Chunk{off + int64(intt.a), p[intt.a:intt.b]})
 			}
 		}
 		boxI++
@@ -192,7 +209,7 @@ func (r *HdCache) ReadAt(p []byte, off int64) []chunk {
 	return unfulfilled
 }
 
-func (r *HdCache) WriteAt(p []byte, off int64) []chunk {
+func (r *HdCache) WriteAt(p []byte, off int64) []Chunk {
 	boxI := int(off / int64(r.pieceSize))
 	boxOff := int(off % int64(r.pieceSize))
 
@@ -230,8 +247,8 @@ func (r *HdCache) WriteAt(p []byte, off int64) []chunk {
 		if copied == r.pieceSize {
 			r.isBoxFull.Set(boxI)
 		} else {
-			if r.isByteSet[boxI].n == 0 {
-				r.isByteSet[boxI] = *NewBitset(r.pieceSize)
+			if r.isByteSet[boxI] == nil {
+				r.isByteSet[boxI] = bitset.New(r.pieceSize)
 			}
 			for j := boxOff; j < boxOff+copied; j++ {
 				r.isByteSet[boxI].Set(j)
@@ -250,7 +267,7 @@ func (r *HdCache) MarkCommitted(piece int) {
 	if r.boxExists.IsSet(piece) {
 		r.isBoxFull.Set(piece)
 		r.isBoxCommit.Set(piece)
-		r.isByteSet[piece] = *NewBitset(0)
+		r.isByteSet[piece] = bitset.New(0)
 	}
 }
 
@@ -258,7 +275,7 @@ func (r *HdCache) removeBox(boxI int) {
 	r.isBoxFull.Clear(boxI)
 	r.boxExists.Clear(boxI)
 	r.isBoxCommit.Clear(boxI)
-	r.isByteSet[boxI] = *NewBitset(0)
+	r.isByteSet[boxI] = bitset.New(0)
 	err := os.Remove(r.boxPrefix + strconv.Itoa(boxI))
 	if err != nil {
 		log.Println("Error removing cache box:", err)
@@ -290,13 +307,13 @@ func (r *HdCache) trimCommitted() bool {
 }
 
 //Trim excess data. Returns any uncommitted chunks that were trimmed
-func (r *HdCache) trim() []chunk {
+func (r *HdCache) trim() []Chunk {
 
 	if r.trimCommitted() {
 		return nil
 	}
 
-	retVal := make([]chunk, 0)
+	retVal := make([]Chunk, 0)
 
 	//Still need more space? figure out what's oldest
 	//RawWrite it to storage, and clear that then
@@ -318,7 +335,7 @@ func (r *HdCache) trim() []chunk {
 			log.Println("Error reading cache box for trimming:", err)
 		} else {
 			if r.isBoxFull.IsSet(deadBox) { //Easy, the whole box has to go
-				retVal = append(retVal, chunk{int64(deadBox) * int64(r.pieceSize), data})
+				retVal = append(retVal, Chunk{int64(deadBox) * int64(r.pieceSize), data})
 			} else { //Ugh, we'll just trim anything unused from the start and the end, and send that.
 				off := int64(0)
 				endData := r.pieceSize
@@ -339,7 +356,7 @@ func (r *HdCache) trim() []chunk {
 						break
 					}
 				}
-				retVal = append(retVal, chunk{int64(deadBox)*int64(r.pieceSize) + off, data[off:endData]})
+				retVal = append(retVal, Chunk{int64(deadBox)*int64(r.pieceSize) + off, data[off:endData]})
 			}
 		}
 		r.removeBox(deadBox)
