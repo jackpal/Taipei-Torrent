@@ -525,7 +525,9 @@ func (t *TorrentSession) DoTorrent() {
 		t.fileStore.SetCache(cache)
 	}
 
-	heartbeatChan := time.Tick(1 * time.Second)
+	heartbeatDuration := 1 * time.Second
+	heartbeatChan := time.Tick(heartbeatDuration)
+
 	keepAliveChan := time.Tick(60 * time.Second)
 	var retrackerChan <-chan time.Time
 	t.hintNewPeerChan = make(chan string)
@@ -635,7 +637,7 @@ func (t *TorrentSession) DoTorrent() {
 			if t.si.Downloaded > 0 {
 				ratio = float64(t.si.Uploaded) / float64(t.si.Downloaded)
 			}
-			speed := humanSize(t.si.Downloaded - lastDownloaded)
+			speed := humanSize(float64(t.si.Downloaded-lastDownloaded) / heartbeatDuration.Seconds())
 			lastDownloaded = t.si.Downloaded
 			log.Printf("[ %s ] Peers: %d downloaded: %d (%s/s) uploaded: %d ratio: %f pieces: %d/%d\n",
 				t.M.Info.Name,
@@ -1293,14 +1295,14 @@ func min(a, b int) int {
 	return b
 }
 
-func humanSize(value uint64) string {
+func humanSize(value float64) string {
 	switch {
 	case value > 1<<30:
-		return fmt.Sprintf("%.2f GB", float64(value)/(1<<30))
+		return fmt.Sprintf("%.2f GB", value/(1<<30))
 	case value > 1<<20:
-		return fmt.Sprintf("%.2f MB", float64(value)/(1<<20))
+		return fmt.Sprintf("%.2f MB", value/(1<<20))
 	case value > 1<<10:
-		return fmt.Sprintf("%.2f kB", float64(value)/(1<<10))
+		return fmt.Sprintf("%.2f kB", value/(1<<10))
 	}
 	return fmt.Sprintf("%.2f B", value)
 }
