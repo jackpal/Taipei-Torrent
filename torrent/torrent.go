@@ -525,7 +525,9 @@ func (t *TorrentSession) DoTorrent() {
 		t.fileStore.SetCache(cache)
 	}
 
-	heartbeatChan := time.Tick(1 * time.Second)
+	heartbeatDuration := 1 * time.Second
+	heartbeatChan := time.Tick(heartbeatDuration)
+
 	keepAliveChan := time.Tick(60 * time.Second)
 	var retrackerChan <-chan time.Time
 	t.hintNewPeerChan = make(chan string)
@@ -548,6 +550,8 @@ func (t *TorrentSession) DoTorrent() {
 	}
 
 	defer t.Shutdown()
+
+	lastDownloaded := t.si.Downloaded
 
 	for {
 		if !t.execOnSeedingDone && t.goodPieces == t.totalPieces {
@@ -633,9 +637,17 @@ func (t *TorrentSession) DoTorrent() {
 			if t.si.Downloaded > 0 {
 				ratio = float64(t.si.Uploaded) / float64(t.si.Downloaded)
 			}
-			log.Println("[", t.M.Info.Name, "] Peers:", len(t.peers), "downloaded:", t.si.Downloaded,
-				"uploaded:", t.si.Uploaded, "ratio", ratio)
-			log.Println("[", t.M.Info.Name, "] Pieces: good", t.goodPieces, "total", t.totalPieces)
+			speed := humanSize(float64(t.si.Downloaded-lastDownloaded) / heartbeatDuration.Seconds())
+			lastDownloaded = t.si.Downloaded
+			log.Printf("[ %s ] Peers: %d downloaded: %d (%s/s) uploaded: %d ratio: %f pieces: %d/%d\n",
+				t.M.Info.Name,
+				len(t.peers),
+				t.si.Downloaded,
+				speed,
+				t.si.Uploaded,
+				ratio,
+				t.goodPieces,
+				t.totalPieces)
 			if t.totalPieces != 0 && t.goodPieces == t.totalPieces && ratio >= t.flags.SeedRatio {
 				log.Println("[", t.M.Info.Name, "] Achieved target seed ratio", t.flags.SeedRatio)
 				return
@@ -1281,4 +1293,16 @@ func min(a, b int) int {
 		return a
 	}
 	return b
+}
+
+func humanSize(value float64) string {
+	switch {
+	case value > 1<<30:
+		return fmt.Sprintf("%.2f GB", value/(1<<30))
+	case value > 1<<20:
+		return fmt.Sprintf("%.2f MB", value/(1<<20))
+	case value > 1<<10:
+		return fmt.Sprintf("%.2f kB", value/(1<<10))
+	}
+	return fmt.Sprintf("%.2f B", value)
 }
