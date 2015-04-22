@@ -11,9 +11,9 @@ import (
 	"runtime/pprof"
 	"time"
 
-	"github.com/hailiang/socks"
 	"github.com/jackpal/Taipei-Torrent/torrent"
 	"github.com/jackpal/Taipei-Torrent/tracker"
+	"golang.org/x/net/proxy"
 )
 
 var (
@@ -42,9 +42,13 @@ var (
 	maxActive           = flag.Int("maxActive", 16, "How many torrents should be active at a time. Torrents added beyond this value are queued.")
 )
 
-func parseTorrentFlags() *torrent.TorrentFlags {
-	return &torrent.TorrentFlags{
-		Dial:                dialerFromFlags(),
+func parseTorrentFlags() (flags *torrent.TorrentFlags, err error) {
+	dialer, err := dialerFromFlags()
+	if err != nil {
+		return
+	}
+	flags = &torrent.TorrentFlags{
+		Dial:                dialer,
 		Port:                portFromFlags(),
 		FileDir:             *fileDir,
 		SeedRatio:           *seedRatio,
@@ -63,6 +67,7 @@ func parseTorrentFlags() *torrent.TorrentFlags {
 		QuickResume:        *quickResume,
 		MaxActive:          *maxActive,
 	}
+	return
 }
 
 func portFromFlags() int {
@@ -96,11 +101,11 @@ func fsproviderFromFlags() torrent.FsProvider {
 	return torrent.OsFsProvider{}
 }
 
-func dialerFromFlags() torrent.Dialer {
+func dialerFromFlags() (proxy.Dialer, error) {
 	if len(*proxyAddress) > 0 {
-		return socks.DialSocksProxy(socks.SOCKS5, string(*proxyAddress))
+		return proxy.SOCKS5("tcp", string(*proxyAddress), nil, &proxy.Direct)
 	}
-	return nil
+	return proxy.FromEnvironment(), nil
 }
 
 func main() {
@@ -130,7 +135,10 @@ func main() {
 		usage()
 	}
 
-	torrentFlags := parseTorrentFlags()
+	torrentFlags, err := parseTorrentFlags()
+	if err != nil {
+		log.Fatal("Could not parse flags:", err)
+	}
 
 	if *cpuprofile != "" {
 		cpuf, err := os.Create(*cpuprofile)
@@ -153,7 +161,7 @@ func main() {
 
 	log.Println("Starting.")
 
-	err := torrent.RunTorrents(torrentFlags, args)
+	err = torrent.RunTorrents(torrentFlags, args)
 	if err != nil {
 		log.Fatal("Could not run torrents", args, err)
 	}
@@ -170,7 +178,10 @@ func startTracker(addr string, torrentFiles []string) (err error) {
 	t := tracker.NewTracker()
 	// TODO(jackpal) Allow caller to choose port number
 	t.Addr = addr
-	dial := dialerFromFlags()
+	dial, err := dialerFromFlags()
+	if err != nil {
+		return
+	}
 	for _, torrentFile := range torrentFiles {
 		var metaInfo *torrent.MetaInfo
 		metaInfo, err = torrent.GetMetaInfo(dial, torrentFile)

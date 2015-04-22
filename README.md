@@ -75,9 +75,9 @@ Third-party Packages
 
 https://github.com/jackpal/bencode-go - Bencode encoder/decoder
 
-http://code.google.com/p/go-nat-pmp - NAT-PMP firewall client
+http://github.com/jackpal/gateway - LAN gateway discovery
 
-https://github.com/hailiang/socks - SOCKS5 proxy support
+http://github.com/jackpal/go-nat-pmp - NAT-PMP firewall client
 
 https://github.com/nictuku/dht      - Distributed Hash Table
 

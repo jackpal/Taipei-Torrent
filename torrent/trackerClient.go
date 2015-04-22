@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"golang.org/x/net/proxy"
 	"log"
 	"math/rand"
 	"net"
@@ -28,7 +29,7 @@ type ClientStatusReport struct {
 	Left       uint64
 }
 
-func startTrackerClient(dialer Dialer, announce string, announceList [][]string, trackerInfoChan chan *TrackerResponse, reports chan ClientStatusReport) {
+func startTrackerClient(dialer proxy.Dialer, announce string, announceList [][]string, trackerInfoChan chan *TrackerResponse, reports chan ClientStatusReport) {
 	if announce != "" && announceList == nil {
 		// Convert the plain announce into an announceList to simplify logic
 		announceList = [][]string{[]string{announce}}
@@ -88,7 +89,7 @@ func shuffleAnnounceListLevel(level []string) (shuffled []string) {
 	return
 }
 
-func queryTrackers(dialer Dialer, announceList [][]string, report ClientStatusReport) (tr *TrackerResponse) {
+func queryTrackers(dialer proxy.Dialer, announceList [][]string, report ClientStatusReport) (tr *TrackerResponse) {
 	for _, level := range announceList {
 		for i, tracker := range level {
 			var err error
@@ -106,7 +107,7 @@ func queryTrackers(dialer Dialer, announceList [][]string, report ClientStatusRe
 	return
 }
 
-func queryTracker(dialer Dialer, report ClientStatusReport, trackerUrl string) (tr *TrackerResponse, err error) {
+func queryTracker(dialer proxy.Dialer, report ClientStatusReport, trackerUrl string) (tr *TrackerResponse, err error) {
 	u, err := url.Parse(trackerUrl)
 	if err != nil {
 		log.Println("Error: Invalid announce URL(", trackerUrl, "):", err)
@@ -126,7 +127,7 @@ func queryTracker(dialer Dialer, report ClientStatusReport, trackerUrl string) (
 	}
 }
 
-func queryHTTPTracker(dialer Dialer, report ClientStatusReport, u *url.URL) (tr *TrackerResponse, err error) {
+func queryHTTPTracker(dialer proxy.Dialer, report ClientStatusReport, u *url.URL) (tr *TrackerResponse, err error) {
 	uq := u.Query()
 	uq.Add("info_hash", report.InfoHash)
 	uq.Add("peer_id", report.PeerId)
