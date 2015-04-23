@@ -43,9 +43,9 @@ func checkEqual(ref, current []byte) bool {
 	return true
 }
 
-type Chunk struct {
-	I    int64
-	Data []byte
+type chunk struct {
+	i    int64
+	data []byte
 }
 
 // computeSums reads the file content and computes the SHA1 hash for each
@@ -53,8 +53,8 @@ type Chunk struct {
 // computation takes ~30ms.
 func computeSums(fs FileStore, totalLength int64, pieceLength int64) (sums []byte, err error) {
 	// Calculate the SHA1 hash for each piece in parallel goroutines.
-	hashes := make(chan Chunk)
-	results := make(chan Chunk, 3)
+	hashes := make(chan chunk)
+	results := make(chan chunk, 3)
 	for i := 0; i < runtime.GOMAXPROCS(0); i++ {
 		go hashPiece(hashes, results)
 	}
@@ -69,7 +69,7 @@ func computeSums(fs FileStore, totalLength int64, pieceLength int64) (sums []byt
 			}
 			// Ignore errors.
 			fs.ReadAt(piece, i*pieceLength)
-			hashes <- Chunk{I: i, Data: piece}
+			hashes <- chunk{i: i, data: piece}
 		}
 		close(hashes)
 	}()
@@ -78,20 +78,20 @@ func computeSums(fs FileStore, totalLength int64, pieceLength int64) (sums []byt
 	sums = make([]byte, sha1.Size*numPieces)
 	for i := int64(0); i < numPieces; i++ {
 		h := <-results
-		copy(sums[h.I*sha1.Size:], h.Data)
+		copy(sums[h.i*sha1.Size:], h.data)
 	}
 	return
 }
 
-func hashPiece(h chan Chunk, result chan Chunk) {
+func hashPiece(h chan chunk, result chan chunk) {
 	hasher := sha1.New()
 	for piece := range h {
 		hasher.Reset()
-		_, err := hasher.Write(piece.Data)
+		_, err := hasher.Write(piece.data)
 		if err != nil {
-			result <- Chunk{piece.I, nil}
+			result <- chunk{piece.i, nil}
 		} else {
-			result <- Chunk{piece.I, hasher.Sum(nil)}
+			result <- chunk{piece.i, hasher.Sum(nil)}
 		}
 	}
 }

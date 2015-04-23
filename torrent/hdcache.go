@@ -116,8 +116,8 @@ func (r *HdCache) empty() {
 	}
 }
 
-func (r *HdCache) ReadAt(p []byte, off int64) []Chunk {
-	unfulfilled := make([]Chunk, 0)
+func (r *HdCache) ReadAt(p []byte, off int64) []chunk {
+	unfulfilled := make([]chunk, 0)
 
 	boxI := int(off / int64(r.pieceSize))
 	boxOff := int(off % int64(r.pieceSize))
@@ -130,13 +130,13 @@ func (r *HdCache) ReadAt(p []byte, off int64) []Chunk {
 			}
 			if len(unfulfilled) > 0 {
 				last := unfulfilled[len(unfulfilled)-1]
-				if last.I+int64(len(last.Data)) == off+int64(i) {
+				if last.i+int64(len(last.data)) == off+int64(i) {
 					unfulfilled = unfulfilled[:len(unfulfilled)-1]
-					i = int(last.I - off)
-					end += len(last.Data)
+					i = int(last.i - off)
+					end += len(last.data)
 				}
 			}
-			unfulfilled = append(unfulfilled, Chunk{off + int64(i), p[i : i+end]})
+			unfulfilled = append(unfulfilled, chunk{off + int64(i), p[i : i+end]})
 			i += end
 		} else if r.isBoxFull.IsSet(boxI) { //definitely in cache
 			box, err := os.Open(r.boxPrefix + strconv.Itoa(boxI))
@@ -183,7 +183,7 @@ func (r *HdCache) ReadAt(p []byte, off int64) []Chunk {
 				i++
 			}
 			for _, intt := range missing[1:] {
-				unfulfilled = append(unfulfilled, Chunk{off + int64(intt.a), p[intt.a:intt.b]})
+				unfulfilled = append(unfulfilled, chunk{off + int64(intt.a), p[intt.a:intt.b]})
 			}
 		}
 		boxI++
@@ -192,7 +192,7 @@ func (r *HdCache) ReadAt(p []byte, off int64) []Chunk {
 	return unfulfilled
 }
 
-func (r *HdCache) WriteAt(p []byte, off int64) []Chunk {
+func (r *HdCache) WriteAt(p []byte, off int64) []chunk {
 	boxI := int(off / int64(r.pieceSize))
 	boxOff := int(off % int64(r.pieceSize))
 
@@ -289,14 +289,14 @@ func (r *HdCache) trimCommitted() bool {
 	return false
 }
 
-//Trim excess data. Returns any uncommitted Chunks that were trimmed
-func (r *HdCache) trim() []Chunk {
+//Trim excess data. Returns any uncommitted chunks that were trimmed
+func (r *HdCache) trim() []chunk {
 
 	if r.trimCommitted() {
 		return nil
 	}
 
-	retVal := make([]Chunk, 0)
+	retVal := make([]chunk, 0)
 
 	//Still need more space? figure out what's oldest
 	//RawWrite it to storage, and clear that then
@@ -318,7 +318,7 @@ func (r *HdCache) trim() []Chunk {
 			log.Println("Error reading cache box for trimming:", err)
 		} else {
 			if r.isBoxFull.IsSet(deadBox) { //Easy, the whole box has to go
-				retVal = append(retVal, Chunk{int64(deadBox) * int64(r.pieceSize), data})
+				retVal = append(retVal, chunk{int64(deadBox) * int64(r.pieceSize), data})
 			} else { //Ugh, we'll just trim anything unused from the start and the end, and send that.
 				off := int64(0)
 				endData := r.pieceSize
@@ -339,7 +339,7 @@ func (r *HdCache) trim() []Chunk {
 						break
 					}
 				}
-				retVal = append(retVal, Chunk{int64(deadBox)*int64(r.pieceSize) + off, data[off:endData]})
+				retVal = append(retVal, chunk{int64(deadBox)*int64(r.pieceSize) + off, data[off:endData]})
 			}
 		}
 		r.removeBox(deadBox)

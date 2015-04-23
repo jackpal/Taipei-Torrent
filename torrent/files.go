@@ -107,9 +107,9 @@ func (f *fileStore) ReadAt(p []byte, off int64) (int, error) {
 
 	var retErr error
 	for _, unf := range unfullfilled {
-		_, err := f.RawReadAt(unf.Data, unf.I)
+		_, err := f.RawReadAt(unf.data, unf.i)
 		if err != nil {
-			log.Println("Got an error on read (off=", unf.I, "len=", len(unf.Data), ") from filestore:", err)
+			log.Println("Got an error on read (off=", unf.i, "len=", len(unf.data), ") from filestore:", err)
 			retErr = err
 		}
 	}
@@ -119,16 +119,16 @@ func (f *fileStore) ReadAt(p []byte, off int64) (int, error) {
 func (f *fileStore) RawReadAt(p []byte, off int64) (n int, err error) {
 	index := f.find(off)
 	for len(p) > 0 && index < len(f.offsets) {
-		Chunk := int64(len(p))
+		chunk := int64(len(p))
 		entry := &f.files[index]
 		itemOffset := off - f.offsets[index]
 		if itemOffset < entry.length {
 			space := entry.length - itemOffset
-			if space < Chunk {
-				Chunk = space
+			if space < chunk {
+				chunk = space
 			}
 			var nThisTime int
-			nThisTime, err = entry.file.ReadAt(p[0:Chunk], itemOffset)
+			nThisTime, err = entry.file.ReadAt(p[0:chunk], itemOffset)
 			n = n + nThisTime
 			if err != nil {
 				return
@@ -151,7 +151,7 @@ func (f *fileStore) WriteAt(p []byte, off int64) (int, error) {
 		needRawWrite := f.cache.WriteAt(p, off)
 		if needRawWrite != nil {
 			for _, nc := range needRawWrite {
-				f.RawWriteAt(nc.Data, nc.I)
+				f.RawWriteAt(nc.data, nc.i)
 			}
 		}
 		return len(p), nil
@@ -173,16 +173,16 @@ func (f *fileStore) Commit(pieceNum int, piece []byte, off int64) {
 func (f *fileStore) RawWriteAt(p []byte, off int64) (n int, err error) {
 	index := f.find(off)
 	for len(p) > 0 && index < len(f.offsets) {
-		Chunk := int64(len(p))
+		chunk := int64(len(p))
 		entry := &f.files[index]
 		itemOffset := off - f.offsets[index]
 		if itemOffset < entry.length {
 			space := entry.length - itemOffset
-			if space < Chunk {
-				Chunk = space
+			if space < chunk {
+				chunk = space
 			}
 			var nThisTime int
-			nThisTime, err = entry.file.WriteAt(p[0:Chunk], itemOffset)
+			nThisTime, err = entry.file.WriteAt(p[0:chunk], itemOffset)
 			n += nThisTime
 			if err != nil {
 				return
