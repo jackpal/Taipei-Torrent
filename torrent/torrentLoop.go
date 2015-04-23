@@ -5,8 +5,7 @@ import (
 	"github.com/nictuku/dht"
 	"golang.org/x/net/proxy"
 	"log"
-	"os"
-	"os/signal"
+	"time"
 )
 
 type TorrentFlags struct {
@@ -44,15 +43,56 @@ type TorrentFlags struct {
 }
 
 func RunTorrents(flags *TorrentFlags, torrentFiles []string) (err error) {
-	conChan, listenPort, err := ListenForPeerConnections(flags)
+	err, commandChan, listenPort := RunDaemon(flags)
+	if err != nil {
+		log.Println("Couldn't Run TaipeiTorrent: ", err)
+		return
+	}
+
+	replyChan := make(chan *TTCreply, 16)
+	for _, tFile := range torrentFiles {
+		ts, err := NewTorrentSession(flags, tFile, uint16(listenPort))
+		if err != nil {
+			log.Println("Could not create torrent session.", err)
+		}
+		commandChan <- &TTCaddTorrent{ts, replyChan}
+		reply := <-replyChan
+		if reply.Err != nil {
+			log.Println("Error adding Torrent: ", reply.Err)
+		}
+	}
+
+	for {
+		commandChan <- &TTCgetTorrentsActive{replyChan}
+		reply := <-replyChan
+		if reply.Err != nil {
+			log.Println("Error getting active Torrents: ", reply.Err)
+			return
+		}
+		listActive := reply.V.([]string)
+		if len(listActive) == 0 {
+			return
+		}
+		time.Sleep(10 * time.Second)
+	}
+	return nil
+}
+
+func RunDaemon(flags *TorrentFlags) (err error, commandChan chan TTCommand, listenPort int) {
+	var conChan chan *BtConn
+	conChan, listenPort, err = ListenForPeerConnections(flags)
 	if err != nil {
 		log.Println("Couldn't listen for peers connection: ", err)
 		return
 	}
-	quitChan := listenSigInt()
 
-	createChan := make(chan string, flags.MaxActive)
-	startChan := make(chan *TorrentSession, 1)
+	commandChan = make(chan TTCommand, 16)
+	go runMainLoop(flags, conChan, commandChan, listenPort)
+	return
+}
+
+func runMainLoop(flags *TorrentFlags, conChan chan *BtConn, commandChan chan TTCommand, listenPort int) {
+
 	doneChan := make(chan *TorrentSession, 1)
 
 	var dhtNode dht.DHT
@@ -62,31 +102,8 @@ func RunTorrents(flags *TorrentFlags, torrentFiles []string) (err error) {
 
 	torrentSessions := make(map[string]*TorrentSession)
 
-	go func() {
-		for torrentFile := range createChan {
-			ts, err := NewTorrentSession(flags, torrentFile, uint16(listenPort))
-			if err != nil {
-				log.Println("Could not create torrent session.", err)
-				doneChan <- &TorrentSession{}
-			} else {
-				log.Printf("Created torrent session for %s", ts.M.Info.Name)
-				startChan <- ts
-			}
-		}
-	}()
-
-	torrentQueue := []string{}
-	if len(torrentFiles) > flags.MaxActive {
-		torrentQueue = torrentFiles[flags.MaxActive:]
-	}
-
-	for i, torrentFile := range torrentFiles {
-		if i < flags.MaxActive {
-			createChan <- torrentFile
-		} else {
-			break
-		}
-	}
+	torrentQueue := []*TorrentSession{}
+	var err error
 
 	lpd := &Announcer{}
 	if flags.UseLPD {
@@ -101,37 +118,54 @@ func RunTorrents(flags *TorrentFlags, torrentFiles []string) (err error) {
 mainLoop:
 	for {
 		select {
-		case ts := <-startChan:
-			if !theWorldisEnding {
-				ts.dht = &dhtNode
-				if flags.UseLPD {
-					lpd.Announce(ts.M.InfoHash)
+		case command := <-commandChan:
+			switch command := command.(type) {
+			case *TTCaddTorrent:
+				torrentQueue = append(torrentQueue, command.NewTS)
+				if len(torrentSessions) < flags.MaxActive {
+					doneChan <- nil
 				}
-				torrentSessions[ts.M.InfoHash] = ts
-				log.Printf("Starting torrent session for %s", ts.M.Info.Name)
+				command.ReplyChan <- &TTCreply{nil, nil}
+			case *TTCgetTorrentsActive:
+				active := []string{}
+				for k, _ := range torrentSessions {
+					active = append(active, k)
+				}
+				command.ReplyChan <- &TTCreply{nil, active}
+			case *TTCquit:
+				theWorldisEnding = true
+				if len(torrentSessions) == 0 {
+					break mainLoop
+				}
+				for _, ts := range torrentSessions {
+					go ts.Quit()
+				}
+			}
+
+		case ts := <-doneChan:
+			if ts != nil {
+				delete(torrentSessions, ts.M.InfoHash)
+				if flags.UseLPD {
+					lpd.StopAnnouncing(ts.M.InfoHash)
+				}
+			}
+
+			if !theWorldisEnding && len(torrentQueue) > 0 && len(torrentSessions) < flags.MaxActive {
+				newTS := torrentQueue[0]
+				torrentQueue = torrentQueue[1:]
+				newTS.dht = &dhtNode
+				if flags.UseLPD {
+					lpd.Announce(newTS.M.InfoHash)
+				}
+				torrentSessions[newTS.M.InfoHash] = newTS
+				log.Printf("Starting torrent session for %s", newTS.M.Info.Name)
 				go func(t *TorrentSession) {
 					t.DoTorrent()
 					doneChan <- t
-				}(ts)
+				}(newTS)
 			}
-		case ts := <-doneChan:
-			delete(torrentSessions, ts.M.InfoHash)
-			if flags.UseLPD {
-				lpd.StopAnnouncing(ts.M.InfoHash)
-			}
-			if !theWorldisEnding && len(torrentQueue) > 0 {
-				createChan <- torrentQueue[0]
-				torrentQueue = torrentQueue[1:]
-				continue mainLoop
-			}
-
-			if len(torrentSessions) == 0 {
+			if theWorldisEnding && len(torrentSessions) == 0 {
 				break mainLoop
-			}
-		case <-quitChan:
-			theWorldisEnding = true
-			for _, ts := range torrentSessions {
-				go ts.Quit()
 			}
 		case c := <-conChan:
 			log.Printf("New bt connection for ih %x", c.Infohash)
@@ -165,12 +199,6 @@ mainLoop:
 		dhtNode.Stop()
 	}
 	return
-}
-
-func listenSigInt() chan os.Signal {
-	c := make(chan os.Signal, 1)
-	signal.Notify(c, os.Interrupt, os.Kill)
-	return c
 }
 
 func startDHT(listenPort int) *dht.DHT {
