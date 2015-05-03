@@ -154,7 +154,7 @@ func GetMetaInfo(dialer proxy.Dialer, torrent string) (metaInfo *MetaInfo, err e
 	m2.CreationDate = getString(topMap, "creation date")
 	m2.Comment = getString(topMap, "comment")
 	m2.CreatedBy = getString(topMap, "created by")
-	m2.Encoding = getString(topMap, "encoding")
+	m2.Encoding = strings.ToUpper(getString(topMap, "encoding"))
 
 	metaInfo = &m2
 	return
