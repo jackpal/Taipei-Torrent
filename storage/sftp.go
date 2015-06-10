@@ -1,16 +1,17 @@
-package torrent
+package storage
 
 import (
 	"errors"
-	"github.com/pkg/sftp"
-	"golang.org/x/crypto/ssh"
-	"golang.org/x/crypto/ssh/agent"
 	"log"
 	"net"
 	"os"
 	pathpkg "path"
 	"path/filepath"
 	"strings"
+
+	"github.com/pkg/sftp"
+	"golang.org/x/crypto/ssh"
+	"golang.org/x/crypto/ssh/agent"
 )
 
 type SftpFsProvider struct {

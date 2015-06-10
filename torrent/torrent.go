@@ -19,6 +19,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jackpal/Taipei-Torrent/bitset"
+	"github.com/jackpal/Taipei-Torrent/storage"
+
 	bencode "github.com/jackpal/bencode-go"
 	"github.com/nictuku/dht"
 	"github.com/nictuku/nettools"
@@ -64,56 +67,6 @@ func peerId() string {
 var kBitTorrentHeader = []byte{'\x13', 'B', 'i', 't', 'T', 'o', 'r',
 	'r', 'e', 'n', 't', ' ', 'p', 'r', 'o', 't', 'o', 'c', 'o', 'l'}
 
-type ActivePiece struct {
-	downloaderCount []int // -1 means piece is already downloaded
-	pieceLength     int
-}
-
-func (a *ActivePiece) chooseBlockToDownload(endgame bool) (index int) {
-	if endgame {
-		return a.chooseBlockToDownloadEndgame()
-	}
-	return a.chooseBlockToDownloadNormal()
-}
-
-func (a *ActivePiece) chooseBlockToDownloadNormal() (index int) {
-	for i, v := range a.downloaderCount {
-		if v == 0 {
-			a.downloaderCount[i]++
-			return i
-		}
-	}
-	return -1
-}
-
-func (a *ActivePiece) chooseBlockToDownloadEndgame() (index int) {
-	index, minCount := -1, -1
-	for i, v := range a.downloaderCount {
-		if v >= 0 && (minCount == -1 || minCount > v) {
-			index, minCount = i, v
-		}
-	}
-	if index > -1 {
-		a.downloaderCount[index]++
-	}
-	return
-}
-
-func (a *ActivePiece) recordBlock(index int) (requestCount int) {
-	requestCount = a.downloaderCount[index]
-	a.downloaderCount[index] = -1
-	return
-}
-
-func (a *ActivePiece) isComplete() bool {
-	for _, v := range a.downloaderCount {
-		if v != -1 {
-			return false
-		}
-	}
-	return true
-}
-
 type TorrentSession struct {
 	flags                *TorrentFlags
 	M                    *MetaInfo
@@ -127,7 +80,7 @@ type TorrentSession struct {
 	addPeerChan          chan *BtConn
 	peers                map[string]*peerState
 	peerMessageChan      chan peerMessage
-	pieceSet             *Bitset // The pieces we have
+	pieceSet             *bitset.Bitset // The pieces we have
 	totalPieces          int
 	totalSize            int64
 	lastPieceLength      int
@@ -230,7 +183,7 @@ func (t *TorrentSession) load() (err error) {
 		}
 	}
 
-	var fileSystem FileSystem
+	var fileSystem storage.FileSystem
 	fileSystem, err = t.flags.FileSystemProvider.NewFS(dir)
 	if err != nil {
 		return
@@ -269,7 +222,7 @@ func (t *TorrentSession) load() (err error) {
 			rfstat, _ := resumeFile.Stat()
 			tBA := make([]byte, 2*rfstat.Size())
 			count, _ := resumeFile.Read(tBA)
-			t.pieceSet = NewBitsetFromBytes(t.totalPieces, tBA[:count])
+			t.pieceSet = bitset.NewFromBytes(t.totalPieces, tBA[:count])
 			if t.pieceSet == nil {
 				return fmt.Errorf("[ %s ] Malformed resume data: %v", t.M.Info.Name, resumeFilePath)
 			}
@@ -286,7 +239,7 @@ func (t *TorrentSession) load() (err error) {
 	}
 
 	if t.pieceSet == nil { //Blank slate it is then.
-		t.pieceSet = NewBitset(t.totalPieces)
+		t.pieceSet = bitset.New(t.totalPieces)
 		log.Printf("[ %s ] Starting from scratch.\n", t.M.Info.Name)
 	}
 
@@ -301,11 +254,11 @@ func (t *TorrentSession) load() (err error) {
 
 	// Enlarge any existing peers piece maps
 	for _, p := range t.peers {
-		if p.have.n != t.totalPieces {
-			if p.have.n != 0 {
+		if p.have.Len() != t.totalPieces {
+			if p.have.Len() != 0 {
 				panic("Expected p.have.n == 0")
 			}
-			p.have = NewBitset(t.totalPieces)
+			p.have = bitset.New(t.totalPieces)
 		}
 	}
 
@@ -453,7 +406,7 @@ func (t *TorrentSession) addPeerImp(btconn *BtConn) {
 	// the "have" map will have to be enlarged later when t.totalPieces is
 	// learned.
 
-	ps.have = NewBitset(t.totalPieces)
+	ps.have = bitset.New(t.totalPieces)
 
 	t.peers[peer] = ps
 	go ps.peerWriter(t.peerMessageChan)
@@ -766,7 +719,7 @@ func (t *TorrentSession) ChoosePiece(p *peerState) (piece int) {
 // checkRange returns the first piece in range start..end that is not in the
 // torrent's pieceSet but is in the peer's pieceSet.
 func (t *TorrentSession) checkRange(p *peerState, start, end int) (piece int) {
-	clampedEnd := min(end, min(p.have.n, t.pieceSet.n))
+	clampedEnd := min(end, min(p.have.Len(), t.pieceSet.Len()))
 	for i := start; i < clampedEnd; i++ {
 		if (!t.pieceSet.IsSet(i)) && p.have.IsSet(i) {
 			if _, ok := t.activePieces[i]; !ok {
@@ -868,7 +821,7 @@ func (t *TorrentSession) RecordBlock(p *peerState, piece, begin, length uint32) 
 			}
 			for _, p := range t.peers {
 				if p.have != nil {
-					if int(piece) < p.have.n && p.have.IsSet(int(piece)) {
+					if int(piece) < p.have.Len() && p.have.IsSet(int(piece)) {
 						// We don't do anything special. We rely on the caller
 						// to decide if this peer is still interesting.
 					} else {
@@ -992,7 +945,7 @@ func (t *TorrentSession) generalMessage(message []byte, p *peerState) (err error
 			return errors.New("Unexpected length")
 		}
 		n := bytesToUint32(message[1:])
-		if n < uint32(p.have.n) {
+		if n < uint32(p.have.Len()) {
 			p.have.Set(int(n))
 			if !p.am_interested && !t.pieceSet.IsSet(int(n)) {
 				p.SetInterested(true)
@@ -1005,7 +958,7 @@ func (t *TorrentSession) generalMessage(message []byte, p *peerState) (err error
 		if !p.can_receive_bitfield {
 			return errors.New("Late bitfield operation")
 		}
-		p.have = NewBitsetFromBytes(t.totalPieces, message[1:])
+		p.have = bitset.NewFromBytes(t.totalPieces, message[1:])
 		if p.have == nil {
 			return errors.New("Invalid bitfield data.")
 		}
@@ -1018,7 +971,7 @@ func (t *TorrentSession) generalMessage(message []byte, p *peerState) (err error
 		index := bytesToUint32(message[1:5])
 		begin := bytesToUint32(message[5:9])
 		length := bytesToUint32(message[9:13])
-		if index >= uint32(p.have.n) {
+		if index >= uint32(p.have.Len()) {
 			return errors.New("piece out of range.")
 		}
 		if !t.pieceSet.IsSet(int(index)) {
@@ -1041,7 +994,7 @@ func (t *TorrentSession) generalMessage(message []byte, p *peerState) (err error
 		index := bytesToUint32(message[1:5])
 		begin := bytesToUint32(message[5:9])
 		length := len(message) - 9
-		if index >= uint32(p.have.n) {
+		if index >= uint32(p.have.Len()) {
 			return errors.New("piece out of range.")
 		}
 		if t.pieceSet.IsSet(int(index)) {
@@ -1073,7 +1026,7 @@ func (t *TorrentSession) generalMessage(message []byte, p *peerState) (err error
 		index := bytesToUint32(message[1:5])
 		begin := bytesToUint32(message[5:9])
 		length := bytesToUint32(message[9:13])
-		if index >= uint32(p.have.n) {
+		if index >= uint32(p.have.Len()) {
 			return errors.New("piece out of range.")
 		}
 		if !t.pieceSet.IsSet(int(index)) {

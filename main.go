@@ -11,6 +11,7 @@ import (
 	"runtime/pprof"
 	"time"
 
+	"github.com/jackpal/Taipei-Torrent/storage"
 	"github.com/jackpal/Taipei-Torrent/torrent"
 	"github.com/jackpal/Taipei-Torrent/tracker"
 	"golang.org/x/net/proxy"
@@ -79,26 +80,26 @@ func portFromFlags() int {
 	return rr.Intn(48000) + 1025
 }
 
-func cacheproviderFromFlags() torrent.CacheProvider {
+func cacheproviderFromFlags() storage.CacheProvider {
 	if (*useRamCache) > 0 && (*useHdCache) > 0 {
 		log.Panicln("Only one cache at a time, please.")
 	}
 
 	if (*useRamCache) > 0 {
-		return torrent.NewRamCacheProvider(*useRamCache)
+		return storage.NewRamCacheProvider(*useRamCache)
 	}
 
 	if (*useHdCache) > 0 {
-		return torrent.NewHdCacheProvider(*useHdCache)
+		return storage.NewHdCacheProvider(*useHdCache)
 	}
 	return nil
 }
 
-func fsproviderFromFlags() torrent.FsProvider {
+func fsproviderFromFlags() storage.FsProvider {
 	if len(*useSFTP) > 0 {
-		return torrent.NewSftpFsProvider(*useSFTP)
+		return storage.NewSftpFsProvider(*useSFTP)
 	}
-	return torrent.OsFsProvider{}
+	return storage.OsFsProvider{}
 }
 
 func dialerFromFlags() (proxy.Dialer, error) {

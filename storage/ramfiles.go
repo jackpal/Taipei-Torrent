@@ -1,4 +1,4 @@
-package torrent
+package storage
 
 type ramFsProvider struct{}
 
