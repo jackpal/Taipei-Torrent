@@ -13,7 +13,7 @@ type bindIPTestData []struct {
 }
 
 var bindIPTests = bindIPTestData{
-	{"", "<nil>"},
+	{"", ""},
 	{"junk", "error"},
 	{"junk[999]", "error"},
 	{"192.168.1.10", "192.168.1.10"},
