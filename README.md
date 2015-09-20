@@ -4,6 +4,8 @@ Taipei Torrent
 This is a simple command-line-interface BitTorrent client coded in the go
 programming language.
 
+[![Build Status](https://travis-ci.org/jackpal/Taipei-Torrent.svg)](https://travis-ci.org/jackpal/Taipei-Torrent)
+
 Features:
 ---------
 
