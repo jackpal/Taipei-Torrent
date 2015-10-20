@@ -225,7 +225,8 @@ func (t *TorrentSession) load() (err error) {
 		// canonicalize the torrent path and make sure it doesn't start with ".."
 		torrentName = path.Clean("/" + torrentName)
 		dir += torrentName
-		if dir[len(dir)-len(ext):] == ext {
+		//Remove ".torrent" extension if present
+		if strings.HasSuffix(strings.ToLower(dir), ext) {
 			dir = dir[:len(dir)-len(ext)]
 		}
 	}
