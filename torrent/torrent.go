@@ -117,7 +117,7 @@ func (a *ActivePiece) isComplete() bool {
 type TorrentSession struct {
 	flags                *TorrentFlags
 	M                    *MetaInfo
-	si                   *SessionInfo
+	Session              SessionInfo
 	ti                   *TrackerResponse
 	torrentHeader        []byte
 	fileStore            FileStore
@@ -172,7 +172,7 @@ func NewTorrentSession(flags *TorrentFlags, torrent string, listenPort uint16) (
 		log.Println("[", t.M.Info.Name, "] Can't use DHT because torrent is marked Private.")
 	}
 
-	t.si = &SessionInfo{
+	t.Session = SessionInfo{
 		PeerId:        peerId(),
 		Port:          listenPort,
 		UseDHT:        dhtAllowed,
@@ -183,7 +183,7 @@ func NewTorrentSession(flags *TorrentFlags, torrent string, listenPort uint16) (
 	}
 	t.setHeader()
 
-	if !t.si.FromMagnet {
+	if !t.Session.FromMagnet {
 		err = t.load()
 	}
 	return t, err
@@ -296,7 +296,7 @@ func (t *TorrentSession) load() (err error) {
 	if !t.pieceSet.IsSet(t.totalPieces - 1) {
 		left = left - uint64(t.M.Info.PieceLength) + uint64(t.lastPieceLength)
 	}
-	t.si.Left = left
+	t.Session.Left = left
 
 	log.Println("[", t.M.Info.Name, "] Good pieces:", t.goodPieces, "Bad pieces:", bad, "Bytes left:", left)
 
@@ -310,7 +310,7 @@ func (t *TorrentSession) load() (err error) {
 		}
 	}
 
-	t.si.HaveTorrent = true
+	t.Session.HaveTorrent = true
 	return
 }
 
@@ -322,7 +322,7 @@ func (t *TorrentSession) pieceLength(piece int) int {
 }
 
 func (t *TorrentSession) fetchTrackerInfo(event string) {
-	m, si := t.M, t.si
+	m, si := t.M, t.Session
 	log.Println("[", t.M.Info.Name, "] Stats: Uploaded", si.Uploaded, "Downloaded", si.Downloaded, "Left", si.Left)
 	t.trackerReportChan <- ClientStatusReport{
 		event, m.InfoHash, si.PeerId, si.Port, si.Uploaded, si.Downloaded, si.Left}
@@ -331,13 +331,13 @@ func (t *TorrentSession) fetchTrackerInfo(event string) {
 func (ts *TorrentSession) setHeader() {
 	header := make([]byte, 68)
 	copy(header, kBitTorrentHeader[0:])
-	if ts.si.UseDHT {
+	if ts.Session.UseDHT {
 		header[27] = header[27] | 0x01
 	}
 	// Support Extension Protocol (BEP-0010)
 	header[25] |= 0x10
 	copy(header[28:48], []byte(ts.M.InfoHash))
-	copy(header[48:68], []byte(ts.si.PeerId))
+	copy(header[48:68], []byte(ts.Session.PeerId))
 	ts.torrentHeader = header
 }
 
@@ -358,7 +358,7 @@ func (ts *TorrentSession) hintNewPeerImp(peer string) {
 }
 
 func (ts *TorrentSession) mightAcceptPeer(peer string) bool {
-	if (ts.si.HaveTorrent || ts.si.FromMagnet) && len(ts.peers) < MAX_NUM_PEERS {
+	if (ts.Session.HaveTorrent || ts.Session.FromMagnet) && len(ts.peers) < MAX_NUM_PEERS {
 		if _, ok := ts.peers[peer]; !ok {
 			return true
 		}
@@ -367,7 +367,7 @@ func (ts *TorrentSession) mightAcceptPeer(peer string) bool {
 }
 
 func (ts *TorrentSession) connectToPeer(peer string) {
-	if !ts.si.HaveTorrent && !ts.si.FromMagnet {
+	if !ts.Session.HaveTorrent && !ts.Session.FromMagnet {
 		return
 	}
 	conn, err := proxyNetDial(ts.flags.Dial, "tcp", peer)
@@ -414,7 +414,7 @@ func (t *TorrentSession) AddPeer(btconn *BtConn) {
 }
 
 func (t *TorrentSession) addPeerImp(btconn *BtConn) {
-	if !t.si.HaveTorrent && !t.si.FromMagnet {
+	if !t.Session.HaveTorrent && !t.Session.FromMagnet {
 		log.Println("[", t.M.Info.Name, "] Rejecting peer because we don't have a torrent yet.")
 		btconn.conn.Close()
 		return
@@ -439,7 +439,7 @@ func (t *TorrentSession) addPeerImp(btconn *BtConn) {
 	ps := NewPeerState(btconn.conn)
 	ps.address = peer
 	ps.id = btconn.id
-	if t.si.UseDHT {
+	if t.Session.UseDHT {
 		// If 128, then it supports DHT.
 		if int(theirheader[7])&0x01 == 0x01 {
 			// It's OK if we know this node already. The DHT engine will
@@ -461,15 +461,15 @@ func (t *TorrentSession) addPeerImp(btconn *BtConn) {
 	go ps.peerReader(t.peerMessageChan)
 
 	if int(theirheader[5])&0x10 == 0x10 {
-		ps.SendExtensions(t.si.Port)
+		ps.SendExtensions(t.Session.Port)
 	} else if t.pieceSet != nil {
 		ps.SendBitfield(t.pieceSet)
 	}
 }
 
 func (t *TorrentSession) ClosePeer(peer *peerState) {
-	if t.si.ME != nil && !t.si.ME.Transferring {
-		t.si.ME.Transferring = false
+	if t.Session.ME != nil && !t.Session.ME.Transferring {
+		t.Session.ME.Transferring = false
 	}
 
 	//log.Println("[", t.M.Info.Name, "] Closing peer", peer.address)
@@ -542,17 +542,17 @@ func (t *TorrentSession) DoTorrent() {
 		startTrackerClient(t.flags.Dial, t.M.Announce, t.M.AnnounceList, t.trackerInfoChan, t.trackerReportChan)
 	}
 
-	if t.si.UseDHT {
+	if t.Session.UseDHT {
 		t.dht.PeersRequest(t.M.InfoHash, true)
 	}
 
-	if !t.trackerLessMode && t.si.HaveTorrent {
+	if !t.trackerLessMode && t.Session.HaveTorrent {
 		t.fetchTrackerInfo("started")
 	}
 
 	defer t.Shutdown()
 
-	lastDownloaded := t.si.Downloaded
+	lastDownloaded := t.Session.Downloaded
 
 	for {
 		if !t.execOnSeedingDone && t.goodPieces == t.totalPieces {
@@ -635,17 +635,17 @@ func (t *TorrentSession) DoTorrent() {
 				t.heartbeat <- true
 			}
 			ratio := float64(0.0)
-			if t.si.Downloaded > 0 {
-				ratio = float64(t.si.Uploaded) / float64(t.si.Downloaded)
+			if t.Session.Downloaded > 0 {
+				ratio = float64(t.Session.Uploaded) / float64(t.Session.Downloaded)
 			}
-			speed := humanSize(float64(t.si.Downloaded-lastDownloaded) / heartbeatDuration.Seconds())
-			lastDownloaded = t.si.Downloaded
+			speed := humanSize(float64(t.Session.Downloaded-lastDownloaded) / heartbeatDuration.Seconds())
+			lastDownloaded = t.Session.Downloaded
 			log.Printf("[ %s ] Peers: %d downloaded: %d (%s/s) uploaded: %d ratio: %f pieces: %d/%d\n",
 				t.M.Info.Name,
 				len(t.peers),
-				t.si.Downloaded,
+				t.Session.Downloaded,
 				speed,
-				t.si.Uploaded,
+				t.Session.Uploaded,
 				ratio,
 				t.goodPieces,
 				t.totalPieces)
@@ -654,7 +654,7 @@ func (t *TorrentSession) DoTorrent() {
 				return
 			}
 			if len(t.peers) < TARGET_NUM_PEERS && (t.totalPieces == 0 || t.goodPieces < t.totalPieces) {
-				if t.si.UseDHT {
+				if t.Session.UseDHT {
 					go t.dht.PeersRequest(t.M.InfoHash, true)
 				}
 				if !t.trackerLessMode {
@@ -718,7 +718,7 @@ func (t *TorrentSession) chokePeers() (err error) {
 }
 
 func (t *TorrentSession) RequestBlock(p *peerState) (err error) {
-	if !t.si.HaveTorrent { // We can't request a block without a torrent
+	if !t.Session.HaveTorrent { // We can't request a block without a torrent
 		return
 	}
 
@@ -838,7 +838,7 @@ func (t *TorrentSession) RecordBlock(p *peerState, piece, begin, length uint32) 
 				}
 			}
 		}
-		t.si.Downloaded += uint64(length)
+		t.Session.Downloaded += uint64(length)
 		if v.isComplete() {
 			delete(t.activePieces, int(piece))
 			var pieceBytes []byte
@@ -849,7 +849,7 @@ func (t *TorrentSession) RecordBlock(p *peerState, piece, begin, length uint32) 
 				return
 			}
 			t.fileStore.Commit(int(piece), pieceBytes, t.M.Info.PieceLength*int64(piece))
-			t.si.Left -= uint64(v.pieceLength)
+			t.Session.Left -= uint64(v.pieceLength)
 			t.pieceSet.Set(int(piece))
 			t.goodPieces++
 			if t.flags.QuickResume {
@@ -934,7 +934,7 @@ func (t *TorrentSession) DoMessage(p *peerState, message []byte) (err error) {
 		return
 	}
 
-	if t.si.HaveTorrent {
+	if t.Session.HaveTorrent {
 		err = t.generalMessage(message, p)
 	} else {
 		err = t.extensionMessage(message, p)
@@ -1104,7 +1104,7 @@ func (t *TorrentSession) generalMessage(message []byte, p *peerState) (err error
 			log.Printf("[ %s ] Failed extensions for %s: %s\n", t.M.Info.Name, p.address, err)
 		}
 
-		if t.si.HaveTorrent {
+		if t.Session.HaveTorrent {
 			p.SendBitfield(t.pieceSet)
 		}
 	default:
@@ -1145,22 +1145,22 @@ func (t *TorrentSession) DoExtension(msg []byte, p *peerState) (err error) {
 			p.theirExtensions[name] = code
 		}
 
-		if t.si.HaveTorrent || t.si.ME != nil && t.si.ME.Transferring {
+		if t.Session.HaveTorrent || t.Session.ME != nil && t.Session.ME.Transferring {
 			return
 		}
 
 		// Fill metadata info
 		if h.MetadataSize != uint(0) {
 			nPieces := uint(math.Ceil(float64(h.MetadataSize) / float64(16*1024)))
-			t.si.ME.Pieces = make([][]byte, nPieces)
+			t.Session.ME.Pieces = make([][]byte, nPieces)
 		}
 
 		if _, ok := p.theirExtensions["ut_metadata"]; ok {
-			t.si.ME.Transferring = true
+			t.Session.ME.Transferring = true
 			p.sendMetadataRequest(0)
 		}
 
-	} else if ext, ok := t.si.OurExtensions[int(msg[0])]; ok {
+	} else if ext, ok := t.Session.OurExtensions[int(msg[0])]; ok {
 		switch ext {
 		case "ut_metadata":
 			t.DoMetadata(msg[1:], p)
@@ -1206,7 +1206,7 @@ func (t *TorrentSession) DoMetadata(msg []byte, p *peerState) {
 	case METADATA_REQUEST:
 		//TODO: Answer to metadata request
 	case METADATA_DATA:
-		if t.si.HaveTorrent {
+		if t.Session.HaveTorrent {
 			log.Println("[", t.M.Info.Name, "] Received metadata we don't need, from", p.address)
 			return
 		}
@@ -1216,10 +1216,10 @@ func (t *TorrentSession) DoMetadata(msg []byte, p *peerState) {
 			log.Println("[", t.M.Info.Name, "] Error when getting metadata piece: ", err)
 			return
 		}
-		t.si.ME.Pieces[message.Piece] = piece
+		t.Session.ME.Pieces[message.Piece] = piece
 
 		finished := true
-		for idx, data := range t.si.ME.Pieces {
+		for idx, data := range t.Session.ME.Pieces {
 			if len(data) == 0 {
 				p.sendMetadataRequest(idx)
 				finished = false
@@ -1232,7 +1232,7 @@ func (t *TorrentSession) DoMetadata(msg []byte, p *peerState) {
 
 		log.Println("[", t.M.Info.Name, "] Finished downloading metadata!")
 		var full bytes.Buffer
-		for _, piece := range t.si.ME.Pieces {
+		for _, piece := range t.Session.ME.Pieces {
 			full.Write(piece)
 		}
 		b := full.Bytes()
@@ -1271,7 +1271,7 @@ func (t *TorrentSession) sendRequest(peer *peerState, index, begin, length uint3
 			return
 		}
 		peer.sendMessage(buf)
-		t.si.Uploaded += uint64(length)
+		t.Session.Uploaded += uint64(length)
 	}
 	return
 }
