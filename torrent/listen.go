@@ -82,6 +82,11 @@ func CreateListener(flags *TorrentFlags) (listener net.Listener, externalPort in
 	if err != nil {
 		log.Fatal("Listen failed:", err)
 	}
+	if listenPort == 0 {
+		_, portString, _ := net.SplitHostPort(listener.Addr().String())
+		listenPort, _ = strconv.Atoi(portString)
+		flags.Port = listenPort
+	}
 	log.Println("Listening for peers on port:", listenPort)
 	externalPort = listenPort
 	return
