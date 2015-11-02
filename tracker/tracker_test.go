@@ -131,7 +131,7 @@ func runSwarm(leechCount int) (err error) {
 	time.Sleep(100 * time.Microsecond)
 
 	var seed, leech *prog
-	seed = newTorrentClient("seed", 7000, torrentFile, seedDir, math.Inf(0))
+	seed = newTorrentClient("seed", 0, torrentFile, seedDir, math.Inf(0))
 	err = seed.start(doneCh)
 	if err != nil {
 		return
@@ -145,7 +145,7 @@ func runSwarm(leechCount int) (err error) {
 		if err != nil {
 			return
 		}
-		leech = newTorrentClient(fmt.Sprintf("leech %d", l), 7001+l, torrentFile, leechDir, 0)
+		leech = newTorrentClient(fmt.Sprintf("leech%d", l), 0, torrentFile, leechDir, 0)
 		err = leech.start(doneCh)
 		if err != nil {
 			return
