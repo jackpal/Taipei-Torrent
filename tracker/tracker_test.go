@@ -42,8 +42,6 @@ func TestSwarm10(t *testing.T) {
 	testSwarm(t, 10)
 }
 
-/* Larger sizes don't work correctly.
-
 func TestSwarm20(t *testing.T) {
 	testSwarm(t, 20)
 }
@@ -55,8 +53,6 @@ func TestSwarm50(t *testing.T) {
 func TestSwarm100(t *testing.T) {
 	testSwarm(t, 100)
 }
-
-*/
 
 func testSwarm(t *testing.T, leechCount int) {
 	err := runSwarm(leechCount)
