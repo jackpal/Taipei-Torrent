@@ -136,6 +136,7 @@ type TorrentSession struct {
 	heartbeat            chan bool
 	dht                  *dht.DHT
 	quit                 chan bool
+	ended                chan bool
 	trackerLessMode      bool
 	torrentFile          string
 	chokePolicy          ChokePolicy
@@ -150,6 +151,7 @@ func NewTorrentSession(flags *TorrentFlags, torrent string, listenPort uint16) (
 		peerMessageChan:      make(chan peerMessage),
 		activePieces:         make(map[int]*ActivePiece),
 		quit:                 make(chan bool),
+		ended:                make(chan bool),
 		torrentFile:          torrent,
 		chokePolicy:          &ClassicChokePolicy{},
 		chokePolicyHeartbeat: time.Tick(10 * time.Second),
@@ -348,7 +350,10 @@ func (ts *TorrentSession) Header() (header []byte) {
 // Try to connect if the peer is not already in our peers.
 // Can be called from any goroutine.
 func (ts *TorrentSession) HintNewPeer(peer string) {
-	ts.hintNewPeerChan <- peer
+	select {
+	case ts.hintNewPeerChan <- peer:
+	case <-ts.ended:
+	}
 }
 
 func (ts *TorrentSession) hintNewPeerImp(peer string) {
@@ -410,7 +415,10 @@ func (t *TorrentSession) AcceptNewPeer(btconn *BtConn) {
 
 // Can be called from any goroutine
 func (t *TorrentSession) AddPeer(btconn *BtConn) {
-	t.addPeerChan <- btconn
+	select {
+	case t.addPeerChan <- btconn:
+	case <-t.ended:
+	}
 }
 
 func (t *TorrentSession) addPeerImp(btconn *BtConn) {
@@ -498,11 +506,16 @@ func (t *TorrentSession) deadlockDetector() {
 }
 
 func (t *TorrentSession) Quit() (err error) {
-	t.quit <- true
+	select {
+	case t.quit <- true:
+	case <-t.ended:
+	}
 	return
 }
 
 func (t *TorrentSession) Shutdown() (err error) {
+	close(t.ended)
+
 	for _, peer := range t.peers {
 		t.ClosePeer(peer)
 	}
