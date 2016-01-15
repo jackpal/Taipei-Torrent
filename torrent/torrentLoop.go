@@ -136,7 +136,7 @@ mainLoop:
 		case c := <-conChan:
 			log.Printf("New bt connection for ih %x", c.Infohash)
 			if ts, ok := torrentSessions[c.Infohash]; ok {
-				go ts.AcceptNewPeer(c)
+				ts.AcceptNewPeer(c)
 			}
 		case dhtPeers := <-dhtNode.PeersRequestResults:
 			for key, peers := range dhtPeers {
@@ -144,7 +144,7 @@ mainLoop:
 					log.Printf("Received %d DHT peers for torrent session %x\n", len(peers), []byte(key))
 					for _, peer := range peers {
 						peer = dht.DecodePeerAddress(peer)
-						go ts.HintNewPeer(peer)
+						ts.HintNewPeer(peer)
 					}
 				} else {
 					log.Printf("Received DHT peer for an unknown torrent session %x\n", []byte(key))
@@ -157,7 +157,7 @@ mainLoop:
 			}
 			if ts, ok := torrentSessions[string(hexhash)]; ok {
 				log.Printf("Received LPD announce for ih %s", announce.Infohash)
-				go ts.HintNewPeer(announce.Peer)
+				ts.HintNewPeer(announce.Peer)
 			}
 		}
 	}
