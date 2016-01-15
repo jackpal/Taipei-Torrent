@@ -372,9 +372,6 @@ func (ts *TorrentSession) mightAcceptPeer(peer string) bool {
 }
 
 func (ts *TorrentSession) connectToPeer(peer string) {
-	if !ts.Session.HaveTorrent && !ts.Session.FromMagnet {
-		return
-	}
 	conn, err := proxyNetDial(ts.flags.Dial, "tcp", peer)
 	if err != nil {
 		// log.Println("[", ts.M.Info.Name, "] Failed to connect to", peer, err)
