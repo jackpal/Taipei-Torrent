@@ -7,13 +7,14 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"golang.org/x/net/proxy"
 	"io"
 	"io/ioutil"
 	"log"
 	"os"
 	"path"
 	"strings"
+
+	"golang.org/x/net/proxy"
 
 	bencode "github.com/jackpal/bencode-go"
 	"github.com/nictuku/dht"
@@ -517,7 +518,7 @@ type TrackerResponse struct {
 }
 
 type SessionInfo struct {
-	PeerId     string
+	PeerID     string
 	Port       uint16
 	Uploaded   uint64
 	Downloaded uint64

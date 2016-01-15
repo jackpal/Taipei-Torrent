@@ -2,11 +2,12 @@ package torrent
 
 import (
 	"encoding/hex"
-	"github.com/nictuku/dht"
-	"golang.org/x/net/proxy"
 	"log"
 	"os"
 	"os/signal"
+
+	"github.com/nictuku/dht"
+	"golang.org/x/net/proxy"
 )
 
 type TorrentFlags struct {

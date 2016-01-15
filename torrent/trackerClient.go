@@ -5,13 +5,14 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"golang.org/x/net/proxy"
 	"log"
 	"math/rand"
 	"net"
 	"net/url"
 	"strconv"
 	"time"
+
+	"golang.org/x/net/proxy"
 )
 
 // Code to talk to trackers.
@@ -22,7 +23,7 @@ import (
 type ClientStatusReport struct {
 	Event      string
 	InfoHash   string
-	PeerId     string
+	PeerID     string
 	Port       uint16
 	Uploaded   uint64
 	Downloaded uint64
@@ -130,7 +131,7 @@ func queryTracker(dialer proxy.Dialer, report ClientStatusReport, trackerUrl str
 func queryHTTPTracker(dialer proxy.Dialer, report ClientStatusReport, u *url.URL) (tr *TrackerResponse, err error) {
 	uq := u.Query()
 	uq.Add("info_hash", report.InfoHash)
-	uq.Add("peer_id", report.PeerId)
+	uq.Add("peer_id", report.PeerID)
 	uq.Add("port", strconv.FormatUint(uint64(report.Port), 10))
 	uq.Add("uploaded", strconv.FormatUint(report.Uploaded, 10))
 	uq.Add("downloaded", strconv.FormatUint(report.Downloaded, 10))
@@ -306,7 +307,7 @@ func getAnnouncementFromUDPTracker(con *net.UDPConn, connectionID uint64, report
 	if err != nil {
 		return
 	}
-	err = binary.Write(announcementRequest, binary.BigEndian, []byte(report.PeerId))
+	err = binary.Write(announcementRequest, binary.BigEndian, []byte(report.PeerID))
 	if err != nil {
 		return
 	}
