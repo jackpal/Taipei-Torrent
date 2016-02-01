@@ -67,7 +67,7 @@ func RunTorrents(flags *TorrentFlags, torrentFiles []string) (err error) {
 		for torrentFile := range createChan {
 			ts, err := NewTorrentSession(flags, torrentFile, uint16(listenPort))
 			if err != nil {
-				log.Println("Could not create torrent session.", err)
+				log.Println("Couldn't create torrent session for " + torrentFile + " .", err)
 				doneChan <- &TorrentSession{}
 			} else {
 				log.Printf("Created torrent session for %s", ts.M.Info.Name)
@@ -116,9 +116,11 @@ mainLoop:
 				}(ts)
 			}
 		case ts := <-doneChan:
-			delete(torrentSessions, ts.M.InfoHash)
-			if flags.UseLPD {
-				lpd.StopAnnouncing(ts.M.InfoHash)
+			if ts.M != nil {
+				delete(torrentSessions, ts.M.InfoHash)
+				if flags.UseLPD {
+					lpd.StopAnnouncing(ts.M.InfoHash)
+				}
 			}
 			if !theWorldisEnding && len(torrentQueue) > 0 {
 				createChan <- torrentQueue[0]
