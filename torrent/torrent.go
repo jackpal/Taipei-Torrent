@@ -351,9 +351,13 @@ func (ts *TorrentSession) Header() (header []byte) {
 // Try to connect if the peer is not already in our peers.
 // Can be called from any goroutine.
 func (ts *TorrentSession) HintNewPeer(peer string) {
+	if len(ts.hintNewPeerChan) < cap(ts.hintNewPeerChan) { //We don't want to block the main loop because a single torrent is having problems
 	select {
 	case ts.hintNewPeerChan <- peer:
 	case <-ts.ended:
+	}
+	} else {
+		// log.Println("[", ts.M.Info.Name, "] New peer hint failed, because DoTorrent() hasn't been clearing out the channel.")
 	}
 }
 
@@ -412,9 +416,14 @@ func (ts *TorrentSession) AcceptNewPeer(btconn *BtConn) {
 
 // Can be called from any goroutine
 func (ts *TorrentSession) AddPeer(btconn *BtConn) {
+	if len(ts.addPeerChan) < cap(ts.addPeerChan) { //We don't want to block the main loop because a single torrent is having problems
 	select {
 	case ts.addPeerChan <- btconn:
 	case <-ts.ended:
+	}
+	} else {
+		// log.Println("[", ts.M.Info.Name, "] Add peer failed, because DoTorrent() hasn't been clearing out the channel.")
+		btconn.conn.Close()
 	}
 }
 
@@ -553,8 +562,8 @@ func (ts *TorrentSession) DoTorrent() {
 
 	keepAliveChan := time.Tick(60 * time.Second)
 	var retrackerChan <-chan time.Time
-	ts.hintNewPeerChan = make(chan string)
-	ts.addPeerChan = make(chan *BtConn)
+	ts.hintNewPeerChan = make(chan string, MAX_NUM_PEERS)
+	ts.addPeerChan = make(chan *BtConn, MAX_NUM_PEERS)
 	if !ts.trackerLessMode {
 		// Start out polling tracker every 20 seconds until we get a response.
 		// Maybe be exponential backoff here?
