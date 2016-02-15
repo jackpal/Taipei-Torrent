@@ -182,6 +182,7 @@ func NewTorrentSession(flags *TorrentFlags, torrent string, listenPort uint16) (
 		HaveTorrent:   false,
 		ME:            &MetaDataExchange{},
 		OurExtensions: map[int]string{1: "ut_metadata"},
+		OurAddresses:  map[string]bool{"127.0.0.1:" + strconv.Itoa(int(listenPort)): true},
 	}
 	ts.setHeader()
 
@@ -358,9 +359,13 @@ func (ts *TorrentSession) HintNewPeer(peer string) {
 
 func (ts *TorrentSession) tryNewPeer(peer string) bool {
 	if (ts.Session.HaveTorrent || ts.Session.FromMagnet) && len(ts.peers) < MAX_NUM_PEERS {
+		if _, ok := ts.Session.OurAddresses[peer]; !ok {
 		if _, ok := ts.peers[peer]; !ok {
 			go ts.connectToPeer(peer)
 			return true
+		}
+		} else {
+			//	log.Println("[", ts.M.Info.Name, "] New peer hint rejected, because it's one of our addresses (", peer, ")")
 		}
 	}
 	return false
@@ -419,6 +424,17 @@ func (ts *TorrentSession) addPeerImp(btconn *BtConn) {
 		btconn.conn.Close()
 		return
 	}
+
+	peer := btconn.conn.RemoteAddr().String()
+
+	if btconn.id == ts.Session.PeerID {
+		log.Println("[", ts.M.Info.Name, "] Rejecting self-connection:", peer, "<->", btconn.conn.LocalAddr())
+		ts.Session.OurAddresses[btconn.conn.LocalAddr().String()] = true
+		ts.Session.OurAddresses[peer] = true
+		btconn.conn.Close()
+		return
+	}
+
 	for _, p := range ts.peers {
 		if p.id == btconn.id {
 			log.Println("[", ts.M.Info.Name, "] Rejecting peer because already have a peer with the same id")
@@ -427,26 +443,27 @@ func (ts *TorrentSession) addPeerImp(btconn *BtConn) {
 		}
 	}
 
-	theirheader := btconn.header
-
-	peer := btconn.conn.RemoteAddr().String()
 	// log.Println("[", ts.M.Info.Name, "] Adding peer", peer)
 	if len(ts.peers) >= MAX_NUM_PEERS {
 		log.Println("[", ts.M.Info.Name, "] We have enough peers. Rejecting additional peer", peer)
 		btconn.conn.Close()
 		return
 	}
-	ps := NewPeerState(btconn.conn)
-	ps.address = peer
-	ps.id = btconn.id
+
+	theirheader := btconn.header
+
 	if ts.Session.UseDHT {
 		// If 128, then it supports DHT.
 		if int(theirheader[7])&0x01 == 0x01 {
 			// It's OK if we know this node already. The DHT engine will
 			// ignore it accordingly.
-			go ts.dht.AddNode(ps.address)
+			go ts.dht.AddNode(peer)
 		}
 	}
+
+	ps := NewPeerState(btconn.conn)
+	ps.address = peer
+	ps.id = btconn.id
 
 	// By default, a peer has no pieces. If it has pieces, it should send
 	// a BITFIELD message as a first message
@@ -693,7 +710,7 @@ func (ts *TorrentSession) DoTorrent() {
 }
 
 func (ts *TorrentSession) chokePeers() (err error) {
-	log.Printf("[ %s ] Choking peers", ts.M.Info.Name)
+	// log.Printf("[ %s ] Choking peers", ts.M.Info.Name)
 	peers := ts.peers
 	chokers := make([]Choker, 0, len(peers))
 	for _, peer := range peers {
@@ -712,7 +729,7 @@ func (ts *TorrentSession) chokePeers() (err error) {
 		shouldChoke := i >= unchokeCount
 		if peer, ok := c.(*peerState); ok {
 			if shouldChoke != peer.am_choking {
-				log.Printf("[ %s ] Changing choke status %v -> %v", ts.M.Info.Name, peer.address, shouldChoke)
+				//	log.Printf("[ %s ] Changing choke status %v -> %v", ts.M.Info.Name, peer.address, shouldChoke)
 				peer.SetChoke(shouldChoke)
 			}
 		}
