@@ -17,14 +17,15 @@ func TestCachedFileStoreRead(t *testing.T) {
 		if len(orig)%512 > 0 {
 			numPieces++
 		}
-		tC := rcp.NewCache("test", numPieces, 512, int64(len(orig)))
-		tC.WriteAt(orig[128:512], 128)
-		fs.SetCache(tC)
+		tC := rcp.NewCache("test", numPieces, 512, int64(len(orig)), fs)
+		tC.WritePiece(orig[:512], 0)
+		tC.WritePiece(orig[512:1024], 1)
+
 		if err != nil {
 			t.Fatal(err)
 		}
 		ret := make([]byte, testFile.fileLen)
-		_, err = fs.ReadAt(ret, 0)
+		_, err = tC.ReadAt(ret, 0)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -33,7 +34,7 @@ func TestCachedFileStoreRead(t *testing.T) {
 		gotsum := sha1.Sum(ret)
 		sum2Str := hex.EncodeToString(gotsum[0:])
 		if sum1Str != sum2Str {
-			t.Errorf("Wanted %v, got %v\n", sum1Str, sum2Str)
+			t.Errorf("Wanted %v, got %v\n on cache read", sum1Str, sum2Str)
 			for i := 0; i < len(ret); i++ {
 				if ret[i] != orig[i] {
 					log.Println("Found a difference at", i, "wanted", orig[i], "got", ret[i])
@@ -41,6 +42,24 @@ func TestCachedFileStoreRead(t *testing.T) {
 				}
 			}
 		}
+
+		ret = make([]byte, testFile.fileLen)
+		_, err = fs.ReadAt(ret, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		gotsum = sha1.Sum(ret)
+		sum2Str = hex.EncodeToString(gotsum[0:])
+		if sum1Str != sum2Str {
+			t.Errorf("Wanted %v, got %v\n on filestore read", sum1Str, sum2Str)
+			for i := 0; i < len(ret); i++ {
+				if ret[i] != orig[i] {
+					log.Println("Found a difference at", i, "wanted", orig[i], "got", ret[i])
+					break
+				}
+			}
+		}
+
 		fs.Close()
 	}
 }

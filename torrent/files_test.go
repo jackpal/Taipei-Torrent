@@ -31,7 +31,7 @@ var tests []testFile = []testFile{{
 
 func mkFileStore(tf testFile) (fs *fileStore, err error) {
 	f := fileEntry{tf.fileLen, &osFile{tf.path}}
-	return &fileStore{fileSystem: nil, offsets: []int64{0}, files: []fileEntry{f}}, nil
+	return &fileStore{fileSystem: nil, offsets: []int64{0}, files: []fileEntry{f}, pieceSize: 512}, nil
 }
 
 func TestFileStoreRead(t *testing.T) {

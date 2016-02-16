@@ -66,7 +66,7 @@ var kBitTorrentHeader = []byte{'\x13', 'B', 'i', 't', 'T', 'o', 'r',
 
 type ActivePiece struct {
 	downloaderCount []int // -1 means piece is already downloaded
-	pieceLength     int
+	buffer          []byte
 }
 
 func (a *ActivePiece) chooseBlockToDownload(endgame bool) (index int) {
@@ -133,6 +133,7 @@ type TorrentSession struct {
 	lastPieceLength      int
 	goodPieces           int
 	activePieces         map[int]*ActivePiece
+	maxActivePieces      int
 	heartbeat            chan bool
 	dht                  *dht.DHT
 	quit                 chan bool
@@ -150,6 +151,7 @@ func NewTorrentSession(flags *TorrentFlags, torrent string, listenPort uint16) (
 		peers:                make(map[string]*peerState),
 		peerMessageChan:      make(chan peerMessage),
 		activePieces:         make(map[int]*ActivePiece),
+		maxActivePieces:      32, //TODO: Make this user-modifiable, maybe based on memory useage (maxActivePieces*pieceSize)?
 		quit:                 make(chan bool),
 		ended:                make(chan bool),
 		torrentFile:          torrent,
@@ -204,8 +206,7 @@ func (ts *TorrentSession) reload(metadata string) (err error) {
 	err = ts.load()
 
 	if ts.flags.Cacher != nil && ts.fileStore != nil {
-		cache := ts.flags.Cacher.NewCache(ts.M.InfoHash, ts.totalPieces, int(ts.M.Info.PieceLength), ts.totalSize)
-		ts.fileStore.SetCache(cache)
+		ts.fileStore = ts.flags.Cacher.NewCache(ts.M.InfoHash, ts.totalPieces, ts.M.Info.PieceLength, ts.totalSize, ts.fileStore)
 	}
 	return
 }
@@ -534,15 +535,17 @@ func (ts *TorrentSession) Quit() (err error) {
 func (ts *TorrentSession) Shutdown() (err error) {
 	close(ts.ended)
 
-	for _, peer := range ts.peers {
-		ts.ClosePeer(peer)
-	}
 	if ts.fileStore != nil {
 		err = ts.fileStore.Close()
 		if err != nil {
 			log.Println("[", ts.M.Info.Name, "] Error closing filestore:", err)
 		}
 	}
+
+	for _, peer := range ts.peers {
+		peer.Close()
+	}
+
 	return
 }
 
@@ -553,8 +556,7 @@ func (ts *TorrentSession) DoTorrent() {
 	}
 
 	if ts.flags.Cacher != nil && ts.fileStore != nil {
-		cache := ts.flags.Cacher.NewCache(ts.M.InfoHash, ts.totalPieces, int(ts.M.Info.PieceLength), ts.totalSize)
-		ts.fileStore.SetCache(cache)
+		ts.fileStore = ts.flags.Cacher.NewCache(ts.M.InfoHash, ts.totalPieces, ts.M.Info.PieceLength, ts.totalSize, ts.fileStore)
 	}
 
 	heartbeatDuration := 1 * time.Second
@@ -725,7 +727,7 @@ func (ts *TorrentSession) chokePeers() (err error) {
 	for _, peer := range peers {
 		if peer.peer_interested {
 			peer.computeDownloadRate()
-			log.Printf("%s %g bps", peer.address, peer.DownloadBPS())
+			// log.Printf("%s %g bps", peer.address, peer.DownloadBPS())
 			chokers = append(chokers, Choker(peer))
 		}
 	}
@@ -759,6 +761,11 @@ func (ts *TorrentSession) RequestBlock(p *peerState) (err error) {
 			}
 		}
 	}
+
+	if len(ts.activePieces) >= ts.maxActivePieces {
+		return
+	}
+
 	// No active pieces. (Or no suitable active pieces.) Pick one
 	piece := ts.ChoosePiece(p)
 	if piece < 0 {
@@ -778,7 +785,7 @@ func (ts *TorrentSession) RequestBlock(p *peerState) (err error) {
 	}
 	pieceLength := ts.pieceLength(piece)
 	pieceCount := (pieceLength + STANDARD_BLOCK_LENGTH - 1) / STANDARD_BLOCK_LENGTH
-	ts.activePieces[piece] = &ActivePiece{make([]int, pieceCount), pieceLength}
+	ts.activePieces[piece] = &ActivePiece{make([]int, pieceCount), make([]byte, pieceLength)}
 	return ts.RequestBlock2(p, piece, false)
 }
 
@@ -869,15 +876,15 @@ func (ts *TorrentSession) RecordBlock(p *peerState, piece, begin, length uint32)
 		ts.Session.Downloaded += uint64(length)
 		if v.isComplete() {
 			delete(ts.activePieces, int(piece))
-			var pieceBytes []byte
-			ok, err, pieceBytes = checkPiece(ts.fileStore, ts.totalSize, ts.M, int(piece))
+
+			ok, err = checkPiece(v.buffer, ts.M, int(piece))
 			if !ok || err != nil {
 				log.Println("[", ts.M.Info.Name, "] Closing peer that sent a bad piece", piece, p.id, err)
 				p.Close()
 				return
 			}
-			ts.fileStore.Commit(int(piece), pieceBytes, ts.M.Info.PieceLength*int64(piece))
-			ts.Session.Left -= uint64(v.pieceLength)
+			ts.fileStore.WritePiece(v.buffer, int(piece))
+			ts.Session.Left -= uint64(len(v.buffer))
 			ts.pieceSet.Set(int(piece))
 			ts.goodPieces++
 			if ts.flags.QuickResume {
@@ -1086,11 +1093,12 @@ func (ts *TorrentSession) generalMessage(message []byte, p *peerState) (err erro
 		if length > 128*1024 {
 			return errors.New("Block length too large")
 		}
-		globalOffset := int64(index)*ts.M.Info.PieceLength + int64(begin)
-		_, err = ts.fileStore.WriteAt(message[9:], globalOffset)
-		if err != nil {
-			return err
+		v, ok := ts.activePieces[int(index)]
+		if !ok {
+			return errors.New("Received piece data we weren't expecting")
 		}
+		copy(v.buffer[begin:], message[9:])
+
 		p.creditDownload(int64(length))
 		ts.RecordBlock(p, index, begin, uint32(length))
 		err = ts.RequestBlock(p)
