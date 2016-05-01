@@ -42,6 +42,10 @@ type TorrentFlags struct {
 
 	//How many torrents should be active at a time
 	MaxActive int
+	
+	//Maximum amount of memory (in MiB) to use for each torrent's Active Pieces.
+	//0 means a single Active Piece. Negative means Unlimited Active Pieces.
+	MemoryPerTorrent int
 }
 
 func RunTorrents(flags *TorrentFlags, torrentFiles []string) (err error) {

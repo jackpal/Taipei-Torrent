@@ -418,6 +418,7 @@ func testHelperProcessImp(args []string) (err error) {
 			MaxActive:          1,
 			ExecOnSeeding:      "",
 			Cacher:             torrent.NewRamCacheProvider(1),
+			MemoryPerTorrent:   4,
 		}
 		err = torrent.RunTorrents(&torrentFlags, torrentFiles)
 		if err != nil {

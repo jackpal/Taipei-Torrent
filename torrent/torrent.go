@@ -151,7 +151,6 @@ func NewTorrentSession(flags *TorrentFlags, torrent string, listenPort uint16) (
 		peers:                make(map[string]*peerState),
 		peerMessageChan:      make(chan peerMessage),
 		activePieces:         make(map[int]*ActivePiece),
-		maxActivePieces:      32, //TODO: Make this user-modifiable, maybe based on memory useage (maxActivePieces*pieceSize)?
 		quit:                 make(chan bool),
 		ended:                make(chan bool),
 		torrentFile:          torrent,
@@ -259,6 +258,18 @@ func (ts *TorrentSession) load() (err error) {
 		ts.totalPieces++
 	}
 
+	if ts.flags.MemoryPerTorrent < 0 {
+		ts.maxActivePieces = 2147483640
+		log.Printf("[ %s ] Max Active Pieces set to Unlimited\n", ts.M.Info.Name)
+	} else {
+		ts.maxActivePieces = int(int64(ts.flags.MemoryPerTorrent*1024*1024)/ts.M.Info.PieceLength)
+		if ts.maxActivePieces == 0 {
+			ts.maxActivePieces++
+		}
+	
+		log.Printf("[ %s ] Max Active Pieces set to %v\n", ts.M.Info.Name, ts.maxActivePieces)
+	}
+	
 	ts.goodPieces = 0
 	if ts.flags.InitialCheck {
 		start := time.Now()
@@ -748,22 +759,22 @@ func (ts *TorrentSession) chokePeers() (err error) {
 	return
 }
 
-func (ts *TorrentSession) RequestBlock(p *peerState) (err error) {
+func (ts *TorrentSession) RequestBlock(p *peerState) (error) {
 	if !ts.Session.HaveTorrent { // We can't request a block without a torrent
-		return
+		return nil
 	}
 
 	for k := range ts.activePieces {
 		if p.have.IsSet(k) {
-			err = ts.RequestBlock2(p, k, false)
+			err := ts.RequestBlock2(p, k, false) 
 			if err != io.EOF {
-				return
+				return err
 			}
 		}
 	}
 
 	if len(ts.activePieces) >= ts.maxActivePieces {
-		return
+		return nil
 	}
 
 	// No active pieces. (Or no suitable active pieces.) Pick one
@@ -772,16 +783,17 @@ func (ts *TorrentSession) RequestBlock(p *peerState) (err error) {
 		// No unclaimed pieces. See if we can double-up on an active piece
 		for k := range ts.activePieces {
 			if p.have.IsSet(k) {
-				err = ts.RequestBlock2(p, k, true)
+				err := ts.RequestBlock2(p, k, true)
 				if err != io.EOF {
-					return
+					return err
 				}
 			}
 		}
 	}
+	
 	if piece < 0 {
 		p.SetInterested(false)
-		return
+		return nil
 	}
 	pieceLength := ts.pieceLength(piece)
 	pieceCount := (pieceLength + STANDARD_BLOCK_LENGTH - 1) / STANDARD_BLOCK_LENGTH
@@ -1144,7 +1156,7 @@ func (ts *TorrentSession) generalMessage(message []byte, p *peerState) (err erro
 			p.SendBitfield(ts.pieceSet)
 		}
 	default:
-		return fmt.Errorf("Uknown message id: %d\n", messageID)
+		return fmt.Errorf("Unknown message id: %d\n", messageID)
 	}
 
 	if messageID != EXTENSION {
