@@ -152,7 +152,7 @@ func randomString(s string, n int) string {
 	b := make([]byte, n)
 	slen := len(s)
 	for i := 0; i < n; i++ {
-		b[i] = b[rand.Intn(slen)]
+		b[i] = s[rand.Intn(slen)]
 	}
 	return string(b)
 }
