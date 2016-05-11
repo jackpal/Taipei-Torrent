@@ -45,6 +45,7 @@ var (
 )
 
 //I add this row
+//I add this row2
 func parseTorrentFlags() (flags *torrent.TorrentFlags, err error) {
 	dialer, err := dialerFromFlags()
 	if err != nil {
