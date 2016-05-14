@@ -57,7 +57,8 @@ const (
 )
 
 func peerID() string {
-	sid := "-tt" + strconv.Itoa(os.Getpid()) + "_" + strconv.FormatInt(rand.Int63(), 10)
+	r := rand.New(rand.NewSource(time.Now().UnixNano()))
+	sid := "-tt" + strconv.Itoa(os.Getpid()) + "_" + strconv.FormatInt(r.Int63(), 10)
 	return sid[0:20]
 }
 
