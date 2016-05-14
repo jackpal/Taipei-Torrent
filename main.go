@@ -44,8 +44,6 @@ var (
 	memoryPerTorrent	= flag.Int("memoryPerTorrent", -1, "Maximum memory (in MiB) per torrent used for Active Pieces. 0 means minimum. -1 (default) means unlimited.")
 )
 
-//I add this row
-//I add this row2
 func parseTorrentFlags() (flags *torrent.TorrentFlags, err error) {
 	dialer, err := dialerFromFlags()
 	if err != nil {
