@@ -804,7 +804,8 @@ func (ts *TorrentSession) RequestBlock(p *peerState) (error) {
 
 func (ts *TorrentSession) ChoosePiece(p *peerState) (piece int) {
 	n := ts.totalPieces
-	start := rand.Intn(n)
+	r := rand.New(rand.NewSource(time.Now().UnixNano()))
+	start := r.Intn(n)
 	piece = ts.checkRange(p, start, n)
 	if piece == -1 {
 		piece = ts.checkRange(p, 0, start)
