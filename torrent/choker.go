@@ -80,7 +80,8 @@ func (ccp *ClassicChokePolicy) Choke(chokers []Choker) (unchokeCount int, err er
 	if optimistIndex < 0 {
 		candidateCount := len(chokers) - OPTIMISTIC_UNCHOKE_INDEX
 		if candidateCount > 0 {
-			candidate := OPTIMISTIC_UNCHOKE_INDEX + rand.Intn(candidateCount)
+			r := rand.New(rand.NewSource(time.Now().UnixNano()))
+			candidate := OPTIMISTIC_UNCHOKE_INDEX + r.Intn(candidateCount)
 			ByDownloadBPS(chokers).Swap(OPTIMISTIC_UNCHOKE_INDEX, candidate)
 			ccp.counter = 0
 			ccp.optimisticUnchoker = chokers[OPTIMISTIC_UNCHOKE_INDEX]
