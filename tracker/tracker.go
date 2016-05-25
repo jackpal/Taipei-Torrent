@@ -151,8 +151,9 @@ func randomHexString(n int) string {
 func randomString(s string, n int) string {
 	b := make([]byte, n)
 	slen := len(s)
+	r := rand.New(rand.NewSource(time.Now().UnixNano()))
 	for i := 0; i < n; i++ {
-		b[i] = s[rand.Intn(slen)]
+		b[i] = s[r.Intn(slen)]
 	}
 	return string(b)
 }
