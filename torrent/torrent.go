@@ -727,6 +727,8 @@ func (ts *TorrentSession) DoTorrent() {
 
 		case <-ts.quit:
 			log.Println("[", ts.M.Info.Name, "] Quitting torrent session")
+			ts.fetchTrackerInfo("stopped")
+			time.Sleep(10*time.Millisecond)
 			return
 		}
 	}
