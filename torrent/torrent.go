@@ -670,8 +670,9 @@ func (ts *TorrentSession) DoTorrent() {
 			if err2 != nil {
 				if err2 != io.EOF {
 					log.Println("[", ts.M.Info.Name, "] Closing peer", peer.address, "because", err2)
+					ts.ClosePeer(peer)
 				}
-				ts.ClosePeer(peer)
+				
 			}
 		case <-heartbeatChan:
 			if ts.flags.UseDeadlockDetector {
