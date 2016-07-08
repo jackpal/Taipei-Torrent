@@ -144,6 +144,7 @@ type TorrentSession struct {
 	chokePolicy          ChokePolicy
 	chokePolicyHeartbeat <-chan time.Time
 	execOnSeedingDone    bool
+	rand                 *rand.Rand
 }
 
 func NewTorrentSession(flags *TorrentFlags, torrent string, listenPort uint16) (t *TorrentSession, err error) {
@@ -158,6 +159,7 @@ func NewTorrentSession(flags *TorrentFlags, torrent string, listenPort uint16) (
 		chokePolicy:          &ClassicChokePolicy{},
 		chokePolicyHeartbeat: time.Tick(10 * time.Second),
 		execOnSeedingDone:    len(flags.ExecOnSeeding) == 0,
+		rand:                 rand.New(rand.NewSource(time.Now().UnixNano() + int64(listenPort))),
 	}
 	fromMagnet := strings.HasPrefix(torrent, "magnet:")
 	ts.M, err = GetMetaInfo(flags.Dial, torrent)
@@ -807,7 +809,7 @@ func (ts *TorrentSession) RequestBlock(p *peerState) (error) {
 
 func (ts *TorrentSession) ChoosePiece(p *peerState) (piece int) {
 	n := ts.totalPieces
-	start := rand.Intn(n)
+	start := ts.rand.Intn(n)
 	piece = ts.checkRange(p, start, n)
 	if piece == -1 {
 		piece = ts.checkRange(p, 0, start)
