@@ -1046,6 +1046,7 @@ func (ts *TorrentSession) generalMessage(message []byte, p *peerState) (err erro
 		n := bytesToUint32(message[1:])
 		if n < uint32(p.have.n) {
 			p.have.Set(int(n))
+			ts.RequestBlock(p)
 			if !p.am_interested && !ts.pieceSet.IsSet(int(n)) {
 				p.SetInterested(true)
 			}
