@@ -72,13 +72,13 @@ func (sfs *SftpFileSystem) Connect() error {
 	var err error
 	sfs.sshClient, err = ssh.Dial("tcp", sfs.sp.Server, &config)
 	if err != nil {
-		log.Println("unable to connect to [%s]: %v", sfs.sp.Server, err)
+		log.Printf("unable to connect to [%s]: %v", sfs.sp.Server, err)
 		return err
 	}
 
 	sfs.sftpClient, err = sftp.NewClient(sfs.sshClient)
 	if err != nil {
-		log.Println("unable to start sftp subsytem: %v", err)
+		log.Printf("unable to start sftp subsytem: %v", err)
 		return err
 	}
 	return nil
