@@ -2,6 +2,7 @@ package torrent
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"log"
 	"net"
@@ -220,9 +221,9 @@ func bytesToUint32(buf []byte) uint32 {
 		(uint32(buf[2]) << 8) | uint32(buf[3])
 }
 
-func readNBOUint32(conn net.Conn) (n uint32, err error) {
+func readNBOUint32(r io.Reader) (n uint32, err error) {
 	var buf [4]byte
-	_, err = conn.Read(buf[0:])
+	_, err = io.ReadFull(r, buf[:])
 	if err != nil {
 		return
 	}
@@ -266,31 +267,31 @@ func (p *peerState) peerWriter(errorChan chan peerMessage) {
 	errorChan <- peerMessage{p, nil}
 }
 
+func readPeerMessage(r io.Reader, maxMessageSize int) (buf []byte, err error) {
+	var n uint32
+	n, err = readNBOUint32(r)
+	if err != nil {
+		return
+	}
+	if int(n) > maxMessageSize {
+		// log.Println("Message size too large: ", n)
+		err = fmt.Errorf("Message size too large: %d > %d", n, maxMessageSize)
+		return
+	}
+
+	buf = make([]byte, n)
+
+	_, err = io.ReadFull(r, buf)
+	return
+}
+
 // This func is designed to be run as a goroutine. It
 // listens for messages from the peer and forwards them to a channel.
 
 func (p *peerState) peerReader(msgChan chan peerMessage) {
 	// log.Println("Reading messages")
 	for {
-		var n uint32
-		n, err := readNBOUint32(p.conn)
-		if err != nil {
-			break
-		}
-		if n > 130*1024 {
-			// log.Println("Message size too large: ", n)
-			break
-		}
-
-		var buf []byte
-		if n == 0 {
-			// keep-alive - we want an empty message
-			buf = make([]byte, 1)
-		} else {
-			buf = make([]byte, n)
-		}
-
-		_, err = io.ReadFull(p.conn, buf)
+		buf, err := readPeerMessage(p.conn, 130*1024)
 		if err != nil {
 			break
 		}
