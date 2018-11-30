@@ -42,7 +42,7 @@ type TorrentFlags struct {
 
 	//How many torrents should be active at a time
 	MaxActive int
-	
+
 	//Maximum amount of memory (in MiB) to use for each torrent's Active Pieces.
 	//0 means a single Active Piece. Negative means Unlimited Active Pieces.
 	MemoryPerTorrent int
@@ -71,7 +71,7 @@ func RunTorrents(flags *TorrentFlags, torrentFiles []string) (err error) {
 		for torrentFile := range createChan {
 			ts, err := NewTorrentSession(flags, torrentFile, uint16(listenPort))
 			if err != nil {
-				log.Println("Couldn't create torrent session for " + torrentFile + " .", err)
+				log.Println("Couldn't create torrent session for "+torrentFile+" .", err)
 				doneChan <- &TorrentSession{}
 			} else {
 				log.Printf("Created torrent session for %s", ts.M.Info.Name)

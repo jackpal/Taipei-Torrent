@@ -518,12 +518,12 @@ type TrackerResponse struct {
 }
 
 type SessionInfo struct {
-	PeerID     string
-	Port       uint16
+	PeerID       string
+	Port         uint16
 	OurAddresses map[string]bool //List of addresses that resolve to ourselves.
-	Uploaded   uint64
-	Downloaded uint64
-	Left       uint64
+	Uploaded     uint64
+	Downloaded   uint64
+	Left         uint64
 
 	UseDHT      bool
 	FromMagnet  bool

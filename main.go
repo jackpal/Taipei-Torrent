@@ -8,8 +8,8 @@ import (
 	"os"
 	"os/signal"
 	"path"
-	"runtime/pprof"
 	"runtime/debug"
+	"runtime/pprof"
 	"time"
 
 	"github.com/jackpal/Taipei-Torrent/torrent"
@@ -41,7 +41,7 @@ var (
 	execOnSeeding       = flag.String("execOnSeeding", "", "Command to execute when torrent has fully downloaded and has begun seeding.")
 	quickResume         = flag.Bool("quickResume", false, "Save torrenting data to resume faster. '-initialCheck' should be set to false, to prevent hash check on resume.")
 	maxActive           = flag.Int("maxActive", 16, "How many torrents should be active at a time. Torrents added beyond this value are queued.")
-	memoryPerTorrent	= flag.Int("memoryPerTorrent", -1, "Maximum memory (in MiB) per torrent used for Active Pieces. 0 means minimum. -1 (default) means unlimited.")
+	memoryPerTorrent    = flag.Int("memoryPerTorrent", -1, "Maximum memory (in MiB) per torrent used for Active Pieces. 0 means minimum. -1 (default) means unlimited.")
 )
 
 func parseTorrentFlags() (flags *torrent.TorrentFlags, err error) {
@@ -162,10 +162,10 @@ func main() {
 		}(*memprofile)
 	}
 
-	if (*memoryPerTorrent) >=0 {  //User is worried about memory use.
-		debug.SetGCPercent(20)  //Set the GC to clear memory more often.
+	if (*memoryPerTorrent) >= 0 { //User is worried about memory use.
+		debug.SetGCPercent(20) //Set the GC to clear memory more often.
 	}
-	
+
 	log.Println("Starting.")
 
 	err = torrent.RunTorrents(torrentFlags, args)

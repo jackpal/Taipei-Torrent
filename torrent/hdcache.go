@@ -62,10 +62,10 @@ func (r *HdCacheProvider) rebalance() {
 		cache.setCapacity(uint32(newCap))
 	}
 
-		for _, cache := range r.caches {
-			cache.trim()
-		}
+	for _, cache := range r.caches {
+		cache.trim()
 	}
+}
 
 func (r *HdCacheProvider) cacheClosed(infohash string) {
 	delete(r.caches, infohash)
@@ -153,14 +153,14 @@ func (r *HdCache) ReadAt(p []byte, off int64) (retInt int, retErr error) {
 
 	retInt = len(p)
 	return
-		}
+}
 
 func (r *HdCache) WritePiece(p []byte, boxI int) (n int, retErr error) {
 
 	if r.boxExists.IsSet(boxI) { //box exists, our work is done
 		log.Println("Got a WritePiece for a piece we should already have:", boxI)
 		return
-		}
+	}
 
 	r.addBox(p, boxI)
 
@@ -187,8 +187,8 @@ func (r *HdCache) addBox(p []byte, boxI int) {
 		box.Close()
 	}
 
-		r.trim()
-	}
+	r.trim()
+}
 
 func (r *HdCache) removeBox(boxI int) {
 	r.boxExists.Clear(boxI)

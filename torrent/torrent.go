@@ -263,14 +263,14 @@ func (ts *TorrentSession) load() (err error) {
 		ts.maxActivePieces = 2147483640
 		log.Printf("[ %s ] Max Active Pieces set to Unlimited\n", ts.M.Info.Name)
 	} else {
-		ts.maxActivePieces = int(int64(ts.flags.MemoryPerTorrent*1024*1024)/ts.M.Info.PieceLength)
+		ts.maxActivePieces = int(int64(ts.flags.MemoryPerTorrent*1024*1024) / ts.M.Info.PieceLength)
 		if ts.maxActivePieces == 0 {
 			ts.maxActivePieces++
 		}
-	
+
 		log.Printf("[ %s ] Max Active Pieces set to %v\n", ts.M.Info.Name, ts.maxActivePieces)
 	}
-	
+
 	ts.goodPieces = 0
 	if ts.flags.InitialCheck {
 		start := time.Now()
@@ -365,10 +365,10 @@ func (ts *TorrentSession) Header() (header []byte) {
 // Can be called from any goroutine.
 func (ts *TorrentSession) HintNewPeer(peer string) {
 	if len(ts.hintNewPeerChan) < cap(ts.hintNewPeerChan) { //We don't want to block the main loop because a single torrent is having problems
-	select {
-	case ts.hintNewPeerChan <- peer:
-	case <-ts.ended:
-	}
+		select {
+		case ts.hintNewPeerChan <- peer:
+		case <-ts.ended:
+		}
 	} else {
 		// log.Println("[", ts.M.Info.Name, "] New peer hint failed, because DoTorrent() hasn't been clearing out the channel.")
 	}
@@ -377,10 +377,10 @@ func (ts *TorrentSession) HintNewPeer(peer string) {
 func (ts *TorrentSession) tryNewPeer(peer string) bool {
 	if (ts.Session.HaveTorrent || ts.Session.FromMagnet) && len(ts.peers) < MAX_NUM_PEERS {
 		if _, ok := ts.Session.OurAddresses[peer]; !ok {
-		if _, ok := ts.peers[peer]; !ok {
-			go ts.connectToPeer(peer)
-			return true
-		}
+			if _, ok := ts.peers[peer]; !ok {
+				go ts.connectToPeer(peer)
+				return true
+			}
 		} else {
 			//	log.Println("[", ts.M.Info.Name, "] New peer hint rejected, because it's one of our addresses (", peer, ")")
 		}
@@ -430,10 +430,10 @@ func (ts *TorrentSession) AcceptNewPeer(btconn *BtConn) {
 // Can be called from any goroutine
 func (ts *TorrentSession) AddPeer(btconn *BtConn) {
 	if len(ts.addPeerChan) < cap(ts.addPeerChan) { //We don't want to block the main loop because a single torrent is having problems
-	select {
-	case ts.addPeerChan <- btconn:
-	case <-ts.ended:
-	}
+		select {
+		case ts.addPeerChan <- btconn:
+		case <-ts.ended:
+		}
 	} else {
 		// log.Println("[", ts.M.Info.Name, "] Add peer failed, because DoTorrent() hasn't been clearing out the channel.")
 		btconn.conn.Close()
@@ -728,7 +728,7 @@ func (ts *TorrentSession) DoTorrent() {
 		case <-ts.quit:
 			log.Println("[", ts.M.Info.Name, "] Quitting torrent session")
 			ts.fetchTrackerInfo("stopped")
-			time.Sleep(10*time.Millisecond)
+			time.Sleep(10 * time.Millisecond)
 			return
 		}
 	}
@@ -762,14 +762,14 @@ func (ts *TorrentSession) chokePeers() (err error) {
 	return
 }
 
-func (ts *TorrentSession) RequestBlock(p *peerState) (error) {
+func (ts *TorrentSession) RequestBlock(p *peerState) error {
 	if !ts.Session.HaveTorrent { // We can't request a block without a torrent
 		return nil
 	}
 
 	for k := range ts.activePieces {
 		if p.have.IsSet(k) {
-			err := ts.RequestBlock2(p, k, false) 
+			err := ts.RequestBlock2(p, k, false)
 			if err != io.EOF {
 				return err
 			}
@@ -793,7 +793,7 @@ func (ts *TorrentSession) RequestBlock(p *peerState) (error) {
 			}
 		}
 	}
-	
+
 	if piece < 0 {
 		p.SetInterested(false)
 		return nil

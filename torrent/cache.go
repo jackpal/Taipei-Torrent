@@ -73,10 +73,10 @@ func (r *RamCacheProvider) rebalance() {
 		cache.setCapacity(uint32(newCap))
 	}
 
-		for _, cache := range r.caches {
-			cache.trim()
-		}
+	for _, cache := range r.caches {
+		cache.trim()
 	}
+}
 
 func (r *RamCacheProvider) cacheClosed(infohash string) {
 	delete(r.caches, infohash)
@@ -139,14 +139,14 @@ func (r *RamCache) ReadAt(p []byte, off int64) (retInt int, retErr error) {
 
 	retInt = len(p)
 	return
-			}
+}
 
 func (r *RamCache) WritePiece(p []byte, boxI int) (n int, err error) {
 
 	if r.store[boxI] != nil { //box exists, our work is done
 		log.Println("Got a WritePiece for a piece we should already have:", boxI)
 		return
-		}
+	}
 
 	r.addBox(p, boxI)
 
