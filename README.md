@@ -99,4 +99,5 @@ Other Notable Go BitTorrent Implementations
 I haven't used these, but they may be worth checking out:
 
 https://github.com/anacrolix/torrent
-
+https://github.com/polvi/bt
+https://github.com/marconi/byteslego
