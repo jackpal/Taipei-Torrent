@@ -361,7 +361,7 @@ func (ts *TorrentSession) Header() (header []byte) {
 	return ts.torrentHeader
 }
 
-// Try to connect if the peer is not already in our peers.
+// HintNewPeer: Try to connect if the peer is not already in our peers.
 // Can be called from any goroutine.
 func (ts *TorrentSession) HintNewPeer(peer string) {
 	if len(ts.hintNewPeerChan) < cap(ts.hintNewPeerChan) { //We don't want to block the main loop because a single torrent is having problems
@@ -427,7 +427,7 @@ func (ts *TorrentSession) AcceptNewPeer(btconn *BtConn) {
 	ts.AddPeer(btconn)
 }
 
-// Can be called from any goroutine
+// AddPeer: Can be called from any goroutine
 func (ts *TorrentSession) AddPeer(btconn *BtConn) {
 	if len(ts.addPeerChan) < cap(ts.addPeerChan) { //We don't want to block the main loop because a single torrent is having problems
 		select {

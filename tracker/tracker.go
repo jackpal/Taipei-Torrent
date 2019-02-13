@@ -171,7 +171,7 @@ func newTrackerPeerListenAddress(requestRemoteAddr string, params *announceParam
 	return net.ResolveTCPAddr("tcp", net.JoinHostPort(host, strconv.Itoa(params.port)))
 }
 
-// Start a tracker and run it until interrupted.
+// StartTracker starts a tracker and run it until interrupted.
 func StartTracker(addr string, torrentFiles []string) (err error) {
 	t := NewTracker()
 	// TODO(jackpal) Allow caller to choose port number

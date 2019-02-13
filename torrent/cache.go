@@ -198,7 +198,7 @@ func (r *RamCache) trim() {
 	}
 }
 
-//Simple utility for dumping a []byte to log.
+// Dump: Simple utility for dumping a []byte to log.
 //It skips over sections of '0', unlike encoding/hex.Dump()
 func Dump(buff []byte) {
 	log.Println("Dumping []byte len=", len(buff))

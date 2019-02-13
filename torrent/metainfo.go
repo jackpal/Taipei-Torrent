@@ -239,7 +239,7 @@ func (f *FileStoreFileAdapter) Close() (err error) {
 	return f.f.Close()
 }
 
-// Create a MetaInfo for a given file and file system.
+// CreateMetaInfoFromFileSystem: Create a MetaInfo for a given file and file system.
 // If fs is nil then the OSMetaInfoFileSystem will be used.
 // If pieceLength is 0 then an optimal piece length will be chosen.
 func CreateMetaInfoFromFileSystem(fs MetaInfoFileSystem, root, tracker string, pieceLength int64, wantMD5Sum bool) (metaInfo *MetaInfo, err error) {
@@ -408,7 +408,7 @@ func (m *MetaInfo) addFiles(fs MetaInfoFileSystem, file string) (err error) {
 	return
 }
 
-// Updates the InfoHash field. Call this after manually changing the Info data.
+// UpdateInfoHash: Updates the InfoHash field. Call this after manually changing the Info data.
 func (m *MetaInfo) UpdateInfoHash(metaInfo *MetaInfo) (err error) {
 	var b bytes.Buffer
 	infoMap := m.Info.toMap()
@@ -475,7 +475,7 @@ func (i *InfoDict) toMap() (m map[string]interface{}) {
 	return
 }
 
-// Encode to Bencode, but only encode non-default values.
+// Bencode: Encode to Bencode, but only encode non-default values.
 func (m *MetaInfo) Bencode(w io.Writer) (err error) {
 	var mi map[string]interface{} = map[string]interface{}{}
 	id := m.Info.toMap()
