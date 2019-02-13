@@ -20,7 +20,7 @@ type SftpFsProvider struct {
 	ServerPath string
 }
 
-//Connection string:  username:password@example.com:8042/over/there/
+// NewSftpFsProvider: Connection string:  username:password@example.com:8042/over/there/
 func NewSftpFsProvider(connection string) SftpFsProvider {
 	connSA := strings.Split(connection, "@")
 	authSA := strings.Split(connSA[0], ":")
