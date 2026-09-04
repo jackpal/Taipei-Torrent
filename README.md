@@ -7,8 +7,6 @@ programming language.
 **Project Status**: Taipei-Torrent is no longer maintained. For a modern, production-ready BitTorrent client and library in Go,
 consider using [anacrolix/torrent](https://github.com/anacrolix/torrent).
 
-[![Build Status](https://travis-ci.org/jackpal/Taipei-Torrent.svg)](https://travis-ci.org/jackpal/Taipei-Torrent)
-
 Features:
 ---------
 
@@ -41,7 +39,6 @@ A: See the LICENSE file.
 Current Status
 --------------
 
-+ Tested on Go 1.4.2 and tip.
 + Tested on Windows, Linux and Mac OS X.
 + People tell me they've run it on Android, too.
 
@@ -89,7 +86,6 @@ https://github.com/nictuku/dht      - Distributed Hash Table
 https://github.com/nictuku/nettools - Network utilities
 
 https://github.com/pkg/sftp - SFTP protocol
-
 
 Google+ Community
 -----------------
