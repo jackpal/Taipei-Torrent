@@ -87,11 +87,6 @@ https://github.com/nictuku/nettools - Network utilities
 
 https://github.com/pkg/sftp - SFTP protocol
 
-Google+ Community
------------------
-
-https://plus.google.com/u/0/communities/100997865549971977580
-
 Other Notable Go BitTorrent Implementations
 -------------------------------------------
 
